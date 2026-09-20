@@ -194,12 +194,19 @@ form textarea{resize:vertical;min-height:64px;}
         <label for="pedidoTelefono">Teléfono <span class="req">*</span></label>
         <input type="tel" id="pedidoTelefono" autocomplete="tel" placeholder="+56 9 ..." required>
 
-        <!-- Campo de dirección en texto plano por ahora. Punto de integración futuro:
-             Google Maps Places Autocomplete se puede enganchar aquí más adelante
-             (cuando haya API key) llamando a new google.maps.places.Autocomplete()
-             sobre el input #pedidoDireccion — mantener este id estable. -->
-        <label for="pedidoDireccion">Dirección de entrega</label>
-        <input type="text" id="pedidoDireccion" autocomplete="street-address" placeholder="Calle, número, comuna...">
+        <!-- Dirección estructurada: calle/depto/comuna en campos separados.
+             Punto de integración futuro: Google Maps Places Autocomplete se puede
+             enganchar aquí más adelante (cuando haya API key) llamando a
+             new google.maps.places.Autocomplete() sobre el input #pedidoCalle —
+             mantener ese id estable. -->
+        <label for="pedidoCalle">Calle y número</label>
+        <input type="text" id="pedidoCalle" autocomplete="street-address" placeholder="Av. Siempre Viva 742">
+
+        <label for="pedidoDepto">Depto/Casa (opcional)</label>
+        <input type="text" id="pedidoDepto" placeholder="Depto 12B">
+
+        <label for="pedidoComuna">Comuna</label>
+        <input type="text" id="pedidoComuna" placeholder="Ñuñoa">
 
         <label for="pedidoNotas">Observaciones (opcional)</label>
         <textarea id="pedidoNotas" placeholder="Ej: horario preferido, instrucciones especiales..."></textarea>
@@ -431,22 +438,19 @@ function cerrarCheckout(){ document.getElementById('checkoutOverlay').classList.
 async function enviarPedido(){
   const nombre=sanitize(document.getElementById('pedidoNombre').value);
   const telefono=sanitize(document.getElementById('pedidoTelefono').value);
-  const direccion=sanitize(document.getElementById('pedidoDireccion').value);
-  const observaciones=sanitize(document.getElementById('pedidoNotas').value);
+  const calle=sanitize(document.getElementById('pedidoCalle').value);
+  const depto=sanitize(document.getElementById('pedidoDepto').value);
+  const comuna=sanitize(document.getElementById('pedidoComuna').value);
+  const notas=sanitize(document.getElementById('pedidoNotas').value);
   if(!nombre){ toast('Ingresa tu nombre',true); return; }
   if(!telefono){ toast('Ingresa tu teléfono',true); return; }
   if(!CARRITO.length){ toast('Tu carrito está vacío',true); return; }
-
-  const notasPartes=[];
-  if(direccion) notasPartes.push(`Dirección: ${direccion}`);
-  if(observaciones) notasPartes.push(observaciones);
-  const notas=notasPartes.join('\n\n');
 
   const total=totalCarrito();
   const btn=document.getElementById('btnEnviarPedido');
   btn.disabled=true; btn.textContent='Enviando...';
   try{
-    const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,notas,total,estado:'pendiente'}).select();
+    const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,direccion_calle:calle,direccion_depto:depto,direccion_comuna:comuna,notas,total,estado:'pendiente'}).select();
     if(error){ toast('Error: '+error.message,true); return; }
     const pedidoId=ped[0].id;
     for(const item of CARRITO){

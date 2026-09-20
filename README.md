@@ -81,7 +81,9 @@ Es un archivo completamente aparte del sistema admin: mismo cliente PostgREST (`
 - Agregar `catalogo.html` al mismo contenedor nginx que sirve `puntoqueso-os.html`, expuesto en una ruta como `/catalogo` (copiarlo a `/usr/share/nginx/html/catalogo.html` en el `Dockerfile` y compartirlo bajo el mismo dominio).
 - O crear un segundo servicio en EasyPanel (mismo patrón del paso 4 de este README, con `catalogo.html` como `index.html`) bajo un subdominio propio, por ejemplo `pedidos.autix.pro`.
 
-**Google Maps Places Autocomplete (pendiente, falta API key):** la dirección hoy es un input de texto plano (`id="pedidoDireccion"` en `catalogo.html`) y se guarda concatenada dentro de `pedidos.notas` (no hay columna de dirección dedicada todavía). Cuando haya una API key de Google Maps, basta engancharle `google.maps.places.Autocomplete` a ese mismo input — el id se dejó estable a propósito y no está anidado en nada que requiera reestructurar el formulario.
+La dirección ya no es un solo campo de texto libre: son tres campos separados en `catalogo.html` — `id="pedidoCalle"` (calle y número), `id="pedidoDepto"` (depto/casa, opcional) y `id="pedidoComuna"` (comuna) — que se guardan directo en las columnas `pedidos.direccion_calle`, `pedidos.direccion_depto` y `pedidos.direccion_comuna` (no se concatenan en `notas`; `notas`/observaciones sigue siendo un campo aparte para instrucciones extra). Lo mismo aplica al formulario manual de "Nuevo pedido" del admin (`puntoqueso-os.html`), que ahora también tiene esos tres campos.
+
+**Google Maps Places Autocomplete (pendiente, falta API key):** cuando haya una API key de Google Maps, basta engancharle `google.maps.places.Autocomplete` al input `#pedidoCalle` de `catalogo.html` — el id se dejó estable a propósito para esto.
 
 ## Pendiente (próximos pasos)
 

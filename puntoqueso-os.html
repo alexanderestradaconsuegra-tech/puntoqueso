@@ -91,9 +91,13 @@ td{padding:11px 14px;border-bottom:1px solid var(--border);font-size:13.5px;}
 tr:last-child td{border-bottom:none;}
 .empty{text-align:center;color:var(--muted);padding:30px;}
 .badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;}
-.badge.pagado,.badge.confirmado,.badge.facturado{background:#e2f5e9;color:var(--ok);}
+.badge.pagado,.badge.confirmado,.badge.facturado,.badge.entregado{background:#e2f5e9;color:var(--ok);}
 .badge.pendiente{background:#fef3d9;color:var(--warn);}
 .badge.anulado{background:#fdecea;color:var(--danger);}
+/* etapas de entrega de pedidos — mismo sistema de badges, reusa los tokens de color existentes */
+.badge.preparando{background:#fef3d9;color:var(--warn);}
+.badge.en_camino{background:var(--mint);color:var(--brand-dark);}
+.badge.por-cobrar{background:#fef3d9;color:var(--warn);margin-left:5px;}
 
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
 .kpi-card{background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--sh);}
@@ -308,7 +312,7 @@ tr:last-child td{border-bottom:none;}
       <div class="topbar"><div><h2>Pedidos</h2><div class="sub">Pedidos que llegan por el catálogo de WhatsApp</div></div>
         <button class="btn" onclick="openPedidoModal()">+ Nuevo pedido</button></div>
       <div class="toolbar"><input placeholder="Buscar cliente..." oninput="renderPedidos(this.value)"></div>
-      <div class="table-scroll"><table><thead><tr><th>#</th><th>Cliente</th><th>Teléfono</th><th>Total</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
+      <div class="table-scroll"><table><thead><tr><th>#</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
       <tbody id="pedidosBody"></tbody></table></div>
     </div>
 
@@ -871,16 +875,50 @@ async function cobrar(){
 // ══════════════════════════════════════════════════════════
 //  PEDIDOS (WhatsApp)
 // ══════════════════════════════════════════════════════════
+const PEDIDO_ETAPAS=['pendiente','preparando','en_camino','entregado'];
+const PEDIDO_ETAPA_LABEL={pendiente:'Pendiente',preparando:'Preparando',en_camino:'En camino',entregado:'Entregado',anulado:'Anulado'};
 function renderPedidos(filter=''){
   const rows=DB.pedidos.filter(p=>(p.cliente_nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
-  document.getElementById('pedidosBody').innerHTML=rows.map(p=>`
-    <tr><td>#${p.id}</td><td>${p.cliente_nombre||'-'}</td><td>${p.cliente_tel||'-'}</td><td class="num">${money(p.total)}</td>
-    <td><span class="badge ${p.estado}">${p.estado}</span></td>
+  document.getElementById('pedidosBody').innerHTML=rows.map(p=>{
+    const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
+    const idx=PEDIDO_ETAPAS.indexOf(p.estado);
+    const siguiente=(p.estado!=='anulado'&&idx>=0&&idx<PEDIDO_ETAPAS.length-1)?PEDIDO_ETAPAS[idx+1]:null;
+    return `
+    <tr><td>#${p.id}<div style="color:var(--muted);font-size:11px;">${p.cliente_tel||'-'}</div></td>
+    <td>${p.cliente_nombre||'-'}</td>
+    <td style="font-size:12.5px;">${dir||'-'}</td>
+    <td class="num">${money(p.total)}</td>
+    <td>
+      <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
+      ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
+    </td>
     <td>${new Date(p.created_at).toLocaleDateString('es-CL')}</td>
-    <td style="display:flex;gap:6px;">
-      ${p.estado==='pendiente'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
+    <td style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
+      ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
+      ${p.estado==='entregado'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
+      ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="anularPedido(${p.id})">Anular</button>`:''}
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarPedido(${p.id})">Eliminar</button>
-    </td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
+    </td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
+}
+async function avanzarEstadoPedido(id,nuevoEstado){
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',id);
+  logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → ${nuevoEstado}`);
+  toast('Estado actualizado'); await loadAll(); renderPedidos();
+}
+async function anularPedido(id){
+  if(!confirm('¿Anular este pedido?')) return;
+  await supa.from('pedidos').update({estado:'anulado'}).eq('id',id);
+  logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → anulado`);
+  toast('Pedido anulado'); await loadAll(); renderPedidos();
+}
+async function marcarPagoPedido(id,nuevoEstadoPago){
+  await supa.from('pedidos').update({estado_pago:nuevoEstadoPago}).eq('id',id);
+  logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → pago ${nuevoEstadoPago}`);
+  toast('Pago actualizado'); await loadAll(); renderPedidos();
 }
 function openPedidoModal(){
   const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre}</option>`).join('');
@@ -888,6 +926,9 @@ function openPedidoModal(){
     <h3>Nuevo pedido</h3>
     <label>Nombre del cliente</label><input id="pdNombre">
     <label>Teléfono</label><input id="pdTelefono">
+    <label>Calle y número</label><input id="pdCalle" placeholder="Av. Siempre Viva 742">
+    <label>Depto/Casa (opcional)</label><input id="pdDepto" placeholder="Depto 12B">
+    <label>Comuna</label><input id="pdComuna" placeholder="Ñuñoa">
     <label>Notas</label><textarea id="pdNotas" rows="2"></textarea>
     <label style="margin-top:14px;">Producto</label>
     <select id="pdProducto">${prodOpts}</select>
@@ -916,15 +957,22 @@ function pdAgregarItem(){
 async function guardarPedido(){
   const nombre=sanitize(document.getElementById('pdNombre').value);
   const telefono=sanitize(document.getElementById('pdTelefono').value);
+  const calle=sanitize(document.getElementById('pdCalle').value);
+  const depto=sanitize(document.getElementById('pdDepto').value);
+  const comuna=sanitize(document.getElementById('pdComuna').value);
   const notas=sanitize(document.getElementById('pdNotas').value);
   if(!nombre){ toast('Ingresa el nombre del cliente',true); return; }
   if(!PD_ITEMS.length){ toast('Agrega al menos un producto',true); return; }
   const total=PD_ITEMS.reduce((s,i)=>s+i.subtotal,0);
-  const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,notas,total,estado:'pendiente'}).select();
+  const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,direccion_calle:calle,direccion_depto:depto,direccion_comuna:comuna,notas,total,estado:'pendiente'}).select();
   if(error){ toast('Error: '+error.message,true); return; }
   for(const item of PD_ITEMS) await supa.from('pedido_items').insert({...item,pedido_id:ped[0].id});
   toast('Pedido guardado'); closeModal(); await loadAll(); renderPedidos();
 }
+// Decisión: "Facturar" ahora solo aparece cuando estado==='entregado' — refleja el
+// flujo real de una entrega: la venta/boleta se cierra una vez que el cliente ya
+// recibió el pedido, no antes. El pedido sigue pudiendo estar "por cobrar"
+// (estado_pago='pendiente') al facturarse — eso no bloquea la facturación.
 async function facturarPedido(id){
   const p=DB.pedidos.find(x=>x.id===id);
   if(!p) return;

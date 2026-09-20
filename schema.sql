@@ -90,10 +90,19 @@ create table if not exists pedidos (
   cliente_nombre text,
   cliente_tel text,
   total numeric default 0,
-  estado text default 'pendiente',   -- pendiente | confirmado | facturado | anulado
+  -- estado: etapa de entrega del pedido —
+  -- pendiente (recién llegó) | preparando | en_camino | entregado | anulado
+  estado text default 'pendiente',
   notas text,
   created_at timestamptz default now()
 );
+alter table pedidos add column if not exists direccion_calle text;   -- calle + número, ej: "Av. Siempre Viva 742"
+alter table pedidos add column if not exists direccion_depto text;   -- depto/casa/unidad, opcional
+alter table pedidos add column if not exists direccion_comuna text;
+-- estado_pago: estado de pago, independiente de la etapa de entrega
+-- (un pedido puede estar 'entregado' y a la vez 'pendiente' de pago == "por cobrar")
+-- mismo patrón que ventas.estado_pago: pendiente | pagado
+alter table pedidos add column if not exists estado_pago text default 'pendiente';
 
 create table if not exists pedido_items (
   id bigserial primary key,
