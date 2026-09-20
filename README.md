@@ -70,6 +70,19 @@ Usuario: `admin` — Contraseña: la que pusiste en el paso 1.
 
 No se implementó ninguna integración de WhatsApp todavía, pero los datos ya quedaron listos para ella: `productos.imagen_b64` + `nombre` + `precio` + `stock` + `activo` es la única fuente de verdad que un futuro catálogo de WhatsApp debería leer directamente, por ejemplo con `GET /productos?activo=eq.true` contra PostgREST. Así el catálogo que vería un cliente por WhatsApp siempre coincide exactamente con lo que está en el sistema de la tienda, sin duplicar datos en otra tabla ni sincronizar nada aparte.
 
+## Catálogo público de pedidos
+
+`catalogo.html` es una página **pública, sin login**, pensada para que un cliente la abra desde su celular (por ejemplo desde un enlace compartido por WhatsApp) y arme su pedido solo: navega el catálogo de productos activos, arma un carrito (incluyendo peso en gramos/kg para los productos "por peso", con chips de 250g/500g/1kg + cantidad personalizada), completa nombre, teléfono y dirección, y al enviar el pedido queda insertado directamente en `pedidos`/`pedido_items` con `estado:'pendiente'`, listo para que el equipo lo vea y lo facture desde la pestaña "Pedidos" del sistema admin (`puntoqueso-os.html`).
+
+Es un archivo completamente aparte del sistema admin: mismo cliente PostgREST (`PG`/`PGQuery`) copiado dentro de su propio `<script>`, mismos colores/tipografía de marca, pero **cero** acceso a login, ventas, gastos, auditoría o edición de productos — solo lee `GET /productos?activo=eq.true` e inserta en `pedidos`/`pedido_items` (el rol `web_anon` ya tiene permiso de insert sobre esas tablas por la política de RLS de `schema.sql`).
+
+**Deploy:** este archivo necesita quedar servido en una URL pública, aparte del sistema admin. Dos formas razonables de hacerlo con la infraestructura actual (EasyPanel + nginx):
+
+- Agregar `catalogo.html` al mismo contenedor nginx que sirve `puntoqueso-os.html`, expuesto en una ruta como `/catalogo` (copiarlo a `/usr/share/nginx/html/catalogo.html` en el `Dockerfile` y compartirlo bajo el mismo dominio).
+- O crear un segundo servicio en EasyPanel (mismo patrón del paso 4 de este README, con `catalogo.html` como `index.html`) bajo un subdominio propio, por ejemplo `pedidos.autix.pro`.
+
+**Google Maps Places Autocomplete (pendiente, falta API key):** la dirección hoy es un input de texto plano (`id="pedidoDireccion"` en `catalogo.html`) y se guarda concatenada dentro de `pedidos.notas` (no hay columna de dirección dedicada todavía). Cuando haya una API key de Google Maps, basta engancharle `google.maps.places.Autocomplete` a ese mismo input — el id se dejó estable a propósito y no está anidado en nada que requiera reestructurar el formulario.
+
 ## Pendiente (próximos pasos)
 
 - **WhatsApp**: conectar el catálogo a tu Evolution API existente (nueva instancia/número solo para Punto Queso) para que los pedidos lleguen directo a la pestaña "Pedidos".

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Punto Queso — Catálogo de pedidos</title>
+<meta name="description" content="Catálogo público de Punto Queso. Arma tu pedido y te contactamos para confirmar.">
+<meta name="theme-color" content="#fed104">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root{
+  --brand:#fed104;        /* amarillo Punto Queso */
+  --brand-dark:#d1ab00;   /* hover / acentos sobre blanco */
+  --brand-text:#1c1a15;   /* texto sobre fondo amarillo — SIEMPRE oscuro, nunca blanco */
+  --mate:#1c1a15;         /* negro mate — sidebar, login, toast */
+  --mate-2:#2b2820;
+  --mint:#fdf6e0;         /* cremita — superficies secundarias */
+  --white:#FFFFFF;
+  --bg:#faf6ea;           /* cremita — fondo de página */
+  --text:#211f1a;
+  --text2:#59543f;
+  --muted:#8c8570;
+  --border:#ede3c4;
+  --border2:#ddce9e;
+  --danger:#c0392b;
+  --warn:#b7791f;
+  --ok:#15803d;
+  --sh:0 4px 16px rgba(28,26,21,.08),0 1px 3px rgba(28,26,21,.05);
+  --sh-md:0 8px 28px rgba(28,26,21,.14);
+  --r-sm:10px; --r:12px; --r-md:14px; --r-lg:18px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;padding-bottom:78px;}
+h1,h2,h3,h4{font-weight:700;line-height:1.25;letter-spacing:-.015em;}
+input,select,textarea,button{font-family:inherit;font-size:14px;}
+:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px;border-radius:6px;}
+.num{font-variant-numeric:tabular-nums;}
+.ic{width:18px;height:18px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.ic-sm{width:15px;height:15px;}
+
+/* ── HEADER ── */
+header.topbar{background:var(--mate);color:#fff;padding:16px 18px;position:sticky;top:0;z-index:40;box-shadow:var(--sh);}
+header.topbar .name{font-size:19px;font-weight:800;letter-spacing:-.02em;}
+header.topbar .name span{color:var(--brand);}
+header.topbar .sub{font-size:12px;color:rgba(255,255,255,.65);margin-top:2px;}
+
+main{max-width:920px;margin:0 auto;padding:16px 14px 20px;}
+
+.search-bar{margin-bottom:14px;}
+.search-bar input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:#fff;}
+.search-bar input:focus{border-color:var(--brand);}
+
+.cat-tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px;}
+.cat-tab{flex-shrink:0;padding:8px 14px;border-radius:99px;border:1.5px solid var(--border);background:#fff;color:var(--text2);font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap;}
+.cat-tab.active{background:var(--brand);color:var(--brand-text);border-color:var(--brand);}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+.prod-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-md);padding:12px;box-shadow:var(--sh);display:flex;flex-direction:column;}
+.prod-img{width:100%;height:100px;object-fit:cover;border-radius:var(--r-sm);margin-bottom:8px;background:var(--mint);}
+.prod-ph{width:100%;height:100px;border-radius:var(--r-sm);margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:30px;}
+.prod-name{font-weight:700;font-size:13.5px;margin-bottom:3px;}
+.prod-price{color:var(--brand-dark);font-weight:800;font-size:15px;margin-bottom:8px;}
+.prod-card .btn{width:100%;justify-content:center;margin-top:auto;}
+
+.empty{text-align:center;color:var(--muted);padding:40px 20px;}
+
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border:none;border-radius:var(--r-sm);background:var(--brand);color:var(--brand-text);font-weight:700;font-size:13.5px;cursor:pointer;transition:background .15s,transform .1s;}
+.btn:hover{background:var(--brand-dark);color:var(--brand-text);}
+.btn:active{transform:scale(.97);}
+.btn.secondary{background:var(--mint);color:var(--brand-dark);border:1px solid var(--border2);}
+.btn.secondary:hover{background:#f3e3cc;}
+.btn.danger{background:#fdecea;color:var(--danger);}
+.btn.danger:hover{background:#fbd8d4;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn.block{width:100%;justify-content:center;}
+
+/* ── WEIGHT PICKER (per-card mini) ── */
+.wpick{display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.wpick.open{display:flex;}
+.wpick-chip{flex:1;min-width:52px;padding:6px 4px;border:1.5px solid var(--border);border-radius:8px;background:#fff;font-size:11px;font-weight:700;cursor:pointer;text-align:center;color:var(--text2);}
+.wpick-chip.active{background:var(--brand);border-color:var(--brand);color:var(--brand-text);}
+.wpick-custom{display:flex;gap:6px;margin-bottom:8px;}
+.wpick-custom input{flex:1;min-width:0;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;}
+
+/* ── STICKY CART BAR ── */
+#cartBar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--mate);color:#fff;display:none;align-items:center;justify-content:space-between;padding:14px 18px;box-shadow:0 -4px 20px rgba(0,0,0,.18);cursor:pointer;}
+#cartBar.show{display:flex;}
+#cartBar .cb-left{display:flex;align-items:center;gap:10px;}
+#cartBar .cb-count{background:var(--brand);color:var(--brand-text);border-radius:99px;min-width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;padding:0 6px;}
+#cartBar .cb-total{font-weight:800;font-size:16px;}
+#cartBar .cb-cta{color:var(--brand);font-weight:700;font-size:13px;display:flex;align-items:center;gap:5px;}
+
+/* ── OVERLAYS (cart sheet + checkout + success) ── */
+.overlay{position:fixed;inset:0;background:rgba(28,26,21,.55);display:none;align-items:flex-end;justify-content:center;z-index:100;}
+.overlay.open{display:flex;}
+.sheet{background:#fff;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;border-radius:20px 20px 0 0;box-shadow:var(--sh-md);animation:sheetUp .22s ease;}
+@keyframes sheetUp{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 8px;position:sticky;top:0;background:#fff;z-index:2;}
+.sheet-head h2{font-size:17px;}
+.sheet-close{width:32px;height:32px;border-radius:99px;background:var(--mint);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:var(--text2);}
+.sheet-body{padding:6px 20px 20px;}
+
+.cart-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);}
+.cart-row .cr-ph{width:44px;height:44px;border-radius:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0;object-fit:cover;}
+.cart-row img.cr-ph{color:transparent;}
+.cart-row .cr-info{flex:1;min-width:0;}
+.cart-row .cr-name{font-weight:700;font-size:13.5px;}
+.cart-row .cr-meta{font-size:11.5px;color:var(--muted);margin-top:1px;}
+.cart-row .cr-sub{font-weight:800;font-size:13.5px;white-space:nowrap;}
+.cart-row .cr-del{color:var(--danger);cursor:pointer;flex-shrink:0;}
+.cart-total-row{display:flex;justify-content:space-between;align-items:center;padding:16px 0 4px;font-size:16px;font-weight:800;}
+
+form label{display:block;font-size:12.5px;font-weight:600;color:var(--text2);margin:14px 0 5px;}
+form input,form textarea{width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:#fff;}
+form input:focus,form textarea:focus{border-color:var(--brand);}
+form textarea{resize:vertical;min-height:64px;}
+.req{color:var(--danger);}
+
+/* success screen */
+.success-wrap{text-align:center;padding:30px 10px 10px;}
+.success-icon{width:64px;height:64px;border-radius:99px;background:#e2f5e9;color:var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;}
+.success-wrap h2{font-size:19px;margin-bottom:8px;}
+.success-wrap p{color:var(--text2);margin-bottom:4px;}
+.order-num{display:inline-block;background:var(--mint);border:1px solid var(--border2);border-radius:99px;padding:6px 16px;font-weight:800;font-family:'JetBrains Mono',monospace;margin:14px 0;color:var(--brand-dark);}
+
+#toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(100px);background:var(--mate);color:#fff;padding:13px 22px;border-radius:99px;font-size:13.5px;font-weight:600;box-shadow:var(--sh-md);z-index:200;transition:transform .25s;max-width:90vw;text-align:center;}
+#toast.show{transform:translateX(-50%) translateY(0);}
+#toast.err{background:var(--danger);}
+
+@media(min-width:640px){
+  main{padding:22px 20px 24px;}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="name">Punto <span>Queso</span></div>
+  <div class="sub">Arma tu pedido — te contactamos para confirmar</div>
+</header>
+
+<main>
+  <div class="search-bar">
+    <input type="text" id="buscarInput" placeholder="Buscar producto..." oninput="renderGrid()">
+  </div>
+  <div class="cat-tabs" id="catTabs"></div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<div id="cartBar" onclick="abrirCarrito()">
+  <div class="cb-left">
+    <span class="cb-count" id="cbCount">0</span>
+    <span class="cb-total num" id="cbTotal">$0</span>
+  </div>
+  <div class="cb-cta">Ver pedido
+    <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+  </div>
+</div>
+
+<!-- CARRITO -->
+<div class="overlay" id="cartOverlay" onclick="if(event.target===this)cerrarCarrito()">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Tu pedido</h2>
+      <div class="sheet-close" onclick="cerrarCarrito()">
+        <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <div class="sheet-body">
+      <div id="cartList"></div>
+      <div class="cart-total-row"><span>Total</span><span class="num" id="cartTotalTxt">$0</span></div>
+      <button class="btn block" id="btnIrCheckout" onclick="abrirCheckout()" style="margin-top:10px;">Continuar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHECKOUT -->
+<div class="overlay" id="checkoutOverlay" onclick="if(event.target===this)cerrarCheckout()">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Tus datos</h2>
+      <div class="sheet-close" onclick="cerrarCheckout()">
+        <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <div class="sheet-body">
+      <form id="checkoutForm" onsubmit="event.preventDefault();enviarPedido();">
+        <label for="pedidoNombre">Nombre <span class="req">*</span></label>
+        <input type="text" id="pedidoNombre" autocomplete="name" required>
+
+        <label for="pedidoTelefono">Teléfono <span class="req">*</span></label>
+        <input type="tel" id="pedidoTelefono" autocomplete="tel" placeholder="+56 9 ..." required>
+
+        <!-- Campo de dirección en texto plano por ahora. Punto de integración futuro:
+             Google Maps Places Autocomplete se puede enganchar aquí más adelante
+             (cuando haya API key) llamando a new google.maps.places.Autocomplete()
+             sobre el input #pedidoDireccion — mantener este id estable. -->
+        <label for="pedidoDireccion">Dirección de entrega</label>
+        <input type="text" id="pedidoDireccion" autocomplete="street-address" placeholder="Calle, número, comuna...">
+
+        <label for="pedidoNotas">Observaciones (opcional)</label>
+        <textarea id="pedidoNotas" placeholder="Ej: horario preferido, instrucciones especiales..."></textarea>
+
+        <button type="submit" class="btn block" id="btnEnviarPedido" style="margin-top:18px;">Enviar pedido</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ÉXITO -->
+<div class="overlay" id="successOverlay">
+  <div class="sheet">
+    <div class="sheet-body">
+      <div class="success-wrap">
+        <div class="success-icon">
+          <svg class="ic" style="width:32px;height:32px;" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <h2>¡Pedido enviado!</h2>
+        <p>Tu número de pedido es</p>
+        <div class="order-num num" id="successOrderNum">#0000</div>
+        <p>Nos pondremos en contacto contigo para confirmar tu pedido.</p>
+        <button class="btn block" onclick="nuevoPedido()" style="margin-top:22px;">Hacer otro pedido</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  CLIENTE POSTGREST — mismo patrón de consultas que Supabase
+//  (.from().select().eq()...) pero hablando directo con
+//  PostgREST, sin depender de ningún CDN externo.
+//  Copiado tal cual de puntoqueso-os.html para que este
+//  catálogo público sea un archivo autocontenido.
+// ══════════════════════════════════════════════════════════
+const PG_URL = 'https://api-puntoqueso.autix.pro';
+
+class PGQuery{
+  constructor(url,table){ this.url=url; this.table=table; this.params=[]; this.headers={'Content-Type':'application/json'}; this._single=false; this._method='GET'; this._body=null; }
+  select(cols='*'){ this.params.push('select='+cols); return this; }
+  eq(col,val){ this.params.push(`${encodeURIComponent(col)}=eq.${encodeURIComponent(val)}`); return this; }
+  order(col,{ascending=true}={}){ this.params.push(`order=${encodeURIComponent(col)}.${ascending?'asc':'desc'}`); return this; }
+  limit(n){ this.params.push('limit='+n); return this; }
+  single(){ this._single=true; this.headers['Accept']='application/vnd.pgrst.object+json'; return this; }
+  insert(rows){ this._method='POST'; this._body=rows; this.headers['Prefer']='return=representation'; return this; }
+  async _exec(){
+    const qs=this.params.length?('?'+this.params.join('&')):'';
+    try{
+      const res=await fetch(`${this.url}/${this.table}${qs}`,{method:this._method,headers:this.headers,body:this._body?JSON.stringify(this._body):undefined});
+      if(!res.ok){
+        let msg=res.statusText;
+        try{ const j=await res.json(); msg=j.message||j.hint||msg; }catch(e){}
+        return {data:null,error:{message:msg,status:res.status}};
+      }
+      if(res.status===204) return {data:this._single?null:[],error:null};
+      const data=await res.json();
+      return {data,error:null};
+    }catch(e){ return {data:null,error:{message:e.message||'Error de red'}}; }
+  }
+  then(resolve,reject){ return this._exec().then(resolve,reject); }
+}
+class PG{
+  constructor(url){ this.url=url.replace(/\/$/,''); }
+  from(table){ return new PGQuery(this.url,table); }
+}
+const supa = new PG(PG_URL);
+
+// ══════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════
+function toast(msg,err=false){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className=err?'err':'';
+  requestAnimationFrame(()=>el.classList.add('show'));
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show'),2800);
+}
+function money(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-CL'); }
+function sanitize(s){ return (s||'').toString().trim().replace(/<[^>]*>/g,''); }
+
+// ══════════════════════════════════════════════════════════
+//  ESTADO
+// ══════════════════════════════════════════════════════════
+let PRODUCTOS=[];
+let CATEGORIA_ACTIVA='';
+let CARRITO=[]; // {producto_id,nombre,precio,cantidad,unidad,vender_por_peso,qtyLabel}
+
+async function cargarProductos(){
+  const {data,error}=await supa.from('productos').select('*').eq('activo','true').order('nombre',{ascending:true});
+  if(error){ document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo más tarde.</p>'; return; }
+  PRODUCTOS=data||[];
+  renderTabs();
+  renderGrid();
+}
+
+function renderTabs(){
+  const cats=['','...cargando']; // placeholder replaced below
+  const set=new Set(PRODUCTOS.map(p=>p.categoria||'otros'));
+  const list=['',...Array.from(set)];
+  document.getElementById('catTabs').innerHTML=list.map(c=>`
+    <button class="cat-tab ${c===CATEGORIA_ACTIVA?'active':''}" onclick="filtrarCategoria('${c.replace(/'/g,"\\'")}')">${c?c.charAt(0).toUpperCase()+c.slice(1):'Todos'}</button>
+  `).join('');
+}
+function filtrarCategoria(c){ CATEGORIA_ACTIVA=c; renderTabs(); renderGrid(); }
+
+function renderGrid(){
+  const filtro=(document.getElementById('buscarInput').value||'').toLowerCase();
+  const rows=PRODUCTOS.filter(p=>{
+    const matchNombre=(p.nombre||'').toLowerCase().includes(filtro);
+    const matchCat=!CATEGORIA_ACTIVA||(p.categoria||'otros')===CATEGORIA_ACTIVA;
+    return matchNombre&&matchCat;
+  });
+  const grid=document.getElementById('grid');
+  if(!rows.length){ grid.innerHTML='<p class="empty">No hay productos disponibles</p>'; return; }
+  grid.innerHTML=rows.map(p=>{
+    const inicial=(p.nombre||'?').trim().charAt(0).toUpperCase();
+    const img=p.imagen_b64?`<img class="prod-img" src="${p.imagen_b64}" alt="">`:`<div class="prod-ph">${inicial}</div>`;
+    if(p.vender_por_peso){
+      return `
+      <div class="prod-card">
+        ${img}
+        <div class="prod-name">${p.nombre}</div>
+        <div class="prod-price num">${money(p.precio)}/kg</div>
+        <div class="wpick" id="wpick-${p.id}">
+          <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g')">250g</div>
+          <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.5,'500g')">500g</div>
+          <div class="wpick-chip" onclick="seleccionarPeso(${p.id},1,'1kg')">1kg</div>
+        </div>
+        <div class="wpick-custom" id="wcustom-${p.id}" style="display:none;">
+          <input type="number" id="wcustom-input-${p.id}" min="0.05" step="0.05" placeholder="kg (ej: 0.75)">
+        </div>
+        <button class="btn block" onclick="togglePesoPicker(${p.id})">Agregar</button>
+      </div>`;
+    }
+    return `
+    <div class="prod-card">
+      ${img}
+      <div class="prod-name">${p.nombre}</div>
+      <div class="prod-price num">${money(p.precio)}${p.unidad&&p.unidad!=='unid'?'/'+p.unidad:''}</div>
+      <button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>
+    </div>`;
+  }).join('');
+}
+
+function togglePesoPicker(id){
+  const w=document.getElementById('wpick-'+id);
+  const c=document.getElementById('wcustom-'+id);
+  const opening=!w.classList.contains('open');
+  w.classList.toggle('open',opening);
+  c.style.display=opening?'flex':'none';
+  if(opening){
+    const input=document.getElementById('wcustom-input-'+id);
+    input.onchange=()=>{
+      const kg=parseFloat(input.value);
+      if(kg>0) seleccionarPeso(id,kg,kg>=1?`${kg}kg`:`${Math.round(kg*1000)}g`);
+    };
+  }
+}
+function seleccionarPeso(id,kg,label){
+  const p=PRODUCTOS.find(x=>x.id===id);
+  if(!p) return;
+  agregarAlCarritoConCantidad(p,kg,label);
+  document.getElementById('wpick-'+id).classList.remove('open');
+  document.getElementById('wcustom-'+id).style.display='none';
+}
+
+function agregarAlCarrito(id){
+  const p=PRODUCTOS.find(x=>x.id===id);
+  if(!p) return;
+  agregarAlCarritoConCantidad(p,1,null);
+}
+function agregarAlCarritoConCantidad(p,cantidad,qtyLabel){
+  const existente=CARRITO.find(i=>i.producto_id===p.id&&i.qtyLabel===qtyLabel);
+  if(existente&&!p.vender_por_peso){ existente.cantidad+=cantidad; }
+  else CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad,unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel,imagen_b64:p.imagen_b64||null});
+  toast(`${p.nombre} agregado`);
+  renderCartBar();
+}
+
+function totalCarrito(){ return CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0); }
+function cantidadCarrito(){ return CARRITO.reduce((s,i)=>s+(i.vender_por_peso?1:i.cantidad),0); }
+
+function renderCartBar(){
+  const bar=document.getElementById('cartBar');
+  if(!CARRITO.length){ bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  document.getElementById('cbCount').textContent=cantidadCarrito();
+  document.getElementById('cbTotal').textContent=money(totalCarrito());
+}
+
+function abrirCarrito(){
+  renderCartList();
+  document.getElementById('cartOverlay').classList.add('open');
+}
+function cerrarCarrito(){ document.getElementById('cartOverlay').classList.remove('open'); }
+
+function renderCartList(){
+  const el=document.getElementById('cartList');
+  if(!CARRITO.length){ el.innerHTML='<p class="empty">Tu carrito está vacío</p>'; document.getElementById('cartTotalTxt').textContent=money(0); return; }
+  el.innerHTML=CARRITO.map((i,idx)=>{
+    const inicial=(i.nombre||'?').trim().charAt(0).toUpperCase();
+    const ph=i.imagen_b64?`<img class="cr-ph" src="${i.imagen_b64}" alt="">`:`<div class="cr-ph">${inicial}</div>`;
+    const meta=i.vender_por_peso?(i.qtyLabel||`${i.cantidad}kg`):`x${i.cantidad}`;
+    return `
+    <div class="cart-row">
+      ${ph}
+      <div class="cr-info">
+        <div class="cr-name">${i.nombre}</div>
+        <div class="cr-meta">${meta} · ${money(i.precio)}${i.vender_por_peso?'/kg':''}</div>
+      </div>
+      <div class="cr-sub num">${money(i.precio*i.cantidad)}</div>
+      <svg class="ic-sm cr-del" onclick="quitarDelCarrito(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>`;
+  }).join('');
+  document.getElementById('cartTotalTxt').textContent=money(totalCarrito());
+}
+function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCartList(); renderCartBar(); }
+
+function abrirCheckout(){
+  if(!CARRITO.length){ toast('Tu carrito está vacío',true); return; }
+  cerrarCarrito();
+  document.getElementById('checkoutOverlay').classList.add('open');
+}
+function cerrarCheckout(){ document.getElementById('checkoutOverlay').classList.remove('open'); }
+
+async function enviarPedido(){
+  const nombre=sanitize(document.getElementById('pedidoNombre').value);
+  const telefono=sanitize(document.getElementById('pedidoTelefono').value);
+  const direccion=sanitize(document.getElementById('pedidoDireccion').value);
+  const observaciones=sanitize(document.getElementById('pedidoNotas').value);
+  if(!nombre){ toast('Ingresa tu nombre',true); return; }
+  if(!telefono){ toast('Ingresa tu teléfono',true); return; }
+  if(!CARRITO.length){ toast('Tu carrito está vacío',true); return; }
+
+  const notasPartes=[];
+  if(direccion) notasPartes.push(`Dirección: ${direccion}`);
+  if(observaciones) notasPartes.push(observaciones);
+  const notas=notasPartes.join('\n\n');
+
+  const total=totalCarrito();
+  const btn=document.getElementById('btnEnviarPedido');
+  btn.disabled=true; btn.textContent='Enviando...';
+  try{
+    const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,notas,total,estado:'pendiente'}).select();
+    if(error){ toast('Error: '+error.message,true); return; }
+    const pedidoId=ped[0].id;
+    for(const item of CARRITO){
+      await supa.from('pedido_items').insert({
+        pedido_id:pedidoId,
+        producto_id:item.producto_id,
+        producto_nombre:item.nombre,
+        cantidad:item.cantidad,
+        precio_unitario:item.precio,
+        subtotal:item.precio*item.cantidad
+      });
+    }
+    document.getElementById('successOrderNum').textContent='#'+String(pedidoId).padStart(4,'0');
+    cerrarCheckout();
+    document.getElementById('successOverlay').classList.add('open');
+  }catch(e){
+    toast('Error de red, intenta de nuevo',true);
+  }finally{
+    btn.disabled=false; btn.textContent='Enviar pedido';
+  }
+}
+
+function nuevoPedido(){
+  CARRITO=[];
+  renderCartBar();
+  document.getElementById('checkoutForm').reset();
+  document.getElementById('successOverlay').classList.remove('open');
+}
+
+cargarProductos();
+</script>
+</body>
+</html>
