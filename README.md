@@ -85,7 +85,23 @@ La dirección ya no es un solo campo de texto libre: son tres campos separados e
 
 **Google Maps Places Autocomplete (pendiente, falta API key):** cuando haya una API key de Google Maps, basta engancharle `google.maps.places.Autocomplete` al input `#pedidoCalle` de `catalogo.html` — el id se dejó estable a propósito para esto.
 
+## WhatsApp (Evolution API)
+
+El sistema puede avisarle automáticamente al cliente por WhatsApp cuando su pedido cambia de etapa (preparando, en camino, entregado, anulado), usando tu Evolution API existente en el VPS (la misma que usa Campolac, pero con su propia instancia/número para Punto Queso).
+
+1. Ve a **Configuración → WhatsApp (Evolution API)** en `puntoqueso-os.html` (requiere login) y completa:
+   - **URL de Evolution API** (ej: `https://evolution.tudominio.com`)
+   - **API Key**
+   - **Instancia** (el nombre/número de WhatsApp de esa instancia)
+2. Guarda. Desde ese momento, cada vez que un pedido pasa a `preparando`, `en_camino`, `entregado` o se anula desde la pestaña "Pedidos", el sistema le manda automáticamente un mensaje corto al teléfono del cliente (`pedidos.cliente_tel`).
+3. Si estos tres campos no están completos, el envío simplemente no ocurre (no rompe nada del flujo de Pedidos) — solo queda un `console.warn` en la consola del navegador para debug.
+
+## Mercado Pago
+
+El **Access Token** de tu cuenta de Mercado Pago Chile se configura en **Configuración → Mercado Pago** (admin, con login). Con eso guardado, en la pestaña **Pedidos** aparece un botón **"Generar link de pago"** en cada pedido: genera una preferencia de Checkout Pro por el total del pedido y te muestra el link (`init_point`) para copiarlo o enviarlo directo por WhatsApp (reutilizando la integración de Evolution API de arriba).
+
+**Por qué esto es admin-only y no está en `catalogo.html`:** el Access Token es una credencial secreta de tu cuenta de Mercado Pago. `catalogo.html` es una página pública sin login que cualquiera puede abrir — si el token se usara ahí, quedaría expuesto en las peticiones de red a cada visitante del catálogo. Por eso la generación del link vive exclusivamente en el sistema admin (autenticado), y el catálogo público nunca hace ninguna llamada a Mercado Pago. El link ya generado se guarda en `pedidos.mp_link`/`pedidos.mp_preference_id` para poder reutilizarlo o regenerarlo después sin volver a exponer el token en ningún lado público.
+
 ## Pendiente (próximos pasos)
 
-- **WhatsApp**: conectar el catálogo a tu Evolution API existente (nueva instancia/número solo para Punto Queso) para que los pedidos lleguen directo a la pestaña "Pedidos".
-- **MercadoPago**: integración de cobro con tarjeta/QR — pendiente de que nos entregues el Access Token de tu cuenta de MercadoPago Chile.
+- Nada pendiente de WhatsApp/MercadoPago por ahora — ambas integraciones están implementadas y solo falta que completes tus credenciales reales en Configuración.

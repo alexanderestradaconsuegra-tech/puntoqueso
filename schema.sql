@@ -103,6 +103,9 @@ alter table pedidos add column if not exists direccion_comuna text;
 -- (un pedido puede estar 'entregado' y a la vez 'pendiente' de pago == "por cobrar")
 -- mismo patrón que ventas.estado_pago: pendiente | pagado
 alter table pedidos add column if not exists estado_pago text default 'pendiente';
+-- link de pago de Mercado Pago (Checkout Pro), generado desde el admin (puntoqueso-os.html)
+alter table pedidos add column if not exists mp_preference_id text;
+alter table pedidos add column if not exists mp_link text;
 
 create table if not exists pedido_items (
   id bigserial primary key,
@@ -140,6 +143,16 @@ create table if not exists stock_movimientos (
 );
 
 -- ── configuración general (clave/valor) ──
+-- claves usadas por la app (todas opcionales, se guardan/leen desde
+-- Configuración → puntoqueso-os.html, admin-only):
+--   nombre_negocio            -- nombre del negocio
+--   whatsapp                  -- teléfono de WhatsApp del catálogo público
+--   evolution_api_url         -- URL base de tu instancia de Evolution API (WhatsApp)
+--   evolution_api_key         -- API key de Evolution API
+--   evolution_instance        -- nombre de la instancia/número de WhatsApp en Evolution API
+--   mercadopago_access_token  -- Access Token de Mercado Pago Chile (solo se usa desde
+--                                 el admin autenticado, para generar links de pago —
+--                                 nunca se expone en catalogo.html, que es pública)
 create table if not exists config (
   clave text primary key,
   valor jsonb,

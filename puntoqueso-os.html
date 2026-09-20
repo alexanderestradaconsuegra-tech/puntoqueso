@@ -194,6 +194,11 @@ tr:last-child td{border-bottom:none;}
 .cajero-avatar:hover{border-color:var(--brand);}
 .cajero-avatar .av-circ{width:38px;height:38px;border-radius:50%;background:var(--brand);color:var(--brand-text);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;}
 
+/* ── bulk select action bar ── */
+.bulk-bar{display:none;align-items:center;gap:12px;flex-wrap:wrap;background:var(--mint);border:1px solid var(--border2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;}
+.bulk-bar .bulk-count{font-weight:700;font-size:13px;color:var(--brand-dark);margin-right:auto;}
+.bulk-chk{width:16px;height:16px;cursor:pointer;}
+
 /* ── permisos ── */
 .perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 4px;}
 .perm-grid label{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;margin:0;}
@@ -343,7 +348,12 @@ tr:last-child td{border-bottom:none;}
     <div class="view" id="view-ventas">
       <div class="topbar"><div><h2>Ventas</h2><div class="sub">Historial de ventas del terminal</div></div></div>
       <div class="toolbar"><input type="date" id="filtroFechaVentas" onchange="renderVentas()"></div>
-      <div class="table-scroll"><table><thead><tr><th>Boleta</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Fecha</th><th></th></tr></thead>
+      <div class="bulk-bar" id="bulkBarventas">
+        <span class="bulk-count" id="bulkCountventas">0 seleccionadas</span>
+        <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarVentas()">Eliminar seleccionadas</button>
+        <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('ventas')">Cancelar</button>
+      </div>
+      <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllventas" onchange="bulkToggleAll('ventas',this.checked)"></th><th>Boleta</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Fecha</th><th></th></tr></thead>
       <tbody id="ventasBody"></tbody></table></div>
     </div>
 
@@ -352,7 +362,13 @@ tr:last-child td{border-bottom:none;}
       <div class="topbar"><div><h2>Productos</h2><div class="sub">Catálogo de la tienda</div></div>
         <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button></div>
       <div class="toolbar"><input placeholder="Buscar..." oninput="renderProductos(this.value)"></div>
-      <div class="table-scroll"><table><thead><tr><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead>
+      <div class="bulk-bar" id="bulkBarproductos">
+        <span class="bulk-count" id="bulkCountproductos">0 seleccionados</span>
+        <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkDesactivarProductos()">Desactivar seleccionados</button>
+        <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarProductos()">Eliminar seleccionados</button>
+        <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
+      </div>
+      <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead>
       <tbody id="productosBody"></tbody></table></div>
     </div>
 
@@ -361,7 +377,13 @@ tr:last-child td{border-bottom:none;}
       <div class="topbar"><div><h2>Clientes</h2><div class="sub">Tus clientes frecuentes</div></div>
         <button class="btn" onclick="openClienteModal()">+ Nuevo cliente</button></div>
       <div class="toolbar"><input placeholder="Buscar..." oninput="renderClientes(this.value)"></div>
-      <div class="table-scroll"><table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead>
+      <div class="bulk-bar" id="bulkBarclientes">
+        <span class="bulk-count" id="bulkCountclientes">0 seleccionados</span>
+        <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkDesactivarClientes()">Desactivar seleccionados</button>
+        <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarClientes()">Eliminar seleccionados</button>
+        <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('clientes')">Cancelar</button>
+      </div>
+      <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllclientes" onchange="bulkToggleAll('clientes',this.checked)"></th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead>
       <tbody id="clientesBody"></tbody></table></div>
     </div>
 
@@ -381,6 +403,24 @@ tr:last-child td{border-bottom:none;}
         <input id="cfgNombre" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Teléfono de WhatsApp (catálogo)</label>
         <input id="cfgWhatsapp" placeholder="56912345678" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <button class="btn" onclick="guardarConfig()">Guardar</button>
+      </div>
+      <div class="card" style="padding:20px;max-width:480px;margin-top:18px;">
+        <h3 style="margin-bottom:12px;">WhatsApp (Evolution API)</h3>
+        <div class="sub" style="margin-bottom:12px;">Notificaciones automáticas de pedidos por WhatsApp. Completa esto con los datos de tu instancia de Evolution API.</div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">URL de Evolution API</label>
+        <input id="cfgEvoUrl" placeholder="https://evolution.tudominio.com" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">API Key</label>
+        <input id="cfgEvoKey" type="password" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Instancia (nombre/número WhatsApp)</label>
+        <input id="cfgEvoInstance" placeholder="puntoqueso" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <button class="btn" onclick="guardarConfig()">Guardar</button>
+      </div>
+      <div class="card" style="padding:20px;max-width:480px;margin-top:18px;">
+        <h3 style="margin-bottom:12px;">Mercado Pago</h3>
+        <div class="sub" style="margin-bottom:12px;">Access Token de tu cuenta de Mercado Pago Chile — se usa solo desde esta pestaña admin (con login) para generar links de pago desde Pedidos. Nunca se expone en el catálogo público.</div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Access Token</label>
+        <input id="cfgMpToken" type="password" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
         <button class="btn" onclick="guardarConfig()">Guardar</button>
       </div>
       <div class="card" style="padding:20px;max-width:480px;margin-top:18px;" id="cfgExcelCard">
@@ -524,6 +564,43 @@ let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[]};
 let CARRITO=[];
 let currentPage='dashboard';
 let METODO_PAGO='efectivo';
+let CONFIG_CACHE={};
+
+// ══════════════════════════════════════════════════════════
+//  SELECCIÓN MASIVA (bulk select) — Productos / Ventas / Clientes
+//  mismo patrón visual/UX que Campolac: checkbox por fila +
+//  "seleccionar todo" en el header + barra de acciones al pie
+//  del toolbar que aparece cuando hay ≥1 fila seleccionada.
+// ══════════════════════════════════════════════════════════
+const BULK={productos:new Set(),ventas:new Set(),clientes:new Set()};
+function bulkChecked(scope,id){ return BULK[scope].has(id); }
+function bulkToggle(scope,id,checked){
+  if(checked) BULK[scope].add(id); else BULK[scope].delete(id);
+  bulkSyncBar(scope);
+}
+function bulkToggleAll(scope,checked){
+  document.querySelectorAll(`#${scope}Body input.bulk-chk`).forEach(chk=>{
+    const id=Number(chk.dataset.id);
+    chk.checked=checked;
+    if(checked) BULK[scope].add(id); else BULK[scope].delete(id);
+  });
+  bulkSyncBar(scope);
+}
+function bulkClear(scope){
+  BULK[scope].clear();
+  document.querySelectorAll(`#${scope}Body input.bulk-chk`).forEach(chk=>chk.checked=false);
+  const all=document.getElementById('bulkAll'+scope);
+  if(all) all.checked=false;
+  bulkSyncBar(scope);
+}
+function bulkSyncBar(scope){
+  const bar=document.getElementById('bulkBar'+scope);
+  if(!bar) return;
+  const n=BULK[scope].size;
+  bar.style.display=n>0?'flex':'none';
+  const countEl=document.getElementById('bulkCount'+scope);
+  if(countEl) countEl.textContent=n===1?'1 seleccionado':`${n} seleccionados`;
+}
 
 // alias usado por las funciones portadas (barcode/peso) — mismo arreglo que DB.productos
 Object.defineProperty(window,'PRODUCTOS_CACHE',{get:()=>DB.productos});
@@ -616,6 +693,7 @@ async function iniciarApp(){
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
   await loadAll();
+  await cargarConfigForm();
   document.getElementById('sbCambiarCajero').style.display=DB.usuarios.length>1?'block':'none';
   renderDashboard();
   initBarcodeListener();
@@ -1030,6 +1108,7 @@ function renderPedidos(filter=''){
       ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
       ${p.estado==='entregado'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
       ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="anularPedido(${p.id})">Anular</button>`:''}
+      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="generarLinkPago(${p.id})">${p.mp_link?'Ver link de pago':'Generar link de pago'}</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarPedido(${p.id})">Eliminar</button>
     </td></tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
@@ -1039,12 +1118,17 @@ async function avanzarEstadoPedido(id,nuevoEstado){
   if(!p) return;
   await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',id);
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → ${nuevoEstado}`);
+  const msg=mensajePedidoEstado(p,nuevoEstado);
+  if(msg&&p.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
   toast('Estado actualizado'); await loadAll(); renderPedidos();
 }
 async function anularPedido(id){
   if(!confirm('¿Anular este pedido?')) return;
+  const p=DB.pedidos.find(x=>x.id===id);
   await supa.from('pedidos').update({estado:'anulado'}).eq('id',id);
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → anulado`);
+  const msg=mensajePedidoEstado(p||{id},'anulado');
+  if(msg&&p?.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
   toast('Pedido anulado'); await loadAll(); renderPedidos();
 }
 async function marcarPagoPedido(id,nuevoEstadoPago){
@@ -1141,10 +1225,12 @@ function renderVentas(){
   const fecha=document.getElementById('filtroFechaVentas').value;
   const rows=fecha?DB.ventas.filter(v=>(v.created_at||'').slice(0,10)===fecha):DB.ventas;
   document.getElementById('ventasBody').innerHTML=rows.map(v=>`
-    <tr><td>${v.boleta_numero||v.id}</td><td>${v.cliente_nombre||'-'}</td><td class="num">${money(v.total)}</td>
+    <tr><td><input type="checkbox" class="bulk-chk" data-id="${v.id}" ${bulkChecked('ventas',v.id)?'checked':''} onchange="bulkToggle('ventas',${v.id},this.checked)"></td>
+    <td>${v.boleta_numero||v.id}</td><td>${v.cliente_nombre||'-'}</td><td class="num">${money(v.total)}</td>
     <td style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` <span style="color:var(--muted);font-size:11px;">(${v.metodo_pago_detalle})</span>`:''}</td>
     <td>${new Date(v.created_at).toLocaleString('es-CL')}</td>
-    <td>${canDo('eliminarVentas')?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarVenta(${v.id})">Eliminar</button>`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin ventas</td></tr>';
+    <td>${canDo('eliminarVentas')?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarVenta(${v.id})">Eliminar</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin ventas</td></tr>';
+  bulkSyncBar('ventas');
 }
 async function eliminarVenta(id){
   if(!canDo('eliminarVentas')){ toast('No tienes permiso para eliminar ventas',true); return; }
@@ -1153,6 +1239,19 @@ async function eliminarVenta(id){
   await supa.from('ventas').delete().eq('id',id);
   logAudit('Venta eliminada','ventas',`Venta #${id}`);
   toast('Venta eliminada'); await loadAll(); renderVentas();
+}
+async function bulkEliminarVentas(){
+  if(!canDo('eliminarVentas')){ toast('No tienes permiso para eliminar ventas',true); return; }
+  const ids=[...BULK.ventas];
+  if(!ids.length) return;
+  if(!confirm(`¿Eliminar ${ids.length} venta${ids.length===1?'':'s'} seleccionada${ids.length===1?'':'s'}? No se puede deshacer.`)) return;
+  for(const id of ids){
+    await supa.from('venta_items').delete().eq('venta_id',id);
+    await supa.from('ventas').delete().eq('id',id);
+  }
+  logAudit('Eliminación masiva','ventas',`${ids.length} venta(s): ${ids.join(', ')}`);
+  toast(`${ids.length} venta(s) eliminada(s)`);
+  bulkClear('ventas'); await loadAll(); renderVentas();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1163,14 +1262,16 @@ function renderProductos(filter=''){
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
   const rows=DB.productos.filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
   document.getElementById('productosBody').innerHTML=rows.map(p=>`
-    <tr><td>${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
+    <tr><td><input type="checkbox" class="bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)"></td>
+    <td>${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
     <td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
     <td class="num">${money(p.precio)}/${p.unidad}</td>
     <td class="num" style="color:${Number(p.stock)<=Number(p.stock_minimo||0)?'var(--danger)':'inherit'};font-weight:600;">${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
     <td style="display:flex;gap:6px;">
       ${canDo('editarInventario')?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
-    </td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin productos</td></tr>';
+    </td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin productos</td></tr>';
+  bulkSyncBar('productos');
 }
 // ── foto de producto: compresión client-side (canvas → JPEG base64) ──
 function comprimirImagen(file){
@@ -1284,6 +1385,26 @@ async function eliminarProducto(id){
   logAudit('Producto eliminado','productos',p?.nombre||('#'+id));
   toast('Producto eliminado'); await loadAll(); renderProductos();
 }
+async function bulkDesactivarProductos(){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  const ids=[...BULK.productos];
+  if(!ids.length) return;
+  if(!confirm(`¿Desactivar ${ids.length} producto(s) seleccionado(s)?`)) return;
+  for(const id of ids) await supa.from('productos').update({activo:false}).eq('id',id);
+  logAudit('Eliminación masiva','productos',`${ids.length} producto(s) desactivado(s): ${ids.join(', ')}`);
+  toast(`${ids.length} producto(s) desactivado(s)`);
+  bulkClear('productos'); await loadAll(); renderProductos();
+}
+async function bulkEliminarProductos(){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para eliminar productos',true); return; }
+  const ids=[...BULK.productos];
+  if(!ids.length) return;
+  if(!confirm(`¿Eliminar ${ids.length} producto(s) seleccionado(s)?`)) return;
+  for(const id of ids) await supa.from('productos').update({activo:false}).eq('id',id);
+  logAudit('Eliminación masiva','productos',`${ids.length} producto(s): ${ids.join(', ')}`);
+  toast(`${ids.length} producto(s) eliminado(s)`);
+  bulkClear('productos'); await loadAll(); renderProductos();
+}
 
 // ══════════════════════════════════════════════════════════
 //  CLIENTES
@@ -1291,11 +1412,13 @@ async function eliminarProducto(id){
 function renderClientes(filter=''){
   const rows=DB.clientes.filter(c=>(c.nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
   document.getElementById('clientesBody').innerHTML=rows.map(c=>`
-    <tr><td>${c.nombre}</td><td>${c.telefono||'-'}</td><td>${c.direccion||'-'}</td>
+    <tr><td><input type="checkbox" class="bulk-chk" data-id="${c.id}" ${bulkChecked('clientes',c.id)?'checked':''} onchange="bulkToggle('clientes',${c.id},this.checked)"></td>
+    <td>${c.nombre}</td><td>${c.telefono||'-'}</td><td>${c.direccion||'-'}</td>
     <td style="display:flex;gap:6px;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openClienteModal(${c.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarCliente(${c.id})">Eliminar</button>
-    </td></tr>`).join('')||'<tr><td colspan="4" class="empty">Sin clientes</td></tr>';
+    </td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin clientes</td></tr>';
+  bulkSyncBar('clientes');
 }
 function openClienteModal(id){
   const c=id?DB.clientes.find(x=>x.id===id):{};
@@ -1322,6 +1445,24 @@ async function eliminarCliente(id){
   if(!confirm('¿Eliminar este cliente?')) return;
   await supa.from('clientes').update({activo:false}).eq('id',id);
   toast('Cliente eliminado'); await loadAll(); renderClientes();
+}
+async function bulkDesactivarClientes(){
+  const ids=[...BULK.clientes];
+  if(!ids.length) return;
+  if(!confirm(`¿Desactivar ${ids.length} cliente(s) seleccionado(s)?`)) return;
+  for(const id of ids) await supa.from('clientes').update({activo:false}).eq('id',id);
+  logAudit('Eliminación masiva','clientes',`${ids.length} cliente(s) desactivado(s): ${ids.join(', ')}`);
+  toast(`${ids.length} cliente(s) desactivado(s)`);
+  bulkClear('clientes'); await loadAll(); renderClientes();
+}
+async function bulkEliminarClientes(){
+  const ids=[...BULK.clientes];
+  if(!ids.length) return;
+  if(!confirm(`¿Eliminar ${ids.length} cliente(s) seleccionado(s)?`)) return;
+  for(const id of ids) await supa.from('clientes').update({activo:false}).eq('id',id);
+  logAudit('Eliminación masiva','clientes',`${ids.length} cliente(s): ${ids.join(', ')}`);
+  toast(`${ids.length} cliente(s) eliminado(s)`);
+  bulkClear('clientes'); await loadAll(); renderClientes();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1368,15 +1509,134 @@ async function eliminarGasto(id){
 async function cargarConfigForm(){
   const {data}=await supa.from('config').select('*');
   const cfg={}; (data||[]).forEach(r=>cfg[r.clave]=r.valor);
+  CONFIG_CACHE=cfg;
   document.getElementById('cfgNombre').value=cfg.nombre_negocio||'Punto Queso';
   document.getElementById('cfgWhatsapp').value=cfg.whatsapp||'';
+  document.getElementById('cfgEvoUrl').value=cfg.evolution_api_url||'';
+  document.getElementById('cfgEvoKey').value=cfg.evolution_api_key||'';
+  document.getElementById('cfgEvoInstance').value=cfg.evolution_instance||'';
+  document.getElementById('cfgMpToken').value=cfg.mercadopago_access_token||'';
   document.getElementById('importProductosFile').style.display=canDo('editarInventario')?'block':'none';
 }
 async function guardarConfig(){
-  await supa.from('config').upsert({clave:'nombre_negocio',valor:JSON.stringify(document.getElementById('cfgNombre').value)});
-  await supa.from('config').upsert({clave:'whatsapp',valor:JSON.stringify(document.getElementById('cfgWhatsapp').value)});
+  const claves={
+    nombre_negocio:document.getElementById('cfgNombre').value,
+    whatsapp:document.getElementById('cfgWhatsapp').value,
+    evolution_api_url:document.getElementById('cfgEvoUrl').value,
+    evolution_api_key:document.getElementById('cfgEvoKey').value,
+    evolution_instance:document.getElementById('cfgEvoInstance').value,
+    mercadopago_access_token:document.getElementById('cfgMpToken').value,
+  };
+  for(const [clave,valor] of Object.entries(claves)){
+    await supa.from('config').upsert({clave,valor:JSON.stringify(valor)});
+    CONFIG_CACHE[clave]=valor;
+  }
   logAudit('Configuración actualizada','config','');
   toast('Configuración guardada');
+}
+
+// ══════════════════════════════════════════════════════════
+//  WHATSAPP — Evolution API
+//  Envía un mensaje de texto simple. Nunca rompe el flujo que
+//  la llama: si no está configurado, no-op silencioso (con
+//  console.warn); si falla la red/API, console.error y sigue.
+// ══════════════════════════════════════════════════════════
+function normalizarTelefono(tel){
+  let t=(tel||'').toString().replace(/[\s-]/g,'');
+  if(!t) return '';
+  if(!t.startsWith('+')) t='+56'+t.replace(/^56/,'');
+  return t;
+}
+async function enviarWhatsApp(telefono,mensaje){
+  const url=CONFIG_CACHE.evolution_api_url,key=CONFIG_CACHE.evolution_api_key,instance=CONFIG_CACHE.evolution_instance;
+  if(!url||!key||!instance){ console.warn('Evolution API no configurada — se omite el envío de WhatsApp'); return; }
+  const numero=normalizarTelefono(telefono);
+  if(!numero){ console.warn('Sin teléfono válido — se omite el envío de WhatsApp'); return; }
+  try{
+    await fetch(`${url.replace(/\/$/,'')}/message/sendText/${instance}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':key},
+      body:JSON.stringify({number:numero,text:mensaje})
+    });
+  }catch(e){ console.error('Error enviando WhatsApp:',e); }
+}
+function mensajePedidoEstado(p,estado){
+  const nombre=p.cliente_nombre||'';
+  switch(estado){
+    case 'preparando': return `Hola ${nombre}! Tu pedido #${p.id} en Punto Queso está siendo preparado 🧀`;
+    case 'en_camino': return `Tu pedido #${p.id} va en camino 🚚`;
+    case 'entregado': return `Tu pedido #${p.id} fue entregado. ¡Gracias por tu compra!`;
+    case 'anulado': return `Tu pedido #${p.id} fue anulado. Cualquier duda contáctanos.`;
+    default: return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  MERCADO PAGO — link de pago (Checkout Pro), admin-only.
+//  El Access Token nunca se usa desde catalogo.html (pública,
+//  sin login): esta llamada corre solo aquí, en el navegador
+//  autenticado del admin, para no exponer el token a visitantes.
+// ══════════════════════════════════════════════════════════
+async function generarLinkPago(id){
+  const token=CONFIG_CACHE.mercadopago_access_token;
+  if(!token){ toast('Configura tu Access Token de Mercado Pago en Configuración primero',true); return; }
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  if(p.mp_link){ mostrarLinkPago(p); return; }
+  await regenerarLinkPago(id,token,p);
+}
+async function regenerarLinkPago(id,token,p){
+  try{
+    const res=await fetch('https://api.mercadopago.com/checkout/preferences',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body:JSON.stringify({
+        items:[{title:`Pedido #${p.id} - Punto Queso`,quantity:1,unit_price:Number(p.total)||0,currency_id:'CLP'}],
+        external_reference:String(p.id)
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.init_point){ toast('Error de Mercado Pago: '+(data.message||res.statusText),true); return; }
+    await supa.from('pedidos').update({mp_preference_id:data.id,mp_link:data.init_point}).eq('id',id);
+    logAudit('Link de pago generado','pedidos',`Pedido #${id}`);
+    await loadAll();
+    const pedidoActualizado=DB.pedidos.find(x=>x.id===id)||{...p,mp_link:data.init_point};
+    mostrarLinkPago(pedidoActualizado);
+    renderPedidos();
+  }catch(e){ toast('Error al generar el link de pago: '+e.message,true); }
+}
+function mostrarLinkPago(p){
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Link de pago — Pedido #${p.id}</h3>
+    <label>Link de Mercado Pago</label>
+    <input id="mpLinkInput" readonly value="${p.mp_link}">
+    <div class="actions">
+      <button class="btn secondary" onclick="copiarLinkPago()">Copiar link</button>
+      <button class="btn secondary" onclick="enviarLinkPagoWhatsApp(${p.id})">Enviar por WhatsApp</button>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" style="width:100%;" onclick="regenerarLinkPagoDesdeModal(${p.id})">Regenerar link</button>
+    </div>
+    <div class="actions"><button class="btn" style="width:100%;" onclick="closeModal()">Cerrar</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function copiarLinkPago(){
+  const val=document.getElementById('mpLinkInput').value;
+  try{ await navigator.clipboard.writeText(val); toast('Link copiado'); }
+  catch(e){ toast('No se pudo copiar automáticamente — selecciona y copia manualmente',true); }
+}
+async function enviarLinkPagoWhatsApp(id){
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  if(!p.cliente_tel){ toast('Este pedido no tiene teléfono registrado',true); return; }
+  await enviarWhatsApp(p.cliente_tel,`Hola ${p.cliente_nombre||''}! Aquí tienes el link de pago de tu pedido #${p.id} en Punto Queso: ${p.mp_link}`);
+  toast('Mensaje de WhatsApp enviado (si Evolution API está configurada)');
+}
+async function regenerarLinkPagoDesdeModal(id){
+  const token=CONFIG_CACHE.mercadopago_access_token;
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!token||!p) return;
+  await regenerarLinkPago(id,token,p);
 }
 
 // ══════════════════════════════════════════════════════════
