@@ -444,7 +444,7 @@ const PG_URL = 'https://api-puntoqueso.autix.pro';
 
 class PGQuery{
   constructor(url,table){ this.url=url; this.table=table; this.params=[]; this.headers={'Content-Type':'application/json'}; this._single=false; this._method='GET'; this._body=null; }
-  select(cols='*'){ this.params.push('select='+cols); this._method='GET'; return this; }
+  select(cols='*'){ this.params.push('select='+cols); return this; }
   eq(col,val){ this.params.push(`${encodeURIComponent(col)}=eq.${encodeURIComponent(val)}`); return this; }
   neq(col,val){ this.params.push(`${encodeURIComponent(col)}=neq.${encodeURIComponent(val)}`); return this; }
   gt(col,val){ this.params.push(`${encodeURIComponent(col)}=gt.${encodeURIComponent(val)}`); return this; }
