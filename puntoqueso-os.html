@@ -199,6 +199,13 @@ tr:last-child td{border-bottom:none;}
 .bulk-bar .bulk-count{font-weight:700;font-size:13px;color:var(--brand-dark);margin-right:auto;}
 .bulk-chk{width:16px;height:16px;cursor:pointer;}
 
+/* ── categoría chips (Productos) ── */
+.cat-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.cat-chip{padding:9px 14px;border:1.5px solid var(--border);background:#fff;border-radius:99px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--text2);}
+.cat-chip:hover{border-color:var(--brand);}
+.cat-chip.active{background:var(--brand);border-color:var(--brand);color:var(--brand-text);}
+.stock-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;flex-shrink:0;}
+
 /* ── permisos ── */
 .perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 4px;}
 .perm-grid label{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;margin:0;}
@@ -258,6 +265,18 @@ tr:last-child td{border-bottom:none;}
     <div class="nav-item" data-view="gastos" onclick="nav('gastos')">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M15 9.5c0-1.4-1.3-2.5-3-2.5s-3 1.1-3 2.5 1.3 2.5 3 2.5 3 1.1 3 2.5-1.3 2.5-3 2.5-3-1.1-3-2.5"/></svg>
       Gastos
+    </div>
+    <div class="nav-item" data-view="proveedores" id="navProveedores" style="display:none;" onclick="nav('proveedores')">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      Proveedores
+    </div>
+    <div class="nav-item" data-view="contabilidad" id="navContabilidad" style="display:none;" onclick="nav('contabilidad')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></svg>
+      Contabilidad
+    </div>
+    <div class="nav-item" data-view="usuarios" id="navUsuarios" style="display:none;" onclick="nav('usuarios')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Usuarios
     </div>
     <div class="nav-item" data-view="config" onclick="nav('config')">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -361,7 +380,15 @@ tr:last-child td{border-bottom:none;}
     <div class="view" id="view-productos">
       <div class="topbar"><div><h2>Productos</h2><div class="sub">Catálogo de la tienda</div></div>
         <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button></div>
-      <div class="toolbar"><input placeholder="Buscar..." oninput="renderProductos(this.value)"></div>
+      <div class="toolbar">
+        <input id="prodBuscar" placeholder="Buscar..." oninput="renderProductos(this.value)">
+        <div class="cat-chips" id="prodCatChips">
+          <button type="button" class="cat-chip active" data-cat="todos" onclick="filtrarCategoriaProductos('todos')">Todos</button>
+          <button type="button" class="cat-chip" data-cat="queso" onclick="filtrarCategoriaProductos('queso')">Queso</button>
+          <button type="button" class="cat-chip" data-cat="fiambre" onclick="filtrarCategoriaProductos('fiambre')">Fiambre</button>
+          <button type="button" class="cat-chip" data-cat="otros" onclick="filtrarCategoriaProductos('otros')">Otros</button>
+        </div>
+      </div>
       <div class="bulk-bar" id="bulkBarproductos">
         <span class="bulk-count" id="bulkCountproductos">0 seleccionados</span>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkDesactivarProductos()">Desactivar seleccionados</button>
@@ -393,6 +420,52 @@ tr:last-child td{border-bottom:none;}
         <button class="btn" onclick="openGastoModal()">+ Nuevo gasto</button></div>
       <div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th></th></tr></thead>
       <tbody id="gastosBody"></tbody></table></div>
+    </div>
+
+    <!-- PROVEEDORES -->
+    <div class="view" id="view-proveedores">
+      <div class="topbar"><div><h2>Proveedores</h2><div class="sub">Facturas de compra e ingreso de stock</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="openProveedorModal()">+ Nuevo proveedor</button>
+          <button class="btn" onclick="openFacturaCompraModal()">+ Nueva factura de compra</button>
+        </div>
+      </div>
+      <h3 style="margin:6px 0 10px;font-size:14px;">Proveedores</h3>
+      <div class="table-scroll"><table><thead><tr><th>Nombre</th><th>Contacto</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="proveedoresBody"></tbody></table></div>
+      <h3 style="margin:22px 0 10px;font-size:14px;">Facturas de compra</h3>
+      <div class="table-scroll"><table><thead><tr><th>Proveedor</th><th>N° Factura</th><th>Fecha</th><th>Total</th><th>Pago</th><th></th></tr></thead>
+      <tbody id="facturasCompraBody"></tbody></table></div>
+    </div>
+
+    <!-- CONTABILIDAD -->
+    <div class="view" id="view-contabilidad">
+      <div class="topbar"><div><h2>Contabilidad</h2><div class="sub">Reportes por rango de fechas y cierre de caja</div></div></div>
+      <div class="card" style="padding:18px;margin-bottom:18px;">
+        <h3 style="margin-bottom:12px;">Reporte por rango de fechas</h3>
+        <div class="toolbar">
+          <label style="margin:0;font-size:12.5px;font-weight:600;">Desde <input type="date" id="repDesde"></label>
+          <label style="margin:0;font-size:12.5px;font-weight:600;">Hasta <input type="date" id="repHasta"></label>
+          <button class="btn" onclick="generarReporteRango()">Generar</button>
+          <button class="btn secondary" onclick="exportarReporteExcel()">Exportar a Excel</button>
+        </div>
+        <div id="repResultado"></div>
+      </div>
+      <div class="card" style="padding:18px;">
+        <h3 style="margin-bottom:12px;">Cierre de caja diario</h3>
+        <div class="toolbar">
+          <label style="margin:0;font-size:12.5px;font-weight:600;">Día <input type="date" id="cierreFecha" onchange="calcularCierreCaja()"></label>
+        </div>
+        <div id="cierreResultado"></div>
+      </div>
+    </div>
+
+    <!-- USUARIOS -->
+    <div class="view" id="view-usuarios">
+      <div class="topbar"><div><h2>Usuarios</h2><div class="sub">Usuarios, roles y permisos</div></div>
+        <button class="btn" onclick="openUsuarioModal()">+ Nuevo usuario</button></div>
+      <div class="table-scroll"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Permisos</th><th></th></tr></thead>
+      <tbody id="usuariosPageBody"></tbody></table></div>
     </div>
 
     <!-- CONFIG -->
@@ -428,10 +501,6 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="width:100%;justify-content:center;" onclick="exportarExcel()">Exportar Excel (ventas, productos, clientes, gastos)</button>
         <label style="display:block;font-size:12.5px;font-weight:600;margin:16px 0 6px;">Importar productos desde Excel</label>
         <input type="file" id="importProductosFile" accept=".xlsx,.xls" onchange="importarProductosExcel(this.files[0])">
-      </div>
-      <div class="card" style="padding:20px;max-width:480px;margin-top:18px;display:none;" id="cfgUsuariosCard">
-        <h3 style="margin-bottom:12px;">Usuarios y permisos</h3>
-        <div id="usuariosList"></div>
       </div>
     </div>
 
@@ -560,7 +629,8 @@ const supa = new PG(PG_URL);
 //  ESTADO GLOBAL
 // ══════════════════════════════════════════════════════════
 let SESSION=null;
-let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[]};
+let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[]};
+let PROD_CAT_FILTER='todos';
 let CARRITO=[];
 let currentPage='dashboard';
 let METODO_PAGO='efectivo';
@@ -665,23 +735,29 @@ function nav(view){
   if(view==='productos') renderProductos();
   if(view==='clientes') renderClientes();
   if(view==='gastos') renderGastos();
-  if(view==='config'){ cargarConfigForm(); renderUsuarios(); }
+  if(view==='config'){ cargarConfigForm(); }
   if(view==='auditoria') renderAuditoria();
+  if(view==='proveedores') renderProveedores();
+  if(view==='contabilidad'){ /* se genera bajo demanda al elegir fechas */ }
+  if(view==='usuarios') renderUsuariosPage();
 }
 
 // ══════════════════════════════════════════════════════════
 //  CARGA DE DATOS
 // ══════════════════════════════════════════════════════════
 async function loadAll(){
-  const [prod,cli,ped,vent,gas,usr]=await Promise.all([
+  const [prod,cli,ped,vent,gas,usr,prov,facCompra]=await Promise.all([
     supa.from('productos').select('*').eq('activo',true).order('nombre'),
     supa.from('clientes').select('*').eq('activo',true).order('nombre'),
     supa.from('pedidos').select('*').order('created_at',{ascending:false}).limit(200),
     supa.from('ventas').select('*').order('created_at',{ascending:false}).limit(200),
     supa.from('gastos').select('*').order('fecha',{ascending:false}).limit(200),
-    supa.from('usuarios').select('id,usuario,nombre,rol,activo,permisos').eq('activo',true).order('nombre'),
+    supa.from('usuarios').select('id,usuario,nombre,rol,activo,permisos').order('nombre'),
+    supa.from('proveedores').select('*').order('nombre'),
+    supa.from('facturas_compra').select('*').order('fecha',{ascending:false}).limit(200),
   ]);
   DB.productos=prod.data||[]; DB.clientes=cli.data||[]; DB.pedidos=ped.data||[]; DB.ventas=vent.data||[]; DB.gastos=gas.data||[]; DB.usuarios=usr.data||[];
+  DB.proveedores=prov.data||[]; DB.facturasCompra=facCompra.data||[];
   if(prod.error) toast('Error cargando productos: '+prod.error.message,true);
 }
 async function iniciarApp(){
@@ -690,11 +766,14 @@ async function iniciarApp(){
   document.getElementById('sbUserName').textContent=SESSION.nombre;
   document.getElementById('sbUserRol').textContent=SESSION.rol;
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
+  document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
+  document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
+  document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
   await loadAll();
   await cargarConfigForm();
-  document.getElementById('sbCambiarCajero').style.display=DB.usuarios.length>1?'block':'none';
+  document.getElementById('sbCambiarCajero').style.display=DB.usuarios.filter(u=>u.activo).length>1?'block':'none';
   renderDashboard();
   initBarcodeListener();
   initWeightKeyboard();
@@ -1257,16 +1336,29 @@ async function bulkEliminarVentas(){
 // ══════════════════════════════════════════════════════════
 //  PRODUCTOS
 // ══════════════════════════════════════════════════════════
+function filtrarCategoriaProductos(cat){
+  PROD_CAT_FILTER=cat;
+  document.querySelectorAll('#prodCatChips .cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
+  renderProductos(document.getElementById('prodBuscar')?.value||'');
+}
+function stockDotColor(p){
+  const stock=Number(p.stock),min=Number(p.stock_minimo||0);
+  if(stock<=0) return 'var(--danger)';
+  if(stock<=min) return 'var(--warn)';
+  return 'var(--ok)';
+}
 function renderProductos(filter=''){
   const btnNuevo=document.getElementById('btnNuevoProducto');
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
-  const rows=DB.productos.filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
+  const rows=DB.productos
+    .filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()))
+    .filter(p=>PROD_CAT_FILTER==='todos'||p.categoria===PROD_CAT_FILTER);
   document.getElementById('productosBody').innerHTML=rows.map(p=>`
     <tr><td><input type="checkbox" class="bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)"></td>
     <td>${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
     <td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
     <td class="num">${money(p.precio)}/${p.unidad}</td>
-    <td class="num" style="color:${Number(p.stock)<=Number(p.stock_minimo||0)?'var(--danger)':'inherit'};font-weight:600;">${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
+    <td class="num" style="font-weight:600;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
     <td style="display:flex;gap:6px;">
       ${canDo('editarInventario')?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
@@ -1336,6 +1428,7 @@ function openProductoModal(id){
       <option value="unid" ${p.unidad==='unid'?'selected':''}>Unidad</option>
     </select>
     <label>Precio</label><input id="prPrecio" type="number" step="1" value="${p.precio||0}">
+    ${canDo('verCostos')?`<label>Costo unitario</label><input id="prCosto" type="number" step="1" value="${p.costo||0}">`:''}
     <label>Stock actual</label><input id="prStock" type="number" step="0.1" value="${p.stock||0}">
     <label>Stock mínimo (alerta)</label><input id="prStockMin" type="number" step="0.1" value="${p.stock_minimo||0}">
     <label>SKU / código de barras</label><input id="prSku" value="${p.sku||''}">
@@ -1365,6 +1458,7 @@ async function guardarProducto(id){
   const row={
     nombre,categoria:document.getElementById('prCategoria').value,unidad:document.getElementById('prUnidad').value,
     precio:Number(document.getElementById('prPrecio').value)||0,
+    ...(document.getElementById('prCosto')?{costo:Number(document.getElementById('prCosto').value)||0}:{}),
     stock:Number(document.getElementById('prStock').value)||0,
     stock_minimo:Number(document.getElementById('prStockMin').value)||0,
     sku:sanitize(document.getElementById('prSku').value)||null,
@@ -1658,23 +1752,87 @@ const PERM_KEYS=[
   ['verCostos','Ver costos'],['editarInventario','Editar inventario'],['eliminarVentas','Eliminar ventas'],
   ['verReportes','Ver reportes'],['verGastos','Ver gastos'],['gestionarUsuarios','Gestionar usuarios']
 ];
-function renderUsuarios(){
-  const card=document.getElementById('cfgUsuariosCard');
-  if(SESSION.rol!=='admin'){ card.style.display='none'; return; }
-  card.style.display='block';
-  document.getElementById('usuariosList').innerHTML=DB.usuarios.map(u=>`
-    <div class="card" style="padding:12px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <b>${u.nombre}</b> <span style="color:var(--muted);font-size:12px;text-transform:capitalize;">${u.rol}</span>
-      </div>
-      <div class="perm-grid">
-        ${PERM_KEYS.map(([k,label])=>`<label><input type="checkbox" data-uid="${u.id}" data-perm="${k}" ${u.permisos&&u.permisos[k]?'checked':''} onchange="guardarPermiso(${u.id},'${k}',this.checked)">${label}</label>`).join('')}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <input type="password" maxlength="4" placeholder="Nuevo PIN (4 dígitos)" id="pinNuevo${u.id}" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;">
-        <button class="btn secondary" style="padding:8px 12px;font-size:12px;" onclick="setPinUsuario(${u.id})">Fijar PIN</button>
-      </div>
-    </div>`).join('')||'<p class="empty">Sin usuarios</p>';
+// ══════════════════════════════════════════════════════════
+//  USUARIOS — página completa (admin-only, gestionarUsuarios)
+// ══════════════════════════════════════════════════════════
+function renderUsuariosPage(){
+  if(!canDo('gestionarUsuarios')){ document.getElementById('usuariosPageBody').innerHTML='<tr><td colspan="6" class="empty">Sin permiso</td></tr>'; return; }
+  document.getElementById('usuariosPageBody').innerHTML=DB.usuarios.map(u=>{
+    const permsOn=PERM_KEYS.filter(([k])=>u.permisos&&u.permisos[k]).map(([,l])=>l);
+    return `<tr>
+      <td>${u.nombre}</td><td>${u.usuario}</td><td style="text-transform:capitalize;">${u.rol}</td>
+      <td><span class="badge ${u.activo?'pagado':'anulado'}">${u.activo?'Activo':'Inactivo'}</span></td>
+      <td style="font-size:12px;color:var(--muted);max-width:220px;">${permsOn.length?permsOn.join(', '):'—'}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openUsuarioModal(${u.id})">Editar</button>
+        ${u.id!==SESSION.id?`<button class="btn ${u.activo?'danger':'secondary'}" style="padding:6px 10px;font-size:12px;" onclick="toggleActivoUsuario(${u.id},${!u.activo})">${u.activo?'Desactivar':'Activar'}</button>`:''}
+      </td></tr>`;
+  }).join('')||'<tr><td colspan="6" class="empty">Sin usuarios</td></tr>';
+}
+function openUsuarioModal(id){
+  const u=id?DB.usuarios.find(x=>x.id===id):null;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${id?'Editar':'Nuevo'} usuario</h3>
+    <label>Nombre</label><input id="usNombre" value="${u?.nombre||''}">
+    <label>Usuario (login)</label><input id="usUsuario" value="${u?.usuario||''}" ${id?'disabled':''}>
+    ${id?'':'<label>Contraseña</label><input id="usPassword" type="password" placeholder="Contraseña inicial">'}
+    <label>Rol</label>
+    <select id="usRol">
+      <option value="vendedor" ${u&&u.rol==='vendedor'?'selected':''}>Vendedor</option>
+      <option value="admin" ${u&&u.rol==='admin'?'selected':''}>Admin</option>
+    </select>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+      <input type="checkbox" id="usActivo" style="width:16px;height:16px;" ${!u||u.activo?'checked':''}> Activo
+    </label>
+    <label style="margin-top:14px;">Permisos</label>
+    <div class="perm-grid">
+      ${PERM_KEYS.map(([k,label])=>`<label><input type="checkbox" id="usPerm_${k}" ${u&&u.permisos&&u.permisos[k]?'checked':''}>${label}</label>`).join('')}
+    </div>
+    ${id?`<div style="display:flex;gap:8px;margin-top:16px;">
+      <input type="password" maxlength="4" placeholder="Nuevo PIN (4 dígitos)" id="usPinNuevo">
+      <button type="button" class="btn secondary" style="padding:8px 12px;font-size:12px;white-space:nowrap;" onclick="setPinUsuario(${id})">Cambiar PIN</button>
+    </div>`:''}
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="guardarUsuario(${id||'null'})">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarUsuario(id){
+  const nombre=sanitize(document.getElementById('usNombre').value);
+  const rol=document.getElementById('usRol').value;
+  const activo=document.getElementById('usActivo').checked;
+  if(!nombre){ toast('El nombre es obligatorio',true); return; }
+  const permisos={};
+  PERM_KEYS.forEach(([k])=>{ permisos[k]=document.getElementById('usPerm_'+k).checked; });
+  if(id){
+    const {error}=await supa.from('usuarios').update({nombre,rol,activo,permisos}).eq('id',id);
+    if(error){ toast('Error: '+error.message,true); return; }
+    logAudit('Usuario editado','usuarios',nombre);
+    toast('Usuario actualizado');
+  }else{
+    const usuario=sanitize(document.getElementById('usUsuario').value);
+    const password=document.getElementById('usPassword').value;
+    if(!usuario||!password){ toast('Usuario y contraseña son obligatorios',true); return; }
+    // password_hash es not null en el esquema: se inserta con un placeholder y de
+    // inmediato se fija la contraseña real vía RPC (crypt), igual patrón que el PIN.
+    const {data:ins,error}=await supa.from('usuarios').insert({usuario,nombre,rol,activo,permisos,password_hash:'x'}).select();
+    if(error){ toast('Error: '+error.message,true); return; }
+    const nuevo=ins[0];
+    const {error:errPass}=await supa.rpc('set_password_hash',{p_usuario_id:nuevo.id,p_password:password});
+    if(errPass){ toast('Usuario creado pero falló fijar la contraseña: '+errPass.message,true); }
+    logAudit('Usuario creado','usuarios',nombre);
+    toast('Usuario creado');
+  }
+  closeModal(); await loadAll(); renderUsuariosPage();
+}
+async function toggleActivoUsuario(id,nuevoActivo){
+  const u=DB.usuarios.find(x=>x.id===id);
+  if(!confirm(`¿${nuevoActivo?'Activar':'Desactivar'} a ${u?.nombre}?`)) return;
+  const {error}=await supa.from('usuarios').update({activo:nuevoActivo}).eq('id',id);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit(nuevoActivo?'Usuario activado':'Usuario desactivado','usuarios',u?.nombre||('#'+id));
+  toast('Usuario actualizado'); await loadAll(); renderUsuariosPage();
 }
 async function guardarPermiso(uid,key,val){
   const u=DB.usuarios.find(x=>x.id===uid);
@@ -1687,13 +1845,278 @@ async function guardarPermiso(uid,key,val){
   toast('Permiso actualizado');
 }
 async function setPinUsuario(uid){
-  const val=document.getElementById('pinNuevo'+uid).value;
+  const input=document.getElementById('usPinNuevo');
+  const val=input?input.value:'';
   if(!/^\d{4}$/.test(val)){ toast('El PIN debe ser de 4 dígitos',true); return; }
   const {error}=await supa.rpc('set_pin_hash',{p_usuario_id:uid,p_pin:val});
   if(error){ toast('Error: '+error.message,true); return; }
-  document.getElementById('pinNuevo'+uid).value='';
+  if(input) input.value='';
   logAudit('PIN actualizado','usuarios',`Usuario #${uid}`);
   toast('PIN actualizado');
+}
+
+// ══════════════════════════════════════════════════════════
+//  PROVEEDORES + FACTURAS DE COMPRA
+//  (ingreso de stock por factura, con estado de pago)
+// ══════════════════════════════════════════════════════════
+function renderProveedores(){
+  document.getElementById('proveedoresBody').innerHTML=DB.proveedores.map(p=>`
+    <tr><td>${p.nombre}</td><td>${p.contacto||'-'}</td><td>${p.telefono||'-'}</td>
+    <td><span class="badge ${p.activo?'pagado':'anulado'}">${p.activo?'Activo':'Inactivo'}</span></td>
+    <td style="display:flex;gap:6px;">
+      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProveedorModal(${p.id})">Editar</button>
+      <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProveedor(${p.id})">Eliminar</button>
+    </td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin proveedores</td></tr>';
+  document.getElementById('facturasCompraBody').innerHTML=DB.facturasCompra.map(f=>`
+    <tr><td>${f.proveedor_nombre||'-'}</td><td>${f.numero_factura||'-'}</td>
+    <td>${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td class="num">${money(f.total)}</td>
+    <td><span class="badge ${f.estado_pago==='pagada'?'pagado':'pendiente'}">${f.estado_pago==='pagada'?'Pagada':'Pendiente'}</span></td>
+    <td style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${f.estado_pago!=='pagada'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="marcarFacturaPagada(${f.id})">Marcar pagada</button>`:''}
+      <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarFacturaCompra(${f.id})">Eliminar</button>
+    </td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin facturas de compra</td></tr>';
+}
+function openProveedorModal(id){
+  const p=id?DB.proveedores.find(x=>x.id===id):{};
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${id?'Editar':'Nuevo'} proveedor</h3>
+    <label>Nombre</label><input id="pvNombre" value="${p.nombre||''}">
+    <label>Contacto</label><input id="pvContacto" value="${p.contacto||''}">
+    <label>Teléfono</label><input id="pvTelefono" value="${p.telefono||''}">
+    <label>Email</label><input id="pvEmail" value="${p.email||''}">
+    <label>Notas</label><textarea id="pvNotas" rows="2">${p.notas||''}</textarea>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
+      <input type="checkbox" id="pvActivo" style="width:16px;height:16px;" ${!p||p.activo!==false?'checked':''}> Activo
+    </label>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="guardarProveedor(${id||'null'})">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarProveedor(id){
+  const nombre=sanitize(document.getElementById('pvNombre').value);
+  if(!nombre){ toast('El nombre es obligatorio',true); return; }
+  const row={
+    nombre,contacto:sanitize(document.getElementById('pvContacto').value),
+    telefono:sanitize(document.getElementById('pvTelefono').value),
+    email:sanitize(document.getElementById('pvEmail').value),
+    notas:sanitize(document.getElementById('pvNotas').value),
+    activo:document.getElementById('pvActivo').checked
+  };
+  const {error}=id?await supa.from('proveedores').update(row).eq('id',id):await supa.from('proveedores').insert(row);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit(id?'Proveedor editado':'Proveedor creado','proveedores',nombre);
+  toast('Proveedor guardado'); closeModal(); await loadAll(); renderProveedores();
+}
+async function eliminarProveedor(id){
+  if(!confirm('¿Eliminar este proveedor?')) return;
+  const p=DB.proveedores.find(x=>x.id===id);
+  await supa.from('proveedores').delete().eq('id',id);
+  logAudit('Proveedor eliminado','proveedores',p?.nombre||('#'+id));
+  toast('Proveedor eliminado'); await loadAll(); renderProveedores();
+}
+
+let FC_ITEMS=[];
+function openFacturaCompraModal(){
+  const provOpts=DB.proveedores.filter(p=>p.activo).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-costo="${p.costo||0}">${p.nombre}</option>`).join('');
+  const hoy=new Date().toISOString().slice(0,10);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Nueva factura de compra</h3>
+    <label>Proveedor</label><select id="fcProveedor">${provOpts}</select>
+    <label>N° de factura</label><input id="fcNumero">
+    <label>Fecha</label><input id="fcFecha" type="date" value="${hoy}">
+    <label style="margin-top:14px;">Producto</label>
+    <select id="fcProducto">${prodOpts}</select>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <input id="fcCantidad" type="number" step="0.1" min="0.1" placeholder="Cantidad" style="flex:1;">
+      <input id="fcCosto" type="number" step="1" min="0" placeholder="Costo unitario" style="flex:1;">
+      <button type="button" class="btn secondary" onclick="fcAgregarItem()">+ Agregar</button>
+    </div>
+    <div id="fcItemsList" style="margin-top:10px;"></div>
+    <div class="cart-total" style="border-top:2px solid var(--border);"><span>Total</span><b class="num" id="fcTotal">$0</b></div>
+    <label>Estado de pago</label>
+    <div class="pay-methods">
+      <button type="button" class="active" data-ep="pendiente" onclick="fcSetEstadoPago('pendiente')">Pendiente</button>
+      <button type="button" data-ep="pagada" onclick="fcSetEstadoPago('pagada')">Pagada</button>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="guardarFacturaCompra()">Guardar factura</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente';
+  const selProd=document.getElementById('fcProducto');
+  if(selProd) document.getElementById('fcCosto').value=selProd.options[selProd.selectedIndex]?.dataset.costo||0;
+  selProd?.addEventListener('change',()=>{ document.getElementById('fcCosto').value=selProd.options[selProd.selectedIndex]?.dataset.costo||0; });
+}
+let FC_ESTADO_PAGO='pendiente';
+function fcSetEstadoPago(v){
+  FC_ESTADO_PAGO=v;
+  document.querySelectorAll('#modalContent .pay-methods button').forEach(b=>b.classList.toggle('active',b.dataset.ep===v));
+}
+function fcAgregarItem(){
+  const sel=document.getElementById('fcProducto');
+  const cantidad=parseFloat(document.getElementById('fcCantidad').value);
+  const costo=Number(document.getElementById('fcCosto').value);
+  if(!cantidad||cantidad<=0){ toast('Ingresa una cantidad válida',true); return; }
+  if(!costo||costo<0){ toast('Ingresa un costo unitario válido',true); return; }
+  FC_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,costo_unitario:costo,subtotal:costo*cantidad});
+  document.getElementById('fcCantidad').value='';
+  fcRenderItems();
+}
+function fcRenderItems(){
+  document.getElementById('fcItemsList').innerHTML=FC_ITEMS.map((i,idx)=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;">
+      <span>${i.producto_nombre} x${i.cantidad} @ ${money(i.costo_unitario)}</span>
+      <span style="display:flex;align-items:center;gap:8px;"><b>${money(i.subtotal)}</b>
+      <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="fcQuitarItem(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+    </div>`).join('');
+  document.getElementById('fcTotal').textContent=money(FC_ITEMS.reduce((s,i)=>s+i.subtotal,0));
+}
+function fcQuitarItem(idx){ FC_ITEMS.splice(idx,1); fcRenderItems(); }
+async function guardarFacturaCompra(){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para ingresar facturas de compra',true); return; }
+  const provSel=document.getElementById('fcProveedor');
+  if(!provSel.value){ toast('Selecciona un proveedor',true); return; }
+  if(!FC_ITEMS.length){ toast('Agrega al menos un producto',true); return; }
+  const proveedor=DB.proveedores.find(x=>x.id==provSel.value);
+  const numero=sanitize(document.getElementById('fcNumero').value);
+  const fecha=document.getElementById('fcFecha').value;
+  const total=FC_ITEMS.reduce((s,i)=>s+i.subtotal,0);
+  const {data:fac,error}=await supa.from('facturas_compra').insert({
+    proveedor_id:proveedor.id,proveedor_nombre:proveedor.nombre,numero_factura:numero,fecha,total,estado_pago:FC_ESTADO_PAGO
+  }).select();
+  if(error){ toast('Error: '+error.message,true); return; }
+  const factura=fac[0];
+  for(const item of FC_ITEMS){
+    await supa.from('factura_compra_items').insert({...item,factura_id:factura.id});
+    const prod=DB.productos.find(p=>p.id===item.producto_id);
+    if(prod){
+      const nuevoStock=Number(prod.stock)+Number(item.cantidad);
+      await supa.from('productos').update({stock:nuevoStock,costo:item.costo_unitario}).eq('id',item.producto_id);
+      await supa.from('stock_movimientos').insert({producto_id:item.producto_id,tipo:'entrada',cantidad:item.cantidad,motivo:`Factura de compra #${numero||factura.id}`,origen:'compra',referencia_id:factura.id,registrado_por:SESSION.usuario});
+    }
+  }
+  logAudit('Factura de compra registrada','proveedores',`${proveedor.nombre} — Factura ${numero||'-'} — ${money(total)}`);
+  toast('Factura de compra guardada'); closeModal(); await loadAll(); renderProveedores(); renderProductos();
+}
+async function marcarFacturaPagada(id){
+  const {error}=await supa.from('facturas_compra').update({estado_pago:'pagada'}).eq('id',id);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit('Factura de compra marcada pagada','proveedores',`Factura #${id}`);
+  toast('Factura marcada como pagada'); await loadAll(); renderProveedores();
+}
+// Decisión: eliminar una factura de compra NO revierte automáticamente el stock
+// que agregó — el stock ya pudo haberse vendido/movido desde entonces, así que
+// revertirlo silenciosamente podría dejar el inventario en un estado confuso.
+// Solo se borran los registros de la factura; cualquier ajuste de stock real
+// se hace manualmente editando el producto.
+async function eliminarFacturaCompra(id){
+  if(!confirm('¿Eliminar esta factura de compra? Esto NO revierte el stock que ya ingresó.')) return;
+  const f=DB.facturasCompra.find(x=>x.id===id);
+  await supa.from('factura_compra_items').delete().eq('factura_id',id);
+  await supa.from('facturas_compra').delete().eq('id',id);
+  logAudit('Factura de compra eliminada','proveedores',`${f?.proveedor_nombre||''} — Factura ${f?.numero_factura||'#'+id}`);
+  toast('Factura eliminada'); await loadAll(); renderProveedores();
+}
+
+// ══════════════════════════════════════════════════════════
+//  CONTABILIDAD — reporte por rango de fechas + cierre de caja
+// ══════════════════════════════════════════════════════════
+let REP_VENTAS=[],REP_GASTOS=[];
+async function generarReporteRango(){
+  const desde=document.getElementById('repDesde').value;
+  const hasta=document.getElementById('repHasta').value;
+  if(!desde||!hasta){ toast('Selecciona ambas fechas',true); return; }
+  const hastaFin=hasta+'T23:59:59';
+  const [ventasR,gastosR]=await Promise.all([
+    supa.from('ventas').select('*').gte('created_at',desde+'T00:00:00').lte('created_at',hastaFin),
+    supa.from('gastos').select('*').gte('fecha',desde).lte('fecha',hasta),
+  ]);
+  REP_VENTAS=ventasR.data||[]; REP_GASTOS=gastosR.data||[];
+  const totalVentas=REP_VENTAS.reduce((s,v)=>s+Number(v.total||0),0);
+  const totalGastos=REP_GASTOS.reduce((s,g)=>s+Number(g.monto||0),0);
+  const ganancia=totalVentas-totalGastos;
+  const porMetodo={};
+  REP_VENTAS.forEach(v=>{ const m=v.metodo_pago||'efectivo'; porMetodo[m]=(porMetodo[m]||0)+Number(v.total||0); });
+  document.getElementById('repResultado').innerHTML=`
+    <div class="kpi-grid" style="margin-top:16px;">
+      <div class="kpi-card"><div class="kpi-label">Total ventas</div><div class="kpi-value num">${money(totalVentas)}</div><div class="kpi-sub">${REP_VENTAS.length} boletas</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total gastos</div><div class="kpi-value num">${money(totalGastos)}</div><div class="kpi-sub">${REP_GASTOS.length} gastos</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ganancia neta</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+    </div>
+    <h4 style="margin:10px 0;font-size:13px;">Ventas por método de pago</h4>
+    ${Object.entries(porMetodo).map(([m,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;"><span style="text-transform:capitalize;">${m}</span><b class="num">${money(v)}</b></div>`).join('')||'<p class="empty">Sin ventas en el rango</p>'}
+  `;
+}
+async function exportarReporteExcel(){
+  if(typeof XLSX==='undefined'){ toast('No se pudo cargar la librería de Excel',true); return; }
+  if(!REP_VENTAS.length&&!REP_GASTOS.length){ toast('Genera el reporte primero',true); return; }
+  const totalVentas=REP_VENTAS.reduce((s,v)=>s+Number(v.total||0),0);
+  const totalGastos=REP_GASTOS.reduce((s,g)=>s+Number(g.monto||0),0);
+  const desde=document.getElementById('repDesde').value,hasta=document.getElementById('repHasta').value;
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(REP_VENTAS),'Ventas');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(REP_GASTOS),'Gastos');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([
+    {rango_desde:desde,rango_hasta:hasta,total_ventas:totalVentas,total_gastos:totalGastos,ganancia_neta:totalVentas-totalGastos}
+  ]),'Resumen');
+  XLSX.writeFile(wb,`puntoqueso-reporte-${desde}_a_${hasta}.xlsx`);
+  logAudit('Exportación de reporte','contabilidad',`${desde} a ${hasta}`);
+}
+async function calcularCierreCaja(){
+  const fecha=document.getElementById('cierreFecha').value;
+  if(!fecha){ return; }
+  const [ventasR,gastosR,cierreR]=await Promise.all([
+    supa.from('ventas').select('*').gte('created_at',fecha+'T00:00:00').lte('created_at',fecha+'T23:59:59'),
+    supa.from('gastos').select('*').eq('fecha',fecha),
+    supa.from('cierres_caja').select('*').eq('fecha',fecha).limit(1),
+  ]);
+  const ventasDia=ventasR.data||[];
+  const gastosDia=gastosR.data||[];
+  const cierreExistente=(cierreR.data||[])[0]||null;
+  // mixto: el split efectivo/otro se guarda como texto libre en metodo_pago_detalle
+  // (ej: "Efectivo: 5000, Transferencia/Tarjeta: 3000") — parsear ese formato es
+  // frágil, así que se muestra el total 'mixto' como un solo bloque, sin desglosar.
+  const porMetodo={efectivo:0,transferencia:0,tarjeta:0,mixto:0};
+  ventasDia.forEach(v=>{ const m=v.metodo_pago||'efectivo'; porMetodo[m]=(porMetodo[m]||0)+Number(v.total||0); });
+  const totalVendido=ventasDia.reduce((s,v)=>s+Number(v.total||0),0);
+  const totalGastos=gastosDia.reduce((s,g)=>s+Number(g.monto||0),0);
+  const esperado=totalVendido-totalGastos;
+  document.getElementById('cierreResultado').innerHTML=`
+    <div style="margin-top:14px;">
+      ${Object.entries(porMetodo).map(([m,v])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span style="text-transform:capitalize;">${m}</span><b class="num">${money(v)}</b></div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1px solid var(--border);margin-top:4px;"><span>Total vendido</span><b class="num">${money(totalVendido)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span>Total gastos del día</span><b class="num">- ${money(totalGastos)}</b></div>
+      <div class="cart-total" style="border-top:2px solid var(--border);"><span>Esperado en caja</span><b class="num">${money(esperado)}</b></div>
+      <label>Monto contado</label>
+      <input type="number" id="cierreContado" step="1" value="${cierreExistente?.total_contado??''}" oninput="actualizarDiferenciaCierre(${esperado})">
+      <div id="cierreDiferencia" style="margin-top:8px;font-weight:700;"></div>
+      <button class="btn" style="margin-top:12px;" onclick="guardarCierreCaja('${fecha}',${esperado})">Guardar cierre</button>
+    </div>`;
+  if(cierreExistente?.total_contado!=null) actualizarDiferenciaCierre(esperado);
+}
+function actualizarDiferenciaCierre(esperado){
+  const contado=Number(document.getElementById('cierreContado').value)||0;
+  const diff=contado-esperado;
+  const el=document.getElementById('cierreDiferencia');
+  el.textContent=`Diferencia: ${money(diff)}`;
+  el.style.color=diff===0?'var(--ok)':(diff<0?'var(--danger)':'var(--ok)');
+}
+async function guardarCierreCaja(fecha,esperado){
+  const contado=Number(document.getElementById('cierreContado').value);
+  if(isNaN(contado)){ toast('Ingresa el monto contado',true); return; }
+  const diferencia=contado-esperado;
+  const {data:existe}=await supa.from('cierres_caja').select('id').eq('fecha',fecha).limit(1);
+  const row={fecha,total_esperado:esperado,total_contado:contado,diferencia,registrado_por:SESSION.usuario};
+  const {error}=(existe&&existe.length)
+    ? await supa.from('cierres_caja').update(row).eq('id',existe[0].id)
+    : await supa.from('cierres_caja').insert(row);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit('Cierre de caja registrado','contabilidad',`${fecha} — esperado ${money(esperado)}, contado ${money(contado)}`);
+  toast('Cierre de caja guardado');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1704,7 +2127,7 @@ let _cajeroPin='';
 function openCajeroSwitch(){
   document.getElementById('cajeroPinPad').style.display='none';
   document.getElementById('cajeroGrid').style.display='grid';
-  document.getElementById('cajeroGrid').innerHTML=DB.usuarios.filter(u=>u.id!==SESSION.id).map(u=>`
+  document.getElementById('cajeroGrid').innerHTML=DB.usuarios.filter(u=>u.id!==SESSION.id&&u.activo).map(u=>`
     <div class="cajero-avatar" onclick="seleccionarCajero(${u.id},'${(u.nombre||'').replace(/'/g,"")}')">
       <div class="av-circ">${(u.nombre||'?').slice(0,1).toUpperCase()}</div>
       ${u.nombre}
@@ -1742,6 +2165,9 @@ async function confirmarCajeroPin(){
   document.getElementById('sbUserName').textContent=SESSION.nombre;
   document.getElementById('sbUserRol').textContent=SESSION.rol;
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
+  document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
+  document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
+  document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
   logAudit('Cambio de cajero','usuarios',SESSION.nombre);

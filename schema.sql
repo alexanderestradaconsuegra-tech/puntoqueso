@@ -40,6 +40,7 @@ alter table productos add column if not exists sku text;
 alter table productos add column if not exists codigo_barras text;
 alter table productos add column if not exists vender_por_peso boolean default false;
 alter table productos add column if not exists imagen_b64 text; -- foto del producto, comprimida en base64 (data URL JPEG), fuente única para POS y futuro catálogo WhatsApp
+alter table productos add column if not exists costo numeric default 0; -- costo unitario (base de margen), se actualiza al ingresar facturas de compra
 
 -- ── clientes ──
 create table if not exists clientes (
@@ -142,6 +143,53 @@ create table if not exists stock_movimientos (
   created_at timestamptz default now()
 );
 
+-- ── proveedores + facturas de compra (ingreso de stock por factura) ──
+create table if not exists proveedores (
+  id bigserial primary key,
+  nombre text not null,
+  contacto text,
+  telefono text,
+  email text,
+  notas text,
+  activo boolean default true,
+  created_at timestamptz default now()
+);
+
+create table if not exists facturas_compra (
+  id bigserial primary key,
+  proveedor_id bigint references proveedores(id) on delete set null,
+  proveedor_nombre text,
+  numero_factura text,
+  fecha date not null default current_date,
+  total numeric not null default 0,
+  estado_pago text default 'pendiente',  -- pendiente | pagada
+  notas text,
+  created_at timestamptz default now()
+);
+
+create table if not exists factura_compra_items (
+  id bigserial primary key,
+  factura_id bigint references facturas_compra(id) on delete cascade,
+  producto_id bigint references productos(id) on delete set null,
+  producto_nombre text,
+  cantidad numeric not null,
+  costo_unitario numeric not null,
+  subtotal numeric not null,
+  created_at timestamptz default now()
+);
+
+-- ── cierres de caja diarios ──
+create table if not exists cierres_caja (
+  id bigserial primary key,
+  fecha date not null unique,
+  total_esperado numeric not null default 0,
+  total_contado numeric,
+  diferencia numeric,
+  notas text,
+  registrado_por text,
+  created_at timestamptz default now()
+);
+
 -- ── configuración general (clave/valor) ──
 -- claves usadas por la app (todas opcionales, se guardan/leen desde
 -- Configuración → puntoqueso-os.html, admin-only):
@@ -212,7 +260,8 @@ declare t text;
 begin
   for t in select unnest(array[
     'productos','clientes','ventas','venta_items','pedidos','pedido_items',
-    'gastos','stock_movimientos','config'
+    'gastos','stock_movimientos','config',
+    'proveedores','facturas_compra','factura_compra_items','cierres_caja'
   ]) loop
     execute format('alter table %I enable row level security', t);
     execute format('grant select, insert, update, delete on %I to web_anon', t);
@@ -282,6 +331,20 @@ end;
 $$;
 revoke all on function set_pin_hash from public;
 grant execute on function set_pin_hash to web_anon;
+
+-- Fija la contraseña de un usuario (creación desde la UI de Usuarios, admin-only).
+-- Mismo patrón/criterio de confianza que set_pin_hash: sin capa JWT, la única
+-- protección es que no se expone fuera de la UI de administración de Usuarios.
+create or replace function set_password_hash(p_usuario_id bigint, p_password text)
+returns void
+language plpgsql security definer
+as $$
+begin
+  update usuarios set password_hash = crypt(p_password, gen_salt('bf')) where id = p_usuario_id;
+end;
+$$;
+revoke all on function set_password_hash from public;
+grant execute on function set_password_hash to web_anon;
 
 -- usuarios: permitir lectura de id/permisos para el switch de cajero y roles
 -- (nunca password_hash ni pin_hash)
