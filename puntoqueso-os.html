@@ -103,6 +103,10 @@ tr:last-child td{border-bottom:none;}
 .kpi-card{background:#fff;border:1px solid var(--border);border-radius:var(--r-md);padding:16px 18px;box-shadow:var(--sh);}
 .kpi-label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px;}
 .kpi-value{font-size:24px;font-weight:800;color:var(--brand-dark);}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;align-items:start;}
+.dash-card{padding:18px;}
+.dash-card h3{font-size:14px;margin-bottom:14px;}
 
 /* modal */
 #modalBg{display:none;position:fixed;inset:0;background:rgba(28,26,21,.55);z-index:100;align-items:center;justify-content:center;padding:16px;overflow-y:auto;}
@@ -146,6 +150,7 @@ tr:last-child td{border-bottom:none;}
   .main{margin-left:0;padding:80px 16px 60px;}
   .pos-grid{grid-template-columns:1fr;}
   .pos-cart{position:static;}
+  .dash-grid{grid-template-columns:1fr;}
   #mobileBar{display:flex;}
 }
 #mobileBar{display:none;position:fixed;top:0;left:0;right:0;height:58px;background:var(--mate);color:#fff;align-items:center;padding:0 16px;z-index:40;font-weight:800;gap:10px;}
@@ -268,8 +273,26 @@ tr:last-child td{border-bottom:none;}
 
     <!-- DASHBOARD -->
     <div class="view active" id="view-dashboard">
-      <div class="topbar"><div><h2>Dashboard</h2><div class="sub">Resumen del día</div></div></div>
+      <div class="topbar"><div><h2>Dashboard</h2><div class="sub">Resumen del negocio</div></div></div>
       <div class="kpi-grid" id="kpiDashboard"></div>
+      <div class="dash-grid">
+        <div class="card dash-card">
+          <h3>Ventas últimos 14 días</h3>
+          <div id="chartVentas"></div>
+        </div>
+        <div class="card dash-card">
+          <h3>Pedidos por estado</h3>
+          <div id="chartPedidosEstado"></div>
+        </div>
+        <div class="card dash-card">
+          <h3>Top 5 productos vendidos (mes)</h3>
+          <div id="chartTopProductos"></div>
+        </div>
+        <div class="card dash-card">
+          <h3>Gastos por categoría (mes)</h3>
+          <div id="chartGastosCategoria"></div>
+        </div>
+      </div>
       <div class="card" style="padding:18px;">
         <h3 style="margin-bottom:12px;">Pedidos pendientes por facturar</h3>
         <div id="dashPedidos"></div>
@@ -609,21 +632,130 @@ async function iniciarApp(){
 // ══════════════════════════════════════════════════════════
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
-function renderDashboard(){
-  const hoy=new Date().toISOString().slice(0,10);
+async function renderDashboard(){
+  const now=new Date();
+  const hoy=now.toISOString().slice(0,10);
+  const startOfWeek=new Date(now); startOfWeek.setDate(now.getDate()-((now.getDay()+6)%7));
+  const weekISO=startOfWeek.toISOString().slice(0,10);
+  const monthISO=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
+
   const ventasHoy=DB.ventas.filter(v=>(v.created_at||'').slice(0,10)===hoy);
   const totalHoy=ventasHoy.reduce((s,v)=>s+Number(v.total||0),0);
+  const ventasSemana=DB.ventas.filter(v=>(v.created_at||'').slice(0,10)>=weekISO);
+  const totalSemana=ventasSemana.reduce((s,v)=>s+Number(v.total||0),0);
+  const ventasMes=DB.ventas.filter(v=>(v.created_at||'').slice(0,10)>=monthISO);
+  const totalVentasMes=ventasMes.reduce((s,v)=>s+Number(v.total||0),0);
+  const gastosMes=DB.gastos.filter(g=>(g.fecha||'')>=monthISO);
+  const totalGastosMes=gastosMes.reduce((s,g)=>s+Number(g.monto||0),0);
+  const ganancia=totalVentasMes-totalGastosMes;
   const bajoStock=DB.productos.filter(p=>Number(p.stock)<=Number(p.stock_minimo||0));
   const pendientes=DB.pedidos.filter(p=>p.estado==='pendiente');
+
   document.getElementById('kpiDashboard').innerHTML=`
-    <div class="kpi-card"><div class="kpi-label">Ventas hoy</div><div class="kpi-value num">${money(totalHoy)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Boletas hoy</div><div class="kpi-value num">${ventasHoy.length}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Ventas hoy</div><div class="kpi-value num">${money(totalHoy)}</div><div class="kpi-sub">${ventasHoy.length} boleta${ventasHoy.length===1?'':'s'}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Ventas esta semana</div><div class="kpi-value num">${money(totalSemana)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Ventas este mes</div><div class="kpi-value num">${money(totalVentasMes)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Gastos este mes</div><div class="kpi-value num">${money(totalGastosMes)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Ganancia neta (mes)</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Pedidos pendientes</div><div class="kpi-value num">${pendientes.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Stock bajo</div><div class="kpi-value num" style="color:${bajoStock.length?'var(--danger)':'inherit'}">${bajoStock.length}</div></div>
   `;
+
   document.getElementById('dashPedidos').innerHTML=pendientes.length
     ? pendientes.slice(0,8).map(p=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>${p.cliente_nombre||'Sin nombre'} · ${p.cliente_tel||''}</span><b class="num">${money(p.total)}</b></div>`).join('')
     : '<p class="empty">No hay pedidos pendientes</p>';
+
+  renderChartVentas14d();
+  renderChartPedidosEstado();
+  renderChartGastosCategoria(gastosMes);
+  await renderChartTopProductos(monthISO);
+}
+
+// ── Gráfico de barras (inline SVG) — ventas de los últimos 14 días ──
+function renderChartVentas14d(){
+  const now=new Date();
+  const days=[];
+  for(let i=13;i>=0;i--){ const d=new Date(now); d.setDate(now.getDate()-i); days.push(d.toISOString().slice(0,10)); }
+  const totals=days.map(d=>DB.ventas.filter(v=>(v.created_at||'').slice(0,10)===d).reduce((s,v)=>s+Number(v.total||0),0));
+  const max=Math.max(...totals,0);
+  const hasData=max>0;
+  const w=560,h=180,padL=6,padR=6,padB=22,padT=10;
+  const chartW=w-padL-padR, chartH=h-padT-padB;
+  const slot=chartW/days.length, barW=Math.max(slot-4,2);
+  let bars='';
+  days.forEach((d,i)=>{
+    const val=totals[i];
+    const bh=hasData?(val>0?Math.max((val/max)*chartH,3):0):0;
+    const x=padL+i*slot+(slot-barW)/2;
+    const y=h-padB-bh;
+    const dd=new Date(d+'T00:00:00');
+    bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="3" fill="var(--brand)"><title>${d}: ${money(val)}</title></rect>`;
+    if(i%2===0) bars+=`<text x="${(x+barW/2).toFixed(1)}" y="${h-6}" font-size="9" fill="var(--muted)" text-anchor="middle">${dd.getDate()}</text>`;
+  });
+  const axisLine=`<line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="var(--border2)" stroke-width="1"/>`;
+  const emptyMsg=hasData?'':`<text x="${w/2}" y="${h/2-4}" font-size="12" fill="var(--muted)" text-anchor="middle">Aún no hay ventas</text>`;
+  document.getElementById('chartVentas').innerHTML=`<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:180px;display:block;" role="img" aria-label="Ventas de los últimos 14 días">${axisLine}${bars}${emptyMsg}</svg>`;
+}
+
+// ── Barras horizontales — pedidos agrupados por estado (mismos colores que las badges) ──
+function renderChartPedidosEstado(){
+  const estados=['pendiente','preparando','en_camino','entregado','anulado'];
+  const colors={pendiente:'var(--warn)',preparando:'var(--warn)',en_camino:'var(--brand-dark)',entregado:'var(--ok)',anulado:'var(--danger)'};
+  const counts=estados.map(e=>DB.pedidos.filter(p=>p.estado===e).length);
+  const total=counts.reduce((a,b)=>a+b,0);
+  const el=document.getElementById('chartPedidosEstado');
+  if(!total){ el.innerHTML='<p class="empty">Aún no hay pedidos</p>'; return; }
+  const max=Math.max(...counts);
+  el.innerHTML=estados.map((e,i)=>{
+    const c=counts[i];
+    const pct=max?Math.round((c/max)*100):0;
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+      <span style="width:82px;font-size:12px;color:var(--text2);flex-shrink:0;">${PEDIDO_ETAPA_LABEL[e]}</span>
+      <div style="flex:1;background:var(--border);border-radius:6px;height:14px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;background:${colors[e]};border-radius:6px;"></div>
+      </div>
+      <b class="num" style="width:22px;text-align:right;font-size:12.5px;">${c}</b>
+    </div>`;
+  }).join('');
+}
+
+// ── Barras horizontales — gastos agrupados por categoría (mes en curso) ──
+function renderChartGastosCategoria(gastosMes){
+  const el=document.getElementById('chartGastosCategoria');
+  if(!gastosMes.length){ el.innerHTML='<p class="empty">Aún no hay gastos este mes</p>'; return; }
+  const byCat={};
+  gastosMes.forEach(g=>{ const c=g.categoria||'otros'; byCat[c]=(byCat[c]||0)+Number(g.monto||0); });
+  const entries=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  const max=Math.max(...entries.map(e=>e[1]));
+  el.innerHTML=entries.map(([cat,val])=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+      <span style="width:90px;font-size:12px;color:var(--text2);flex-shrink:0;text-transform:capitalize;">${cat}</span>
+      <div style="flex:1;background:var(--border);border-radius:6px;height:14px;overflow:hidden;">
+        <div style="width:${Math.round((val/max)*100)}%;height:100%;background:var(--brand-dark);border-radius:6px;"></div>
+      </div>
+      <b class="num" style="width:70px;text-align:right;font-size:12.5px;">${money(val)}</b>
+    </div>`).join('');
+}
+
+// ── Top 5 productos por monto vendido (venta_items del mes en curso) ──
+async function renderChartTopProductos(monthISO){
+  const el=document.getElementById('chartTopProductos');
+  const {data,error}=await supa.from('venta_items').select('producto_nombre,subtotal,created_at').gte('created_at',monthISO);
+  if(error){ el.innerHTML='<p class="empty">No se pudo cargar</p>'; return; }
+  const items=data||[];
+  if(!items.length){ el.innerHTML='<p class="empty">Aún no hay ventas este mes</p>'; return; }
+  const byProd={};
+  items.forEach(it=>{ const n=it.producto_nombre||'—'; byProd[n]=(byProd[n]||0)+Number(it.subtotal||0); });
+  const top=Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const max=Math.max(...top.map(t=>t[1]));
+  el.innerHTML=top.map(([nombre,val])=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
+      <span style="width:110px;font-size:12px;color:var(--text2);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${nombre}">${nombre}</span>
+      <div style="flex:1;background:var(--border);border-radius:6px;height:14px;overflow:hidden;">
+        <div style="width:${Math.round((val/max)*100)}%;height:100%;background:var(--brand);border-radius:6px;"></div>
+      </div>
+      <b class="num" style="width:70px;text-align:right;font-size:12.5px;">${money(val)}</b>
+    </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════════
