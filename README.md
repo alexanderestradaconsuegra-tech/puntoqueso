@@ -55,7 +55,17 @@ Sube esto como un nuevo servicio en EasyPanel (App → Source: este repo de GitH
 
 Usuario: `admin` — Contraseña: la que pusiste en el paso 1.
 
+## Ya implementado
+
+- Escáner de código de barras (detección por velocidad de tecleo) + lectura de códigos de balanza EAN-13 para venta por peso.
+- Selector de peso (teclado numérico) para productos "por kilo", con presets y validación de stock.
+- Login rápido de cajero por PIN (`Cambiar de cajero`), separado del login de usuario/contraseña del admin — el PIN se guarda hasheado (bcrypt vía `crypt()`/`pgcrypto`) y se valida con la función `verificar_pin`.
+- Roles y permisos por usuario (`permisos` jsonb: verCostos, editarInventario, eliminarVentas, verReportes, verGastos, gestionarUsuarios), editables desde Configuración → Usuarios y permisos (solo admin).
+- Auditoría: bitácora de acciones clave (ventas, productos, config, permisos, PIN) visible en la pestaña "Auditoría" (gestionarUsuarios / admin).
+- Exportar a Excel (ventas, productos, clientes, gastos) e importar productos desde Excel (por SKU, con upsert), vía SheetJS.
+- Métodos de pago: Efectivo, Transferencia, Tarjeta y Mixto (split que valida en vivo que la suma cuadre con el total antes de habilitar "Cobrar").
+
 ## Pendiente (próximos pasos)
 
 - **WhatsApp**: conectar el catálogo a tu Evolution API existente (nueva instancia/número solo para Punto Queso) para que los pedidos lleguen directo a la pestaña "Pedidos".
-- Roles de usuario (vendedor vs. admin) — hoy todos los usuarios ven todo dentro de Punto Queso; si necesitas restringir vistas por rol, se agrega después.
+- **MercadoPago**: integración de cobro con tarjeta/QR — pendiente de que nos entregues el Access Token de tu cuenta de MercadoPago Chile.

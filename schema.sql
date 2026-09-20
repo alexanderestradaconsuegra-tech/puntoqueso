@@ -13,8 +13,12 @@ create table if not exists usuarios (
   rol text not null default 'admin',   -- admin | vendedor
   activo boolean default true,
   password_hash text not null,
+  pin_hash text,                        -- hash bcrypt del PIN de cajero (opcional, login rápido)
+  permisos jsonb default '{}'::jsonb,   -- claves: verCostos, editarInventario, eliminarVentas, verReportes, verGastos, gestionarUsuarios
   created_at timestamptz default now()
 );
+alter table usuarios add column if not exists pin_hash text;
+alter table usuarios add column if not exists permisos jsonb default '{}'::jsonb;
 
 -- ── productos ──
 create table if not exists productos (
@@ -25,10 +29,16 @@ create table if not exists productos (
   precio numeric not null default 0,
   stock numeric default 0,
   stock_minimo numeric default 0,
+  sku text,                             -- código interno / SKU
+  codigo_barras text,                   -- código de barras estándar (EAN-13, etc.)
+  vender_por_peso boolean default false,-- true = se vende al peso (usa selector de peso / balanza)
   activo boolean default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+alter table productos add column if not exists sku text;
+alter table productos add column if not exists codigo_barras text;
+alter table productos add column if not exists vender_por_peso boolean default false;
 
 -- ── clientes ──
 create table if not exists clientes (
@@ -42,18 +52,22 @@ create table if not exists clientes (
 );
 
 -- ── ventas (terminal de ventas / caja) ──
+-- metodo_pago acepta: efectivo | transferencia | tarjeta | mixto
+-- (sin CHECK constraint por simplicidad, igual criterio que el resto del esquema)
 create table if not exists ventas (
   id bigserial primary key,
   boleta_numero bigint,
   cliente_id bigint references clientes(id) on delete set null,
   cliente_nombre text,
   total numeric not null default 0,
-  metodo_pago text default 'efectivo',   -- efectivo | debito | credito | transferencia
+  metodo_pago text default 'efectivo',   -- efectivo | transferencia | tarjeta | mixto
+  metodo_pago_detalle text,              -- solo cuando metodo_pago='mixto', ej: "Efectivo: 5000, Transferencia: 3000"
   estado_pago text default 'pagado',     -- pagado | pendiente
   origen text default 'terminal',        -- terminal | whatsapp
   registrado_por text,
   created_at timestamptz default now()
 );
+alter table ventas add column if not exists metodo_pago_detalle text;
 create sequence if not exists boleta_seq start 1;
 alter table ventas alter column boleta_numero set default nextval('boleta_seq');
 
@@ -193,5 +207,69 @@ alter table usuarios enable row level security;
 grant select (usuario, nombre, rol, activo) on usuarios to web_anon;
 drop policy if exists "web_anon lectura basica" on usuarios;
 create policy "web_anon lectura basica" on usuarios for select to web_anon using (true);
+
+-- ══════════════════════════════════════════════════════════
+--  AUDITORÍA — bitácora de acciones (venta, producto, config, etc.)
+-- ══════════════════════════════════════════════════════════
+create table if not exists auditlog (
+  id bigserial primary key,
+  usuario text,
+  accion text not null,
+  modulo text,
+  detalle text,
+  created_at timestamptz default now()
+);
+alter table auditlog enable row level security;
+grant select, insert on auditlog to web_anon;
+grant usage, select on sequence auditlog_id_seq to web_anon;
+drop policy if exists "web_anon acceso total" on auditlog;
+create policy "web_anon acceso total" on auditlog for all to web_anon using (true) with check (true);
+
+-- ══════════════════════════════════════════════════════════
+--  PIN de cajero — login rápido sin contraseña completa
+--  (mismo modelo de confianza que el resto de este esquema: no
+--  hay capa JWT/app-level auth sobre estas funciones, así que su
+--  única protección es que no se exponen fuera de la UI de admin
+--  de Usuarios / del selector de cajero — "seguridad por
+--  obscuridad + acceso de red", igual que el resto de este archivo)
+-- ══════════════════════════════════════════════════════════
+create or replace function verificar_pin(p_usuario_id bigint, p_pin text)
+returns boolean
+language sql security definer
+as $$
+  select exists(
+    select 1 from usuarios
+    where id = p_usuario_id
+      and activo = true
+      and pin_hash is not null
+      and pin_hash = crypt(p_pin, pin_hash)
+  );
+$$;
+revoke all on function verificar_pin from public;
+grant execute on function verificar_pin to web_anon;
+
+-- Solo debe invocarse desde la UI de administración de Usuarios (admin-only en la app).
+create or replace function set_pin_hash(p_usuario_id bigint, p_pin text)
+returns void
+language plpgsql security definer
+as $$
+begin
+  update usuarios set pin_hash = crypt(p_pin, gen_salt('bf')) where id = p_usuario_id;
+end;
+$$;
+revoke all on function set_pin_hash from public;
+grant execute on function set_pin_hash to web_anon;
+
+-- usuarios: permitir lectura de id/permisos para el switch de cajero y roles
+-- (nunca password_hash ni pin_hash)
+grant select (id, usuario, nombre, rol, activo, permisos) on usuarios to web_anon;
+-- permitir a la UI de administración (admin-only en la app) editar rol/activo/permisos
+-- y crear nuevos usuarios; el PIN y la contraseña siempre se fijan vía RPC (crypt), nunca en texto plano
+grant update (nombre, rol, activo, permisos) on usuarios to web_anon;
+grant insert (usuario, nombre, rol, activo, permisos, password_hash) on usuarios to web_anon;
+drop policy if exists "web_anon editar permisos" on usuarios;
+create policy "web_anon editar permisos" on usuarios for update to web_anon using (true) with check (true);
+drop policy if exists "web_anon crear usuarios" on usuarios;
+create policy "web_anon crear usuarios" on usuarios for insert to web_anon with check (true);
 
 -- listo. Revisa el README.md para configurar PostgREST.
