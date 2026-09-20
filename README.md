@@ -64,6 +64,11 @@ Usuario: `admin` — Contraseña: la que pusiste en el paso 1.
 - Auditoría: bitácora de acciones clave (ventas, productos, config, permisos, PIN) visible en la pestaña "Auditoría" (gestionarUsuarios / admin).
 - Exportar a Excel (ventas, productos, clientes, gastos) e importar productos desde Excel (por SKU, con upsert), vía SheetJS.
 - Métodos de pago: Efectivo, Transferencia, Tarjeta y Mixto (split que valida en vivo que la suma cuadre con el total antes de habilitar "Cobrar").
+- Foto de producto: subida manual desde el modal de Productos, comprimida en el navegador (canvas, máx. 800px de lado mayor, JPEG calidad 0.7) y guardada como base64 en `productos.imagen_b64` — sin ningún servicio externo (Cloudinary, S3, etc.). Se muestra como miniatura en la grilla del Terminal de ventas y en la tabla de Productos.
+
+### Catálogo WhatsApp (preparación)
+
+No se implementó ninguna integración de WhatsApp todavía, pero los datos ya quedaron listos para ella: `productos.imagen_b64` + `nombre` + `precio` + `stock` + `activo` es la única fuente de verdad que un futuro catálogo de WhatsApp debería leer directamente, por ejemplo con `GET /productos?activo=eq.true` contra PostgREST. Así el catálogo que vería un cliente por WhatsApp siempre coincide exactamente con lo que está en el sistema de la tienda, sin duplicar datos en otra tabla ni sincronizar nada aparte.
 
 ## Pendiente (próximos pasos)
 

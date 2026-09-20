@@ -122,6 +122,12 @@ tr:last-child td{border-bottom:none;}
 .pos-prod .pp-nombre{font-weight:700;font-size:13.5px;margin-bottom:4px;}
 .pos-prod .pp-precio{color:var(--brand-dark);font-weight:800;font-size:15px;}
 .pos-prod .pp-stock{font-size:11px;color:var(--muted);margin-top:3px;}
+.pos-prod-img{width:100%;height:80px;object-fit:cover;border-radius:8px;margin-bottom:8px;background:var(--mint);}
+.pos-prod-ph{width:100%;height:80px;border-radius:8px;margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;}
+.prod-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;background:var(--mint);}
+.prod-thumb-ph{width:40px;height:40px;border-radius:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;}
+.prod-foto-preview{width:96px;height:96px;object-fit:cover;border-radius:var(--r-sm);background:var(--mint);}
+.prod-foto-preview-ph{width:96px;height:96px;border-radius:var(--r-sm);background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:34px;}
 .pos-cart{position:sticky;top:20px;}
 .cart-item{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);}
 .cart-item .ci-name{flex:1;font-size:13px;font-weight:600;}
@@ -319,7 +325,7 @@ tr:last-child td{border-bottom:none;}
       <div class="topbar"><div><h2>Productos</h2><div class="sub">Catálogo de la tienda</div></div>
         <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button></div>
       <div class="toolbar"><input placeholder="Buscar..." oninput="renderProductos(this.value)"></div>
-      <div class="table-scroll"><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead>
+      <div class="table-scroll"><table><thead><tr><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead>
       <tbody id="productosBody"></tbody></table></div>
     </div>
 
@@ -623,6 +629,7 @@ function renderPosProductos(filter=''){
   const rows=DB.productos.filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()));
   document.getElementById('posProductos').innerHTML=rows.map(p=>`
     <button class="pos-prod" onclick="${p.vender_por_peso?`openWeightPicker(${p.id})`:`agregarAlCarrito(${p.id})`}">
+      ${p.imagen_b64?`<img class="pos-prod-img" src="${p.imagen_b64}" alt="">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
       <div class="pp-nombre">${p.nombre}</div>
       <div class="pp-precio num">${money(p.precio)}/${p.unidad||'kg'}</div>
       <div class="pp-stock">Stock: ${Number(p.stock).toLocaleString('es-CL')} ${p.unidad||'kg'}</div>
@@ -976,16 +983,63 @@ function renderProductos(filter=''){
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
   const rows=DB.productos.filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
   document.getElementById('productosBody').innerHTML=rows.map(p=>`
-    <tr><td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
+    <tr><td>${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
+    <td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
     <td class="num">${money(p.precio)}/${p.unidad}</td>
     <td class="num" style="color:${Number(p.stock)<=Number(p.stock_minimo||0)?'var(--danger)':'inherit'};font-weight:600;">${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
     <td style="display:flex;gap:6px;">
       ${canDo('editarInventario')?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
-    </td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin productos</td></tr>';
+    </td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin productos</td></tr>';
+}
+// ── foto de producto: compresión client-side (canvas → JPEG base64) ──
+function comprimirImagen(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('No se pudo leer el archivo'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Archivo de imagen inválido'));
+      img.onload=()=>{
+        const MAX=800;
+        let w=img.width,h=img.height;
+        if(w>h&&w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
+        else if(h>=w&&h>MAX){ w=Math.round(w*MAX/h); h=MAX; }
+        const canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(canvas.toDataURL('image/jpeg',0.7));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+let _prodImagenB64=null;
+async function onProductoFotoChange(input){
+  const file=input.files&&input.files[0];
+  if(!file) return;
+  try{
+    _prodImagenB64=await comprimirImagen(file);
+    renderProductoFotoPreview();
+  }catch(e){ toast('No se pudo procesar la imagen: '+e.message,true); }
+}
+function quitarProductoFoto(){
+  _prodImagenB64=null;
+  const input=document.getElementById('prFotoInput');
+  if(input) input.value='';
+  renderProductoFotoPreview();
+}
+function renderProductoFotoPreview(){
+  const box=document.getElementById('prFotoPreview');
+  if(!box) return;
+  box.innerHTML=_prodImagenB64
+    ? `<img class="prod-foto-preview" src="${_prodImagenB64}" alt="">`
+    : `<div class="prod-foto-preview-ph">📷</div>`;
 }
 function openProductoModal(id){
   const p=id?DB.productos.find(x=>x.id===id):{};
+  _prodImagenB64=p.imagen_b64||null;
   document.getElementById('modalContent').innerHTML=`
     <h3>${id?'Editar':'Nuevo'} producto</h3>
     <label>Nombre</label><input id="prNombre" value="${p.nombre||''}">
@@ -1004,6 +1058,14 @@ function openProductoModal(id){
     <label>Stock actual</label><input id="prStock" type="number" step="0.1" value="${p.stock||0}">
     <label>Stock mínimo (alerta)</label><input id="prStockMin" type="number" step="0.1" value="${p.stock_minimo||0}">
     <label>SKU / código de barras</label><input id="prSku" value="${p.sku||''}">
+    <label>Foto del producto</label>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+      <div id="prFotoPreview"></div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <input type="file" id="prFotoInput" accept="image/*" onchange="onProductoFotoChange(this)">
+        <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="quitarProductoFoto()">Quitar foto</button>
+      </div>
+    </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
       <input type="checkbox" id="prVenderPeso" style="width:16px;height:16px;" ${p.vender_por_peso?'checked':''}>
       Se vende por peso (kg)
@@ -1012,6 +1074,7 @@ function openProductoModal(id){
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="guardarProducto(${id||'null'})">Guardar</button>
     </div>`;
+  renderProductoFotoPreview();
   document.getElementById('modalBg').style.display='flex';
 }
 async function guardarProducto(id){
@@ -1025,6 +1088,7 @@ async function guardarProducto(id){
     stock_minimo:Number(document.getElementById('prStockMin').value)||0,
     sku:sanitize(document.getElementById('prSku').value)||null,
     vender_por_peso:document.getElementById('prVenderPeso').checked,
+    imagen_b64:_prodImagenB64||null,
     updated_at:new Date().toISOString()
   };
   const {error}=id?await supa.from('productos').update(row).eq('id',id):await supa.from('productos').insert(row);
