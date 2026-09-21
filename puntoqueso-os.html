@@ -50,7 +50,7 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 .ic-sm{width:15px;height:15px;}
 
 /* ── LOGIN ── */
-#login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 30% 20%,var(--mate-2),var(--mate) 70%);padding:20px;}
+#login{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 30% 20%,var(--mate-2),var(--mate) 70%);padding:20px;}
 #login .box{width:100%;max-width:360px;background:#fff;border-radius:var(--r-lg);padding:38px 34px;box-shadow:var(--sh-md);}
 #login .brand{text-align:center;margin-bottom:26px;}
 #login .brand .name{font-size:26px;font-weight:800;color:var(--brand-dark);letter-spacing:-.02em;}
@@ -62,7 +62,7 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 #loginErr{display:none;background:#fdecea;color:var(--danger);padding:10px 12px;border-radius:var(--r-sm);font-size:12.5px;margin-top:14px;}
 
 /* ── LAYOUT ── */
-#app{display:none;min-height:100vh;}
+#app{display:none;min-height:100vh;min-height:100dvh;}
 .sidebar{width:230px;flex-shrink:0;background:var(--mate);color:#fff;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:50;}
 .sidebar .sb-brand{padding:22px 20px;font-size:19px;font-weight:800;letter-spacing:-.02em;border-bottom:1px solid rgba(255,255,255,.08);}
 .sidebar .sb-brand span{color:var(--brand);}
@@ -73,7 +73,7 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 .sb-user{margin-top:auto;padding:16px 20px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:rgba(255,255,255,.5);}
 .sb-user strong{color:#fff;display:block;font-size:13px;}
 .sb-user a{color:var(--brand);cursor:pointer;font-weight:600;}
-.main{margin-left:230px;flex:1;min-height:100vh;padding:26px 30px 60px;}
+.main{margin-left:230px;flex:1;min-height:100vh;min-height:100dvh;padding:26px 30px 60px;}
 .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
 .topbar .sub{color:var(--muted);font-size:12.5px;margin-top:2px;}
 .view{display:none;}
@@ -152,17 +152,152 @@ tr:last-child td{border-bottom:none;}
 .cart-total{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;font-size:16px;font-weight:800;border-top:2px solid var(--border);margin-top:10px;}
 .cart-total b{color:var(--brand-dark);font-size:22px;}
 
-@media(max-width:900px){
-  .sidebar{transform:translateX(-100%);transition:transform .2s;}
-  .sidebar.open{transform:translateX(0);}
-  .main{margin-left:0;padding:80px 16px 60px;}
+/* ══════════════════════════════════════════════════════════
+   SHELL MÓVIL — la app se comporta como app instalada (PWA)
+   Breakpoint: <1024px = móvil/tablet (bottom nav).
+               >=1024px = escritorio (sidebar) — SIN CAMBIOS.
+   ══════════════════════════════════════════════════════════ */
+:root{ --tabbar-h:58px; --topbar-h:52px; }
+
+/* barra superior delgada: solo título de página (orientación + safe-area) */
+#mobileBar{display:none;position:fixed;top:0;left:0;right:0;background:var(--mate);color:#fff;align-items:center;gap:10px;
+  padding:env(safe-area-inset-top) 16px 0;height:calc(var(--topbar-h) + env(safe-area-inset-top));z-index:40;font-weight:800;}
+#mobileBar img{width:26px;height:26px;border-radius:7px;flex-shrink:0;}
+#mobileBar .mb-title{font-size:15px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* bottom nav — 4 destinos principales + "Más" */
+#bottomNav{display:none;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--mate);
+  border-top:1px solid rgba(255,255,255,.08);padding-bottom:env(safe-area-inset-bottom);}
+#bottomNav .tabs{display:flex;align-items:stretch;height:var(--tabbar-h);}
+#bottomNav .tab{flex:1 1 0;min-width:0;min-height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  background:none;border:none;color:rgba(255,255,255,.58);font-weight:700;font-size:10.5px;letter-spacing:.01em;cursor:pointer;
+  position:relative;padding:6px 2px;touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  transition:color .18s ease-out,transform .18s ease-out;}
+#bottomNav .tab .ic{width:22px;height:22px;}
+#bottomNav .tab span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#bottomNav .tab:active{transform:scale(.94);}
+#bottomNav .tab.active{color:var(--brand);font-weight:800;}
+/* nav-state-active: color + peso + indicador (no solo color) */
+#bottomNav .tab.active::before{content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);width:26px;height:3px;border-radius:0 0 3px 3px;background:var(--brand);}
+
+/* ── bottom sheet reutilizable (overflow de nav + acciones de fila) ── */
+#sheetBg{display:none;position:fixed;inset:0;background:rgba(28,26,21,.55);z-index:150;align-items:flex-end;justify-content:center;}
+#sheetBg.open{display:flex;}
+#sheetCard{background:#fff;width:100%;max-width:520px;border-radius:var(--r-lg) var(--r-lg) 0 0;
+  padding:8px 16px calc(16px + env(safe-area-inset-bottom));max-height:88dvh;overflow-y:auto;
+  animation:sheetUp .22s ease-out;}
+@keyframes sheetUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.sheet-handle{width:42px;height:4px;border-radius:99px;background:var(--border2);margin:6px auto 12px;}
+#sheetTitle{font-size:15px;margin-bottom:10px;padding:0 4px;}
+.sheet-item{display:flex;align-items:center;gap:13px;width:100%;min-height:52px;padding:12px 10px;border:none;background:none;
+  border-radius:var(--r-sm);font-family:inherit;font-size:15px;font-weight:700;color:var(--text);cursor:pointer;text-align:left;
+  touch-action:manipulation;transition:background .15s ease-out,transform .15s ease-out;}
+.sheet-item+.sheet-item{margin-top:4px;}
+.sheet-item:active{background:var(--mint);transform:scale(.98);}
+.sheet-item .ic{width:20px;height:20px;color:var(--brand-dark);}
+.sheet-item.danger{color:var(--danger);}
+.sheet-item.danger .ic{color:var(--danger);}
+/* destructive-nav-separation */
+.sheet-sep{height:1px;background:var(--border);margin:12px 4px;}
+.sheet-user{padding:10px 10px 2px;font-size:12px;color:var(--muted);}
+.sheet-user strong{display:block;font-size:14px;color:var(--text);}
+
+/* ── listas responsivas: tabla (desktop) / tarjetas (móvil) ── */
+.card-list{display:none;}
+.lcard{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);
+  box-shadow:var(--sh);padding:13px 14px;margin-bottom:10px;touch-action:manipulation;transition:transform .15s ease-out;}
+.lcard:active{transform:scale(.99);}
+.lc-row{display:flex;align-items:flex-start;gap:11px;}
+.lc-main{flex:1;min-width:0;}
+.lc-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+.lc-title{font-weight:700;font-size:15px;line-height:1.3;overflow-wrap:anywhere;}
+.lc-fig{font-variant-numeric:tabular-nums;font-weight:800;font-size:16px;color:var(--brand-dark);text-align:right;white-space:nowrap;}
+.lc-fig .lc-fig-sub{display:block;font-size:11px;font-weight:600;color:var(--muted);}
+.lc-badges{margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;}
+.lc-badges:empty{display:none;}
+.lc-meta{margin-top:6px;font-size:12.5px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere;}
+.lc-meta:empty{display:none;}
+.lc-side{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;}
+.lc-actions{display:flex;flex-direction:column;gap:8px;align-items:stretch;flex-shrink:0;}
+.lc-more{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);
+  background:#fff;border-radius:var(--r-sm);cursor:pointer;color:var(--text2);touch-action:manipulation;transition:transform .15s ease-out,background .15s ease-out;}
+.lc-more:active{transform:scale(.94);background:var(--mint);}
+.lc-chk{width:22px;height:22px;flex-shrink:0;margin-top:2px;cursor:pointer;accent-color:var(--brand-dark);}
+.lc-selall{display:none;align-items:center;gap:9px;font-size:13.5px;font-weight:700;color:var(--text2);
+  padding:10px 4px;min-height:44px;cursor:pointer;}
+.lc-selall input{width:22px;height:22px;accent-color:var(--brand-dark);}
+.sub-xs{color:var(--muted);font-size:11px;}
+
+@media(max-width:1023px){
+  /* avoid-mixed-patterns: en móvil NO hay sidebar, solo bottom nav */
+  .sidebar{display:none;}
+  .main{margin-left:0;
+    padding:calc(var(--topbar-h) + env(safe-area-inset-top) + 16px) 16px calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 28px);}
   .pos-grid{grid-template-columns:1fr;}
   .pos-cart{position:static;}
   .dash-grid{grid-template-columns:1fr;}
   #mobileBar{display:flex;}
+  #bottomNav{display:block;}
+
+  body{font-size:15px;}
+  /* readable-font-size / touch-friendly-input: 16px evita el auto-zoom de iOS */
+  input,select,textarea{font-size:16px !important;}
+  #modalContent input,#modalContent select,#modalContent textarea,
+  .toolbar input,.toolbar select,#login input{min-height:46px;}
+  input[type=checkbox],input[type=radio]{min-height:0;}
+
+  /* touch-target-size: los botones chicos de fila pasan a 44px reales */
+  .btn{min-height:44px;padding:11px 16px !important;font-size:14px !important;}
+  .btn .ic{width:16px;height:16px;}
+  .toolbar{gap:10px;}
+  .cat-chip{min-height:44px;}
+  .topbar .btn{flex:1;justify-content:center;}
+
+  /* listas: tarjetas en vez de tablas */
+  .list-wrap .table-scroll{display:none;}
+  .list-wrap .card-list{display:block;}
+  .lc-selall{display:flex;}
+
+  /* horizontal-scroll: las tablas admin restantes hacen scroll dentro de su caja */
+  .table-scroll{max-width:100%;}
+
+  /* modales como bottom sheet (modal-motion + modal-escape) */
+  #modalBg{align-items:flex-end;padding:0;}
+  #modalContent{max-width:100%;border-radius:var(--r-lg) var(--r-lg) 0 0;max-height:90dvh;
+    padding:8px 18px calc(20px + env(safe-area-inset-bottom));animation:sheetUp .22s ease-out;}
+  #modalContent::before{content:"";display:block;width:42px;height:4px;border-radius:99px;background:var(--border2);margin:6px auto 14px;}
+  .overlay{align-items:flex-end;padding:0;}
+  .overlay-card{max-width:100%;border-radius:var(--r-lg) var(--r-lg) 0 0;max-height:92dvh;overflow-y:auto;
+    padding:8px 18px calc(20px + env(safe-area-inset-bottom));animation:sheetUp .22s ease-out;}
+  .overlay-card::before{content:"";display:block;width:42px;height:4px;border-radius:99px;background:var(--border2);margin:6px auto 14px;}
+  #toast{bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 14px);}
+
+  .keypad button{min-height:52px;}
+  .wp-presets button{min-height:44px;}
+  .unit-toggle button,.pay-methods button{min-height:46px;}
+  .kpi-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));}
 }
-#mobileBar{display:none;position:fixed;top:0;left:0;right:0;height:58px;background:var(--mate);color:#fff;align-items:center;padding:0 16px;z-index:40;font-weight:800;gap:10px;}
-#mobileBar svg{width:22px;height:22px;cursor:pointer;}
+
+/* landscape en teléfono: la barra inferior se compacta para no comerse la pantalla */
+@media(max-width:1023px) and (max-height:480px) and (orientation:landscape){
+  :root{ --tabbar-h:48px; --topbar-h:44px; }
+  #bottomNav .tab .ic{width:19px;height:19px;}
+  #bottomNav .tab{font-size:10px;gap:1px;}
+  #sheetCard,#modalContent,.overlay-card{max-height:94dvh;}
+}
+
+/* press-feedback / tap-delay globales */
+.btn,.cat-chip,.pos-prod,.nav-item,.keypad button,.wp-presets button,.unit-toggle button,.pay-methods button,.cajero-avatar,.bulk-chk,.lc-chk{
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+.cat-chip,.pos-prod,.keypad button,.wp-presets button,.unit-toggle button,.pay-methods button,.cajero-avatar{
+  transition:transform .15s ease-out,background .15s ease-out,border-color .15s ease-out;}
+.cat-chip:active,.pos-prod:active,.keypad button:active,.wp-presets button:active,
+.unit-toggle button:active,.pay-methods button:active,.cajero-avatar:active{transform:scale(.96);}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}
+  #sheetCard,#modalContent,.overlay-card{animation:none !important;}
+}
 
 /* ── PESO / OVERLAY ── */
 .overlay{display:none;position:fixed;inset:0;background:rgba(28,26,21,.6);z-index:300;align-items:center;justify-content:center;padding:16px;}
@@ -241,8 +376,8 @@ tr:last-child td{border-bottom:none;}
 
 <!-- ══ APP ══ -->
 <div id="mobileBar">
-  <svg class="ic" onclick="document.querySelector('.sidebar').classList.toggle('open')" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-  Punto Queso
+  <img src="logo.png" alt="Punto Queso">
+  <div class="mb-title" id="mobileBarTitle">Dashboard</div>
 </div>
 <div id="app">
   <div class="sidebar">
@@ -372,8 +507,10 @@ tr:last-child td{border-bottom:none;}
       <div class="topbar"><div><h2>Pedidos</h2><div class="sub">Pedidos que llegan por el catálogo de WhatsApp</div></div>
         <button class="btn" onclick="openPedidoModal()">+ Nuevo pedido</button></div>
       <div class="toolbar"><input placeholder="Buscar cliente..." oninput="renderPedidos(this.value)"></div>
-      <div class="table-scroll"><table><thead><tr><th>#</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
-      <tbody id="pedidosBody"></tbody></table></div>
+      <div class="list-wrap">
+        <div class="table-scroll"><table><thead id="pedidosHead"></thead><tbody id="pedidosBody"></tbody></table></div>
+        <div class="card-list" id="pedidosCards"></div>
+      </div>
     </div>
 
     <!-- VENTAS -->
@@ -385,8 +522,10 @@ tr:last-child td{border-bottom:none;}
         <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarVentas()">Eliminar seleccionadas</button>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('ventas')">Cancelar</button>
       </div>
-      <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllventas" onchange="bulkToggleAll('ventas',this.checked)"></th><th>Boleta</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Fecha</th><th></th></tr></thead>
-      <tbody id="ventasBody"></tbody></table></div>
+      <div class="list-wrap">
+        <div class="table-scroll"><table><thead id="ventasHead"></thead><tbody id="ventasBody"></tbody></table></div>
+        <div class="card-list" id="ventasCards"></div>
+      </div>
     </div>
 
     <!-- PRODUCTOS -->
@@ -408,8 +547,10 @@ tr:last-child td{border-bottom:none;}
         <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarProductos()">Eliminar seleccionados</button>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
-      <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead>
-      <tbody id="productosBody"></tbody></table></div>
+      <div class="list-wrap">
+        <div class="table-scroll"><table><thead id="productosHead"></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="card-list" id="productosCards"></div>
+      </div>
     </div>
 
     <!-- CLIENTES -->
@@ -423,8 +564,10 @@ tr:last-child td{border-bottom:none;}
         <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarClientes()">Eliminar seleccionados</button>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('clientes')">Cancelar</button>
       </div>
-      <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllclientes" onchange="bulkToggleAll('clientes',this.checked)"></th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead>
-      <tbody id="clientesBody"></tbody></table></div>
+      <div class="list-wrap">
+        <div class="table-scroll"><table><thead id="clientesHead"></thead><tbody id="clientesBody"></tbody></table></div>
+        <div class="card-list" id="clientesCards"></div>
+      </div>
     </div>
 
     <!-- GASTOS -->
@@ -608,6 +751,32 @@ tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<!-- ══ BOTTOM NAV (móvil) — 4 destinos principales + overflow "Más" ══
+     Los iconos son los mismos SVG del sidebar (icon-style-consistent). -->
+<nav id="bottomNav" aria-label="Navegación principal">
+  <div class="tabs">
+    <button type="button" class="tab" data-tab="terminal" onclick="nav('terminal')">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M6 7V5a2 2 0 012-2h8a2 2 0 012 2v2"/></svg><span>Terminal</span></button>
+    <button type="button" class="tab" data-tab="pedidos" onclick="nav('pedidos')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg><span>Pedidos</span></button>
+    <button type="button" class="tab" data-tab="productos" onclick="nav('productos')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg><span>Productos</span></button>
+    <button type="button" class="tab" data-tab="dashboard" onclick="nav('dashboard')">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg><span>Inicio</span></button>
+    <button type="button" class="tab" id="tabMas" onclick="openNavSheet()">
+      <svg class="ic" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg><span>Más</span></button>
+  </div>
+</nav>
+
+<!-- ══ BOTTOM SHEET reutilizable (overflow de nav + acciones de fila) ══ -->
+<div id="sheetBg" onclick="if(event.target===this)closeSheet()">
+  <div id="sheetCard" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-handle"></div>
+    <h3 id="sheetTitle"></h3>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+
 <div id="modalBg" onclick="if(event.target===this)closeModal()"><div id="modalContent"></div></div>
 <div id="toast"></div>
 
@@ -765,11 +934,59 @@ async function doLogin(){
 function logout(){ localStorage.removeItem('pq_session'); location.reload(); }
 
 // ══════════════════════════════════════════════════════════
+//  NAVEGACIÓN MÓVIL — bottom nav (4 destinos) + hoja "Más"
+//  Los destinos secundarios se leen del sidebar en vivo: así el
+//  gating por permisos (los .nav-item ocultos) y los íconos se
+//  respetan solos, sin mantener una segunda lista en paralelo.
+// ══════════════════════════════════════════════════════════
+const TABS_PRIMARIOS=['terminal','pedidos','productos','dashboard'];
+
+function syncMobileNav(view){
+  document.querySelectorAll('#bottomNav .tab[data-tab]').forEach(t=>t.classList.toggle('active',t.dataset.tab===view));
+  // nav-state-active: si estamos en un destino del overflow, "Más" queda activo
+  const mas=document.getElementById('tabMas');
+  if(mas) mas.classList.toggle('active',!TABS_PRIMARIOS.includes(view));
+  const item=document.querySelector(`.nav-item[data-view="${view}"]`);
+  const titulo=document.getElementById('mobileBarTitle');
+  if(titulo&&item) titulo.textContent=item.textContent.trim();
+}
+
+function navSecundarios(){
+  return [...document.querySelectorAll('.nav-item[data-view]')]
+    .filter(n=>!TABS_PRIMARIOS.includes(n.dataset.view))
+    .filter(n=>n.style.display!=='none');   // respeta el gating por permisos
+}
+
+function openNavSheet(){
+  const items=navSecundarios().map(n=>{
+    const svg=n.querySelector('svg')?.outerHTML||'';
+    return `<button type="button" class="sheet-item" onclick="nav('${n.dataset.view}')">${svg}<span>${n.textContent.trim()}</span></button>`;
+  }).join('');
+  const rol=document.getElementById('sbUserRol')?.textContent||'';
+  openSheet('Menú',`
+    ${items}
+    <div class="sheet-sep"></div>
+    <div class="sheet-user"><strong>${SESSION?.nombre||''}</strong>${rol}</div>
+    <button type="button" class="sheet-item danger" onclick="logout()">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      <span>Cerrar sesión</span></button>`);
+}
+
+function openSheet(titulo,html){
+  document.getElementById('sheetTitle').textContent=titulo||'';
+  document.getElementById('sheetBody').innerHTML=html;
+  document.getElementById('sheetBg').classList.add('open');
+}
+function closeSheet(){ document.getElementById('sheetBg')?.classList.remove('open'); }
+
+// ══════════════════════════════════════════════════════════
 //  NAVEGACIÓN
 // ══════════════════════════════════════════════════════════
 function nav(view){
   currentPage=view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
+  syncMobileNav(view);
+  closeSheet();
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+view));
   document.querySelector('.sidebar').classList.remove('open');
   if(view==='dashboard') renderDashboard();
