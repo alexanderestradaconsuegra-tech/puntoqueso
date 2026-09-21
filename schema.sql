@@ -130,6 +130,23 @@ create table if not exists gastos (
   created_at timestamptz default now()
 );
 
+-- ── gastos recurrentes: costos fijos que se generan solos cada
+--    período (arriendo, servicios, empleados, etc.) — ver lógica
+--    de generación en el front (generarGastosRecurrentesPendientes) ──
+create table if not exists gastos_recurrentes (
+  id bigserial primary key,
+  descripcion text not null,
+  categoria text default 'otros',
+  monto numeric not null,
+  frecuencia text not null default 'mensual',  -- mensual | semanal | quincenal
+  dia_mes integer,          -- for mensual/quincenal: day of month to generate on (1-28, avoid month-length edge cases)
+  dia_semana integer,       -- for semanal: 0=domingo..6=sábado
+  activo boolean default true,
+  ultima_generacion date,   -- last date a gasto was auto-created from this recurrente, to avoid duplicates
+  notas text,
+  created_at timestamptz default now()
+);
+
 -- ── kardex de stock (igual patrón que Campolac — ¡ojo con el nombre!) ──
 create table if not exists stock_movimientos (
   id bigserial primary key,
@@ -261,7 +278,8 @@ begin
   for t in select unnest(array[
     'productos','clientes','ventas','venta_items','pedidos','pedido_items',
     'gastos','stock_movimientos','config',
-    'proveedores','facturas_compra','factura_compra_items','cierres_caja'
+    'proveedores','facturas_compra','factura_compra_items','cierres_caja',
+    'gastos_recurrentes'
   ]) loop
     execute format('alter table %I enable row level security', t);
     execute format('grant select, insert, update, delete on %I to web_anon', t);

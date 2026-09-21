@@ -417,7 +417,10 @@ tr:last-child td{border-bottom:none;}
     <!-- GASTOS -->
     <div class="view" id="view-gastos">
       <div class="topbar"><div><h2>Gastos</h2><div class="sub">Control de egresos</div></div>
-        <button class="btn" onclick="openGastoModal()">+ Nuevo gasto</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="openGastosRecurrentesModal()">Gastos recurrentes</button>
+          <button class="btn" onclick="openGastoModal()">+ Nuevo gasto</button>
+        </div></div>
       <div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th></th></tr></thead>
       <tbody id="gastosBody"></tbody></table></div>
     </div>
@@ -629,7 +632,7 @@ const supa = new PG(PG_URL);
 //  ESTADO GLOBAL
 // ══════════════════════════════════════════════════════════
 let SESSION=null;
-let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[]};
+let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[],gastosRecurrentes:[]};
 let PROD_CAT_FILTER='todos';
 let CARRITO=[];
 let currentPage='dashboard';
@@ -746,7 +749,7 @@ function nav(view){
 //  CARGA DE DATOS
 // ══════════════════════════════════════════════════════════
 async function loadAll(){
-  const [prod,cli,ped,vent,gas,usr,prov,facCompra]=await Promise.all([
+  const [prod,cli,ped,vent,gas,usr,prov,facCompra,gasRec]=await Promise.all([
     supa.from('productos').select('*').eq('activo',true).order('nombre'),
     supa.from('clientes').select('*').eq('activo',true).order('nombre'),
     supa.from('pedidos').select('*').order('created_at',{ascending:false}).limit(200),
@@ -755,10 +758,61 @@ async function loadAll(){
     supa.from('usuarios').select('id,usuario,nombre,rol,activo,permisos').order('nombre'),
     supa.from('proveedores').select('*').order('nombre'),
     supa.from('facturas_compra').select('*').order('fecha',{ascending:false}).limit(200),
+    supa.from('gastos_recurrentes').select('*').order('descripcion'),
   ]);
   DB.productos=prod.data||[]; DB.clientes=cli.data||[]; DB.pedidos=ped.data||[]; DB.ventas=vent.data||[]; DB.gastos=gas.data||[]; DB.usuarios=usr.data||[];
-  DB.proveedores=prov.data||[]; DB.facturasCompra=facCompra.data||[];
+  DB.proveedores=prov.data||[]; DB.facturasCompra=facCompra.data||[]; DB.gastosRecurrentes=gasRec.data||[];
   if(prod.error) toast('Error cargando productos: '+prod.error.message,true);
+}
+
+// ══════════════════════════════════════════════════════════
+//  GASTOS RECURRENTES — generación automática al abrir la app
+//  Se ejecuta una vez tras el login (ver iniciarApp). Idempotente:
+//  cada recurrente guarda ultima_generacion, así que correr esto
+//  varias veces el mismo día no duplica gastos.
+// ══════════════════════════════════════════════════════════
+async function generarGastosRecurrentesPendientes(){
+  try{
+    const {data:recurrentes,error}=await supa.from('gastos_recurrentes').select('*').eq('activo',true);
+    if(error||!recurrentes||!recurrentes.length) return;
+    const hoy=new Date();
+    const hoyISO=hoy.toISOString().slice(0,10);
+    let generados=0;
+    for(const r of recurrentes){
+      const ultima=r.ultima_generacion?new Date(r.ultima_generacion+'T12:00:00'):(r.created_at?new Date(r.created_at):null);
+      let due=false;
+      if(r.frecuencia==='semanal'){
+        // due si hoy es el día de la semana configurado y no se generó en los últimos 6 días
+        // (evita doble disparo si se revisa dos veces el mismo día)
+        const diasDesde=ultima?Math.floor((hoy-ultima)/86400000):Infinity;
+        due=(hoy.getDay()===Number(r.dia_semana))&&(!r.ultima_generacion||diasDesde>6);
+      }else if(r.frecuencia==='quincenal'){
+        // Simplificación deliberada: en vez de calcular "día 1 y día 16" con
+        // precisión de calendario, basta con exigir que hayan pasado al menos
+        // 15 días desde la última generación — suficiente para una contabilidad
+        // pequeña y evita casos borde de meses de distinta duración.
+        const diasDesde=ultima?Math.floor((hoy-ultima)/86400000):Infinity;
+        due=!r.ultima_generacion||diasDesde>=15;
+      }else{ // mensual
+        const mismoMes=r.ultima_generacion&&ultima.getFullYear()===hoy.getFullYear()&&ultima.getMonth()===hoy.getMonth();
+        due=(hoy.getDate()>=Number(r.dia_mes||1))&&!mismoMes;
+      }
+      if(!due) continue;
+      const descripcion='(Recurrente) '+r.descripcion;
+      const {error:insErr}=await supa.from('gastos').insert({
+        fecha:hoyISO,descripcion,categoria:r.categoria,monto:r.monto,
+        notas:'Generado automáticamente desde gasto recurrente #'+r.id
+      });
+      if(insErr){ console.error('Error generando gasto recurrente #'+r.id,insErr); continue; }
+      await supa.from('gastos_recurrentes').update({ultima_generacion:hoyISO}).eq('id',r.id);
+      logAudit('Gasto recurrente generado','gastos',r.descripcion+' — '+money(r.monto));
+      generados++;
+    }
+    if(generados>0){
+      await loadAll();
+      toast(generados+' gasto'+(generados>1?'s':'')+' recurrente'+(generados>1?'s':'')+' generado'+(generados>1?'s':'')+' automáticamente');
+    }
+  }catch(e){ console.error('Error en generarGastosRecurrentesPendientes:',e); }
 }
 async function iniciarApp(){
   document.getElementById('login').style.display='none';
@@ -773,6 +827,7 @@ async function iniciarApp(){
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
   await loadAll();
   await cargarConfigForm();
+  if(canDo('verGastos')) await generarGastosRecurrentesPendientes();
   document.getElementById('sbCambiarCajero').style.display=DB.usuarios.filter(u=>u.activo).length>1?'block':'none';
   renderDashboard();
   initBarcodeListener();
@@ -1595,6 +1650,118 @@ async function eliminarGasto(id){
   if(!confirm('¿Eliminar este gasto?')) return;
   await supa.from('gastos').delete().eq('id',id);
   toast('Gasto eliminado'); await loadAll(); renderGastos();
+}
+
+// ══════════════════════════════════════════════════════════
+//  GASTOS RECURRENTES — CRUD (gated por el mismo permiso verGastos)
+// ══════════════════════════════════════════════════════════
+function openGastosRecurrentesModal(){
+  if(!canDo('verGastos')){ toast('No tienes permiso para ver gastos',true); return; }
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Gastos recurrentes</h3>
+    <div class="table-scroll"><table><thead><tr><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Frecuencia</th><th>Activo</th><th></th></tr></thead>
+    <tbody id="gastosRecurrentesBody"></tbody></table></div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" onclick="openGastoRecurrenteModal()">+ Nuevo recurrente</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  renderGastosRecurrentesLista();
+}
+function renderGastosRecurrentesLista(){
+  const body=document.getElementById('gastosRecurrentesBody');
+  if(!body) return;
+  body.innerHTML=DB.gastosRecurrentes.map(r=>`
+    <tr><td>${r.descripcion}</td><td style="text-transform:capitalize;">${r.categoria}</td><td class="num">${money(r.monto)}</td>
+    <td style="text-transform:capitalize;">${r.frecuencia}</td>
+    <td><input type="checkbox" ${r.activo?'checked':''} onchange="toggleGastoRecurrenteActivo(${r.id},this.checked)"></td>
+    <td style="white-space:nowrap;">
+      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openGastoRecurrenteModal(${r.id})">Editar</button>
+      <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarGastoRecurrente(${r.id})">Eliminar</button>
+    </td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin gastos recurrentes</td></tr>';
+}
+function openGastoRecurrenteModal(id){
+  const r=id?DB.gastosRecurrentes.find(x=>x.id===id):null;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${id?'Editar':'Nuevo'} gasto recurrente</h3>
+    <label>Descripción</label><input id="grDescripcion" value="${r?.descripcion||''}">
+    <label>Categoría</label>
+    <select id="grCategoria">
+      <option value="servicios" ${r?.categoria==='servicios'?'selected':''}>Servicios</option>
+      <option value="mercaderia" ${r?.categoria==='mercaderia'?'selected':''}>Mercadería</option>
+      <option value="arriendo" ${r?.categoria==='arriendo'?'selected':''}>Arriendo</option>
+      <option value="personal" ${r?.categoria==='personal'?'selected':''}>Personal</option>
+      <option value="otros" ${(!r||r?.categoria==='otros')?'selected':''}>Otros</option>
+    </select>
+    <label>Monto</label><input id="grMonto" type="number" step="1" value="${r?.monto||''}">
+    <label>Frecuencia</label>
+    <select id="grFrecuencia" onchange="onGrFrecuenciaChange()">
+      <option value="mensual" ${(!r||r?.frecuencia==='mensual')?'selected':''}>Mensual</option>
+      <option value="quincenal" ${r?.frecuencia==='quincenal'?'selected':''}>Quincenal</option>
+      <option value="semanal" ${r?.frecuencia==='semanal'?'selected':''}>Semanal</option>
+    </select>
+    <div id="grDiaMesWrap" style="display:${(!r||r?.frecuencia!=='semanal')?'block':'none'};">
+      <label>Día del mes (1-28)</label><input id="grDiaMes" type="number" min="1" max="28" value="${r?.dia_mes||1}">
+    </div>
+    <div id="grDiaSemanaWrap" style="display:${r?.frecuencia==='semanal'?'block':'none'};">
+      <label>Día de la semana</label>
+      <select id="grDiaSemana">
+        <option value="1" ${r?.dia_semana===1?'selected':''}>Lunes</option>
+        <option value="2" ${r?.dia_semana===2?'selected':''}>Martes</option>
+        <option value="3" ${r?.dia_semana===3?'selected':''}>Miércoles</option>
+        <option value="4" ${r?.dia_semana===4?'selected':''}>Jueves</option>
+        <option value="5" ${r?.dia_semana===5?'selected':''}>Viernes</option>
+        <option value="6" ${r?.dia_semana===6?'selected':''}>Sábado</option>
+        <option value="0" ${r?.dia_semana===0?'selected':''}>Domingo</option>
+      </select>
+    </div>
+    <label>Notas</label><input id="grNotas" value="${r?.notas||''}">
+    <div class="actions">
+      <button class="btn secondary" onclick="openGastosRecurrentesModal()">Cancelar</button>
+      <button class="btn" onclick="guardarGastoRecurrente(${id||'null'})">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function onGrFrecuenciaChange(){
+  const esSemanal=document.getElementById('grFrecuencia').value==='semanal';
+  document.getElementById('grDiaMesWrap').style.display=esSemanal?'none':'block';
+  document.getElementById('grDiaSemanaWrap').style.display=esSemanal?'block':'none';
+}
+async function guardarGastoRecurrente(id){
+  const descripcion=sanitize(document.getElementById('grDescripcion').value);
+  const monto=Number(document.getElementById('grMonto').value);
+  if(!descripcion||!monto){ toast('Completa descripción y monto',true); return; }
+  const frecuencia=document.getElementById('grFrecuencia').value;
+  const payload={
+    descripcion,
+    categoria:document.getElementById('grCategoria').value,
+    monto,
+    frecuencia,
+    dia_mes:frecuencia==='semanal'?null:Number(document.getElementById('grDiaMes').value)||1,
+    dia_semana:frecuencia==='semanal'?Number(document.getElementById('grDiaSemana').value):null,
+    notas:sanitize(document.getElementById('grNotas').value),
+  };
+  const {error}=id?await supa.from('gastos_recurrentes').update(payload).eq('id',id):await supa.from('gastos_recurrentes').insert(payload);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit(id?'Gasto recurrente editado':'Gasto recurrente creado','gastos',descripcion);
+  toast('Gasto recurrente guardado');
+  await loadAll();
+  openGastosRecurrentesModal();
+}
+async function toggleGastoRecurrenteActivo(id,activo){
+  await supa.from('gastos_recurrentes').update({activo}).eq('id',id);
+  const r=DB.gastosRecurrentes.find(x=>x.id===id);
+  logAudit(activo?'Gasto recurrente activado':'Gasto recurrente desactivado','gastos',r?.descripcion||('#'+id));
+  await loadAll();
+}
+async function eliminarGastoRecurrente(id){
+  if(!confirm('¿Eliminar este gasto recurrente?')) return;
+  const r=DB.gastosRecurrentes.find(x=>x.id===id);
+  await supa.from('gastos_recurrentes').delete().eq('id',id);
+  logAudit('Gasto recurrente eliminado','gastos',r?.descripcion||('#'+id));
+  toast('Gasto recurrente eliminado');
+  await loadAll();
+  openGastosRecurrentesModal();
 }
 
 // ══════════════════════════════════════════════════════════
