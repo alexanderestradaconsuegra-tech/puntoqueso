@@ -508,7 +508,7 @@ tr:last-child td{border-bottom:none;}
         <button class="btn" onclick="openPedidoModal()">+ Nuevo pedido</button></div>
       <div class="toolbar"><input placeholder="Buscar cliente..." oninput="renderPedidos(this.value)"></div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead id="pedidosHead"></thead><tbody id="pedidosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th>#</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Fecha</th><th></th></tr></thead><tbody id="pedidosBody"></tbody></table></div>
         <div class="card-list" id="pedidosCards"></div>
       </div>
     </div>
@@ -523,7 +523,8 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('ventas')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead id="ventasHead"></thead><tbody id="ventasBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllventas" onchange="bulkToggleAll('ventas',this.checked)"></th><th>Boleta</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Fecha</th><th></th></tr></thead><tbody id="ventasBody"></tbody></table></div>
+        <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('ventas',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="ventasCards"></div>
       </div>
     </div>
@@ -548,7 +549,8 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead id="productosHead"></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
       </div>
     </div>
@@ -565,7 +567,8 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('clientes')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead id="clientesHead"></thead><tbody id="clientesBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllclientes" onchange="bulkToggleAll('clientes',this.checked)"></th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th></th></tr></thead><tbody id="clientesBody"></tbody></table></div>
+        <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('clientes',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="clientesCards"></div>
       </div>
     </div>
@@ -862,16 +865,17 @@ function bulkToggle(scope,id,checked){
   bulkSyncBar(scope);
 }
 function bulkToggleAll(scope,checked){
-  document.querySelectorAll(`#${scope}Body input.bulk-chk`).forEach(chk=>{
+  document.querySelectorAll(`#${scope}Body input.bulk-chk, #${scope}Cards input.bulk-chk`).forEach(chk=>{
     const id=Number(chk.dataset.id);
     chk.checked=checked;
     if(checked) BULK[scope].add(id); else BULK[scope].delete(id);
   });
+  document.querySelectorAll(`#bulkAll${scope}, .lc-selall input`).forEach(chk=>chk.checked=checked);
   bulkSyncBar(scope);
 }
 function bulkClear(scope){
   BULK[scope].clear();
-  document.querySelectorAll(`#${scope}Body input.bulk-chk`).forEach(chk=>chk.checked=false);
+  document.querySelectorAll(`#${scope}Body input.bulk-chk, #${scope}Cards input.bulk-chk`).forEach(chk=>chk.checked=false);
   const all=document.getElementById('bulkAll'+scope);
   if(all) all.checked=false;
   bulkSyncBar(scope);
@@ -1690,6 +1694,29 @@ function renderPedidos(filter=''){
       <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / preparar</button>
     </td></tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
+
+  document.getElementById('pedidosCards').innerHTML=rows.map(p=>{
+    const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
+    const idx=PEDIDO_ETAPAS.indexOf(p.estado);
+    const siguiente=(p.estado!=='anulado'&&idx>=0&&idx<PEDIDO_ETAPAS.length-1)?PEDIDO_ETAPAS[idx+1]:null;
+    return `
+    <div class="lcard">
+      <div class="lc-row"><div class="lc-main">
+        <div class="lc-top"><div class="lc-title">#${p.id} · ${p.cliente_nombre||'-'}</div>
+          <div class="lc-fig">${money(p.total)}${p.pesos_ajustados?`<span class="lc-fig-sub">peso ajustado</span>`:''}</div></div>
+        <div class="lc-meta">${dir||'-'}${p.cliente_tel?` · ${p.cliente_tel}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
+        <div class="lc-badges">
+          <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
+          ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
+          ${pedidoFacturado(p)?`<span class="badge pagado">Facturado</span>`:''}
+        </div>
+      </div></div>
+      <div class="lc-row" style="gap:8px;">
+        <button class="btn" style="flex:1;" onclick="abrirPedidoDetalle(${p.id})">Ver / preparar</button>
+        ${siguiente?`<button class="btn secondary" style="flex:1;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
+      </div>
+    </div>`;
+  }).join('')||'<p class="empty">Sin pedidos</p>';
 }
 async function avanzarEstadoPedido(id,nuevoEstado){
   const p=DB.pedidos.find(x=>x.id===id);
@@ -2055,7 +2082,32 @@ function renderVentas(){
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="reimprimirVenta(${v.id})">🖨️ Boleta</button>
       ${canDo('eliminarVentas')?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarVenta(${v.id})">Eliminar</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin ventas</td></tr>';
+
+  document.getElementById('ventasCards').innerHTML=rows.map(v=>`
+    <div class="lcard">
+      <div class="lc-row">
+        <input type="checkbox" class="lc-chk bulk-chk" data-id="${v.id}" ${bulkChecked('ventas',v.id)?'checked':''} onchange="bulkToggle('ventas',${v.id},this.checked)">
+        <div class="lc-main">
+          <div class="lc-top"><div class="lc-title">Boleta ${v.boleta_numero||v.id}</div><div class="lc-fig">${money(v.total)}</div></div>
+          <div class="lc-meta">${v.cliente_nombre||'-'}<br>${new Date(v.created_at).toLocaleString('es-CL')}</div>
+          <div class="lc-badges"><span class="badge" style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` (${v.metodo_pago_detalle})`:''}</span></div>
+        </div>
+        <div class="lc-actions">
+          <button class="lc-more" onclick="sheetAccionesVenta(${v.id})"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
+        </div>
+      </div>
+    </div>`).join('')||'<p class="empty">Sin ventas</p>';
   bulkSyncBar('ventas');
+}
+function sheetAccionesVenta(id){
+  const v=DB.ventas.find(x=>x.id===id);
+  openSheet(`Boleta ${v?.boleta_numero||id}`,`
+    <button type="button" class="sheet-item" onclick="reimprimirVenta(${id});closeSheet()">
+      <svg class="ic" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      <span>Ver / imprimir boleta</span></button>
+    ${canDo('eliminarVentas')?`<button type="button" class="sheet-item danger" onclick="eliminarVenta(${id});closeSheet()">
+      <svg class="ic" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+      <span>Eliminar</span></button>`:''}`);
 }
 async function reimprimirVenta(id){
   const venta=DB.ventas.find(v=>v.id===id);
@@ -2116,6 +2168,23 @@ function renderProductos(filter=''){
       ${canDo('editarInventario')?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
     </td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin productos</td></tr>';
+
+  document.getElementById('productosCards').innerHTML=rows.map(p=>`
+    <div class="lcard">
+      <div class="lc-row">
+        <input type="checkbox" class="lc-chk bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)">
+        ${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
+        <div class="lc-main">
+          <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
+          <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
+          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span></div>
+        </div>
+        ${canDo('editarInventario')?`<div class="lc-actions">
+          <button class="lc-more" onclick="openProductoModal(${p.id})"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>
+          <button class="lc-more" onclick="eliminarProducto(${p.id})"><svg class="ic" viewBox="0 0 24 24" style="color:var(--danger);"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+        </div>`:''}
+      </div>
+    </div>`).join('')||'<p class="empty">Sin productos</p>';
   bulkSyncBar('productos');
 }
 // ── foto de producto: compresión client-side (canvas → JPEG base64) ──
@@ -2266,6 +2335,21 @@ function renderClientes(filter=''){
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openClienteModal(${c.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarCliente(${c.id})">Eliminar</button>
     </td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin clientes</td></tr>';
+
+  document.getElementById('clientesCards').innerHTML=rows.map(c=>`
+    <div class="lcard">
+      <div class="lc-row">
+        <input type="checkbox" class="lc-chk bulk-chk" data-id="${c.id}" ${bulkChecked('clientes',c.id)?'checked':''} onchange="bulkToggle('clientes',${c.id},this.checked)">
+        <div class="lc-main">
+          <div class="lc-top"><div class="lc-title">${c.nombre}</div></div>
+          <div class="lc-meta">${c.telefono||'-'}${c.direccion?`<br>${c.direccion}`:''}</div>
+        </div>
+        <div class="lc-actions">
+          <button class="lc-more" onclick="openClienteModal(${c.id})"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>
+          <button class="lc-more" onclick="eliminarCliente(${c.id})"><svg class="ic" viewBox="0 0 24 24" style="color:var(--danger);"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
+        </div>
+      </div>
+    </div>`).join('')||'<p class="empty">Sin clientes</p>';
   bulkSyncBar('clientes');
 }
 function openClienteModal(id){
