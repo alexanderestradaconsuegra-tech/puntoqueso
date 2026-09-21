@@ -808,6 +808,7 @@ class PGQuery{
   limit(n){ this.params.push('limit='+n); return this; }
   single(){ this._single=true; this.headers['Accept']='application/vnd.pgrst.object+json'; return this; }
   insert(rows){ this._method='POST'; this._body=rows; this.headers['Prefer']='return=representation'; return this; }
+  upsert(rows,{onConflict}={}){ this._method='POST'; this._body=rows; this.headers['Prefer']='resolution=merge-duplicates,return=representation'; if(onConflict) this.params.push('on_conflict='+encodeURIComponent(onConflict)); return this; }
   update(row){ this._method='PATCH'; this._body=row; this.headers['Prefer']='return=representation'; return this; }
   delete(){ this._method='DELETE'; this.headers['Prefer']='return=representation'; return this; }
   async _exec(){
@@ -2415,7 +2416,7 @@ function openGastoModal(){
     <label>Fecha</label><input id="gaFecha" type="date" value="${hoy}">
     <label>Descripción</label><input id="gaDescripcion">
     <label>Categoría</label>
-    <select id="gaCategoria"><option value="servicios">Servicios</option><option value="mercaderia">Mercadería</option><option value="arriendo">Arriendo</option><option value="personal">Personal</option><option value="otros">Otros</option></select>
+    <select id="gaCategoria"><option value="servicios">Servicios</option><option value="mercaderia">Mercadería</option><option value="arriendo">Arriendo</option><option value="personal">Personal</option><option value="iva">IVA</option><option value="contador">Contador</option><option value="otros">Otros</option></select>
     <label>Monto</label><input id="gaMonto" type="number" step="1">
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -2476,6 +2477,8 @@ function openGastoRecurrenteModal(id){
       <option value="mercaderia" ${r?.categoria==='mercaderia'?'selected':''}>Mercadería</option>
       <option value="arriendo" ${r?.categoria==='arriendo'?'selected':''}>Arriendo</option>
       <option value="personal" ${r?.categoria==='personal'?'selected':''}>Personal</option>
+      <option value="iva" ${r?.categoria==='iva'?'selected':''}>IVA</option>
+      <option value="contador" ${r?.categoria==='contador'?'selected':''}>Contador</option>
       <option value="otros" ${(!r||r?.categoria==='otros')?'selected':''}>Otros</option>
     </select>
     <label>Monto</label><input id="grMonto" type="number" step="1" value="${r?.monto||''}">
@@ -2590,7 +2593,8 @@ async function guardarConfig(){
     openai_api_key:document.getElementById('cfgOpenaiKey').value,
   };
   for(const [clave,valor] of Object.entries(claves)){
-    await supa.from('config').upsert({clave,valor:JSON.stringify(valor)});
+    const {error}=await supa.from('config').upsert({clave,valor:JSON.stringify(valor)},{onConflict:'clave'});
+    if(error){ toast('Error al guardar "'+clave+'": '+error.message,true); console.error('guardarConfig',clave,error); return; }
     CONFIG_CACHE[clave]=valor;
   }
   logAudit('Configuración actualizada','config','');
@@ -3088,14 +3092,30 @@ async function guardarFacturaCompra(){
       await supa.from('stock_movimientos').insert({producto_id:item.producto_id,tipo:'entrada',cantidad:item.cantidad,motivo:`Factura de compra #${numero||factura.id}`,origen:'compra',referencia_id:factura.id,registrado_por:SESSION.usuario});
     }
   }
+  if(FC_ESTADO_PAGO==='pagada') await generarGastoDesdeFactura(factura,proveedor,numero,fecha,total);
   logAudit('Factura de compra registrada','proveedores',`${proveedor.nombre} — Factura ${numero||'-'} — ${money(total)}`);
   toast('Factura de compra guardada'); closeModal(); await loadAll(); renderProveedores(); renderProductos();
 }
+// Al pagar una factura de proveedor se registra sola como gasto (categoría
+// "mercadería") — así no hace falta cargarla dos veces. facturas_compra.gasto_id
+// evita crear el gasto más de una vez si se marca pagada repetidamente.
+async function generarGastoDesdeFactura(factura,proveedor,numero,fecha,total){
+  if(factura.gasto_id) return;
+  const {data:gs,error}=await supa.from('gastos').insert({
+    fecha:fecha||new Date().toISOString().slice(0,10),
+    descripcion:`Factura de compra ${numero?'#'+numero:'#'+factura.id} — ${proveedor?.nombre||factura.proveedor_nombre||''}`,
+    categoria:'mercaderia',monto:total,notas:`Generado automáticamente al pagar la factura de compra #${factura.id}`
+  }).select();
+  if(error){ console.error('generarGastoDesdeFactura',error); toast('La factura se guardó, pero no se pudo crear el gasto automático: '+error.message,true); return; }
+  await supa.from('facturas_compra').update({gasto_id:gs[0].id}).eq('id',factura.id);
+}
 async function marcarFacturaPagada(id){
+  const f=DB.facturasCompra.find(x=>x.id===id);
   const {error}=await supa.from('facturas_compra').update({estado_pago:'pagada'}).eq('id',id);
   if(error){ toast('Error: '+error.message,true); return; }
+  if(f) await generarGastoDesdeFactura(f,{nombre:f.proveedor_nombre},f.numero_factura,f.fecha,f.total);
   logAudit('Factura de compra marcada pagada','proveedores',`Factura #${id}`);
-  toast('Factura marcada como pagada'); await loadAll(); renderProveedores();
+  toast('Factura marcada como pagada'); await loadAll(); renderProveedores(); renderGastos();
 }
 // Decisión: eliminar una factura de compra NO revierte automáticamente el stock
 // que agregó — el stock ya pudo haberse vendido/movido desde entonces, así que

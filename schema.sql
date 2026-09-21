@@ -196,6 +196,7 @@ create table if not exists facturas_compra (
   notas text,
   created_at timestamptz default now()
 );
+alter table facturas_compra add column if not exists gasto_id bigint references gastos(id) on delete set null;
 
 create table if not exists factura_compra_items (
   id bigserial primary key,
