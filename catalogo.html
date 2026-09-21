@@ -19,6 +19,7 @@
 :root{
   --brand:#fed104;        /* amarillo Punto Queso */
   --brand-dark:#d1ab00;   /* hover / acentos sobre blanco */
+  --brand-light:#fff6c9;  /* tinte claro del amarillo — fondos suaves */
   --brand-text:#1c1a15;   /* texto sobre fondo amarillo — SIEMPRE oscuro, nunca blanco */
   --mate:#1c1a15;         /* negro mate — sidebar, login, toast */
   --mate-2:#2b2820;
@@ -47,12 +48,37 @@ input,select,textarea,button{font-family:inherit;font-size:14px;}
 .ic-sm{width:15px;height:15px;}
 
 /* ── HEADER ── */
-header.topbar{background:var(--mate);color:#fff;padding:16px 18px;position:sticky;top:0;z-index:40;box-shadow:var(--sh);}
+header.topbar{background:var(--mate);color:#fff;padding:14px 18px;position:sticky;top:0;z-index:40;box-shadow:var(--sh);display:flex;align-items:center;justify-content:space-between;gap:12px;}
 header.topbar .name{font-size:19px;font-weight:800;letter-spacing:-.02em;}
 header.topbar .name span{color:var(--brand);}
-header.topbar .sub{font-size:12px;color:rgba(255,255,255,.65);margin-top:2px;}
+header.topbar .sub{font-size:11.5px;color:rgba(255,255,255,.6);margin-top:1px;}
+.hdr-cart{position:relative;width:40px;height:40px;border-radius:99px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;flex-shrink:0;}
+.hdr-cart .hc-badge{position:absolute;top:-4px;right:-4px;background:var(--brand);color:var(--brand-text);border-radius:99px;min-width:18px;height:18px;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px;}
 
-main{max-width:920px;margin:0 auto;padding:16px 14px 20px;}
+main{max-width:960px;margin:0 auto;padding:0 0 20px;}
+.wrap{max-width:960px;margin:0 auto;padding:0 14px;}
+
+/* ── HERO ── */
+.hero{background:linear-gradient(160deg,var(--brand) 0%,var(--brand-light) 100%);padding:26px 14px 30px;margin-bottom:22px;}
+.hero-inner{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:22px;flex-wrap:wrap;}
+.hero-copy{flex:1 1 260px;min-width:240px;}
+.hero-copy h1{font-size:26px;color:var(--brand-text);letter-spacing:-.03em;line-height:1.15;margin-bottom:8px;}
+.hero-copy p{color:rgba(28,26,21,.75);font-size:13.5px;margin-bottom:16px;max-width:38ch;}
+.hero-cta{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;background:var(--mate);color:#fff;border-radius:99px;font-weight:700;font-size:13.5px;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(28,26,21,.25);}
+.hero-cta:hover{background:var(--mate-2);}
+.hero-img-wrap{flex:0 0 auto;width:150px;height:150px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.5);border:5px solid rgba(255,255,255,.6);box-shadow:var(--sh-md);display:flex;align-items:center;justify-content:center;margin-left:auto;}
+.hero-img-wrap img{width:100%;height:100%;object-fit:cover;}
+.hero-img-wrap .hero-ph{font-size:56px;font-weight:800;color:var(--brand-dark);}
+
+/* ── TRUST BADGES ── */
+.trust{padding:0 14px;margin-bottom:22px;}
+.trust-inner{max-width:960px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;}
+.trust-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-md);padding:14px;display:flex;align-items:center;gap:10px;}
+.trust-ic{width:38px;height:38px;border-radius:10px;background:var(--brand-light);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.trust-txt strong{display:block;font-size:12.5px;font-weight:800;}
+.trust-txt span{display:block;font-size:11px;color:var(--muted);margin-top:1px;}
+
+.section-title{font-size:16px;font-weight:800;margin:22px 0 10px;}
 
 .search-bar{margin-bottom:14px;}
 .search-bar input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:#fff;}
@@ -70,7 +96,33 @@ main{max-width:920px;margin:0 auto;padding:16px 14px 20px;}
 .prod-price{color:var(--brand-dark);font-weight:800;font-size:15px;margin-bottom:8px;}
 .prod-card .btn{width:100%;justify-content:center;margin-top:auto;}
 
+.cat-group{margin-bottom:20px;}
+.cat-group-title{font-size:14.5px;font-weight:800;margin-bottom:10px;text-transform:capitalize;display:flex;align-items:center;gap:8px;}
+.cat-group-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
 .empty{text-align:center;color:var(--muted);padding:40px 20px;}
+
+/* ── FOOTER ── */
+footer.pq-footer{background:var(--mate);color:rgba(255,255,255,.85);margin-top:28px;padding:26px 14px 100px;}
+.pq-footer-inner{max-width:960px;margin:0 auto;}
+.pwa-cta{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:var(--r-md);padding:16px;margin-bottom:20px;display:flex;gap:12px;align-items:flex-start;}
+.pwa-cta .pwa-ic{width:36px;height:36px;border-radius:10px;background:var(--brand);color:var(--brand-text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.pwa-cta strong{display:block;color:#fff;font-size:13.5px;margin-bottom:3px;}
+.pwa-cta p{font-size:12px;line-height:1.5;color:rgba(255,255,255,.65);}
+.pq-footer-info{display:flex;flex-wrap:wrap;gap:16px;font-size:12.5px;}
+.pq-footer-info a{color:rgba(255,255,255,.85);text-decoration:none;}
+.pq-footer-info .fi-row{display:flex;align-items:center;gap:7px;color:rgba(255,255,255,.75);}
+.pq-footer-info .fi-row svg{color:var(--brand);}
+.pq-footer-name{font-weight:800;font-size:15px;color:#fff;margin-bottom:10px;}
+.pq-footer-name span{color:var(--brand);}
+
+/* ── GPS ASSIST ── */
+.gps-row{margin:10px 0 4px;}
+.gps-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--mint);border:1.5px solid var(--border2);border-radius:99px;font-weight:700;font-size:12px;color:var(--brand-dark);cursor:pointer;}
+.gps-btn:hover{background:#f3e3cc;}
+.gps-btn:disabled{opacity:.5;cursor:not-allowed;}
+.gps-status{font-size:11.5px;color:var(--ok);margin-top:6px;display:none;align-items:center;gap:5px;}
+.gps-status.show{display:flex;}
 
 .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border:none;border-radius:var(--r-sm);background:var(--brand);color:var(--brand-text);font-weight:700;font-size:13.5px;cursor:pointer;transition:background .15s,transform .1s;}
 .btn:hover{background:var(--brand-dark);color:var(--brand-text);}
@@ -136,25 +188,80 @@ form textarea{resize:vertical;min-height:64px;}
 #toast.err{background:var(--danger);}
 
 @media(min-width:640px){
-  main{padding:22px 20px 24px;}
+  .wrap{padding:0 20px;}
   .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;}
+  .hero{padding:36px 20px 40px;}
+  .hero-copy h1{font-size:32px;}
 }
 </style>
 </head>
 <body>
 
 <header class="topbar">
-  <div class="name">Punto <span>Queso</span></div>
-  <div class="sub">Arma tu pedido — te contactamos para confirmar</div>
+  <div>
+    <div class="name">Punto <span>Queso</span></div>
+    <div class="sub">Arma tu pedido — te contactamos para confirmar</div>
+  </div>
+  <div class="hdr-cart" onclick="abrirCarrito()" aria-label="Ver carrito">
+    <svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+    <span class="hc-badge" id="hdrCartBadge" style="display:none;">0</span>
+  </div>
 </header>
 
-<main>
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <h1>Quesos y fiambres frescos.<br>Entrega rápida.</h1>
+      <p>Selección diaria de la mejor mantención de frío, directo de la tienda a tu puerta. Arma tu pedido en un minuto.</p>
+      <button class="hero-cta" onclick="document.getElementById('menu').scrollIntoView({behavior:'smooth'})">
+        Ver catálogo
+        <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="hero-img-wrap" id="heroImgWrap"><div class="hero-ph">PQ</div></div>
+  </div>
+</section>
+
+<div class="trust">
+  <div class="trust-inner">
+    <div class="trust-card">
+      <div class="trust-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2l3 6 6 1-4.5 4.5L18 20l-6-3-6 3 1.5-6.5L3 9l6-1z"/></svg></div>
+      <div class="trust-txt"><strong>100% fresco</strong><span>Rotación diaria</span></div>
+    </div>
+    <div class="trust-card">
+      <div class="trust-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+      <div class="trust-txt"><strong>Entrega el mismo día</strong><span>Coordinamos por WhatsApp</span></div>
+    </div>
+    <div class="trust-card">
+      <div class="trust-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <div class="trust-txt"><strong>Pedido seguro</strong><span>Confirmamos contigo antes de cobrar</span></div>
+    </div>
+  </div>
+</div>
+
+<main id="menu" class="wrap">
   <div class="search-bar">
     <input type="text" id="buscarInput" placeholder="Buscar producto..." oninput="renderGrid()">
   </div>
   <div class="cat-tabs" id="catTabs"></div>
-  <div class="grid" id="grid"></div>
+  <div id="grid"></div>
 </main>
+
+<footer class="pq-footer">
+  <div class="pq-footer-inner">
+    <div class="pq-footer-name">Punto <span>Queso</span></div>
+
+    <div class="pwa-cta">
+      <div class="pwa-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div>
+      <div>
+        <strong>Agrega Punto Queso a tu pantalla de inicio</strong>
+        <p>Android: menú (⋮) → "Instalar app". iPhone: botón compartir (□↑) → "Agregar a inicio". Así abres tu próximo pedido con un toque, sin buscar el link.</p>
+      </div>
+    </div>
+
+    <div class="pq-footer-info" id="footerInfo"></div>
+  </div>
+</footer>
 
 <div id="cartBar" onclick="abrirCarrito()">
   <div class="cb-left">
@@ -204,7 +311,11 @@ form textarea{resize:vertical;min-height:64px;}
              Punto de integración futuro: Google Maps Places Autocomplete se puede
              enganchar aquí más adelante (cuando haya API key) llamando a
              new google.maps.places.Autocomplete() sobre el input #pedidoCalle —
-             mantener ese id estable. -->
+             mantener ese id estable. Mientras no haya API key (por lo tanto no hay
+             geocodificación inversa disponible), el botón "Usar mi ubicación actual"
+             de abajo solo guarda lat/lng crudos como dato de apoyo — no reemplaza
+             estos campos de texto, que el cliente sigue completando igual. Cuando
+             haya API key, Autocomplete puede reemplazar/complementar ese botón. -->
         <label for="pedidoCalle">Calle y número</label>
         <input type="text" id="pedidoCalle" autocomplete="street-address" placeholder="Av. Siempre Viva 742">
 
@@ -213,6 +324,14 @@ form textarea{resize:vertical;min-height:64px;}
 
         <label for="pedidoComuna">Comuna</label>
         <input type="text" id="pedidoComuna" placeholder="Ñuñoa">
+
+        <div class="gps-row">
+          <button type="button" class="gps-btn" id="btnGps" onclick="usarUbicacionActual()">
+            <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+            Usar mi ubicación actual
+          </button>
+          <div class="gps-status" id="gpsStatus">📍 Ubicación capturada</div>
+        </div>
 
         <label for="pedidoNotas">Observaciones (opcional)</label>
         <textarea id="pedidoNotas" placeholder="Ej: horario preferido, instrucciones especiales..."></textarea>
@@ -302,6 +421,7 @@ function sanitize(s){ return (s||'').toString().trim().replace(/<[^>]*>/g,''); }
 let PRODUCTOS=[];
 let CATEGORIA_ACTIVA='';
 let CARRITO=[]; // {producto_id,nombre,precio,cantidad,unidad,vender_por_peso,qtyLabel}
+let GPS_COORDS=null;
 
 async function cargarProductos(){
   const {data,error}=await supa.from('productos').select('*').eq('activo','true').order('nombre',{ascending:true});
@@ -309,6 +429,36 @@ async function cargarProductos(){
   PRODUCTOS=data||[];
   renderTabs();
   renderGrid();
+  renderHero();
+}
+
+function renderHero(){
+  const conFoto=PRODUCTOS.filter(p=>p.imagen_b64);
+  const wrap=document.getElementById('heroImgWrap');
+  if(!conFoto.length){ wrap.innerHTML='<div class="hero-ph">PQ</div>'; return; }
+  const destacado=conFoto.reduce((a,b)=>Number(b.precio)>Number(a.precio)?b:a,conFoto[0]);
+  wrap.innerHTML=`<img src="${destacado.imagen_b64}" alt="${destacado.nombre||''}">`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  CONFIG DEL NEGOCIO (para el pie de página, "como una web real")
+// ══════════════════════════════════════════════════════════
+async function cargarConfig(){
+  try{
+    const {data,error}=await supa.from('config').select('*');
+    if(error||!data) return;
+    const cfg={}; data.forEach(r=>cfg[r.clave]=r.valor);
+    const dir=(cfg.negocio_direccion||'').toString().trim();
+    const tel=(cfg.negocio_telefono||'').toString().trim();
+    const ig=(cfg.negocio_instagram||'').toString().trim();
+    const tt=(cfg.negocio_tiktok||'').toString().trim();
+    const rows=[];
+    if(dir) rows.push(`<div class="fi-row"><svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${sanitize(dir)}</div>`);
+    if(tel) rows.push(`<a class="fi-row" href="tel:${sanitize(tel).replace(/\s+/g,'')}"><svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${sanitize(tel)}</a>`);
+    if(ig) rows.push(`<a class="fi-row" href="https://instagram.com/${sanitize(ig).replace(/^@/,'')}" target="_blank" rel="noopener">@${sanitize(ig).replace(/^@/,'')}</a>`);
+    if(tt) rows.push(`<a class="fi-row" href="https://tiktok.com/@${sanitize(tt).replace(/^@/,'')}" target="_blank" rel="noopener">TikTok @${sanitize(tt).replace(/^@/,'')}</a>`);
+    document.getElementById('footerInfo').innerHTML=rows.join('');
+  }catch(e){ /* config es solo decorativa acá, si falla no rompe el pedido */ }
 }
 
 function renderTabs(){
@@ -321,6 +471,35 @@ function renderTabs(){
 }
 function filtrarCategoria(c){ CATEGORIA_ACTIVA=c; renderTabs(); renderGrid(); }
 
+function renderProdCard(p){
+  const inicial=(p.nombre||'?').trim().charAt(0).toUpperCase();
+  const img=p.imagen_b64?`<img class="prod-img" src="${p.imagen_b64}" alt="">`:`<div class="prod-ph">${inicial}</div>`;
+  if(p.vender_por_peso){
+    return `
+    <div class="prod-card">
+      ${img}
+      <div class="prod-name">${p.nombre}</div>
+      <div class="prod-price num">${money(p.precio)}/kg</div>
+      <div class="wpick" id="wpick-${p.id}">
+        <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g')">250g</div>
+        <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.5,'500g')">500g</div>
+        <div class="wpick-chip" onclick="seleccionarPeso(${p.id},1,'1kg')">1kg</div>
+      </div>
+      <div class="wpick-custom" id="wcustom-${p.id}" style="display:none;">
+        <input type="number" id="wcustom-input-${p.id}" min="0.05" step="0.05" placeholder="kg (ej: 0.75)">
+      </div>
+      <button class="btn block" onclick="togglePesoPicker(${p.id})">Agregar</button>
+    </div>`;
+  }
+  return `
+  <div class="prod-card">
+    ${img}
+    <div class="prod-name">${p.nombre}</div>
+    <div class="prod-price num">${money(p.precio)}${p.unidad&&p.unidad!=='unid'?'/'+p.unidad:''}</div>
+    <button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>
+  </div>`;
+}
+
 function renderGrid(){
   const filtro=(document.getElementById('buscarInput').value||'').toLowerCase();
   const rows=PRODUCTOS.filter(p=>{
@@ -330,34 +509,20 @@ function renderGrid(){
   });
   const grid=document.getElementById('grid');
   if(!rows.length){ grid.innerHTML='<p class="empty">No hay productos disponibles</p>'; return; }
-  grid.innerHTML=rows.map(p=>{
-    const inicial=(p.nombre||'?').trim().charAt(0).toUpperCase();
-    const img=p.imagen_b64?`<img class="prod-img" src="${p.imagen_b64}" alt="">`:`<div class="prod-ph">${inicial}</div>`;
-    if(p.vender_por_peso){
-      return `
-      <div class="prod-card">
-        ${img}
-        <div class="prod-name">${p.nombre}</div>
-        <div class="prod-price num">${money(p.precio)}/kg</div>
-        <div class="wpick" id="wpick-${p.id}">
-          <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g')">250g</div>
-          <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.5,'500g')">500g</div>
-          <div class="wpick-chip" onclick="seleccionarPeso(${p.id},1,'1kg')">1kg</div>
-        </div>
-        <div class="wpick-custom" id="wcustom-${p.id}" style="display:none;">
-          <input type="number" id="wcustom-input-${p.id}" min="0.05" step="0.05" placeholder="kg (ej: 0.75)">
-        </div>
-        <button class="btn block" onclick="togglePesoPicker(${p.id})">Agregar</button>
-      </div>`;
-    }
-    return `
-    <div class="prod-card">
-      ${img}
-      <div class="prod-name">${p.nombre}</div>
-      <div class="prod-price num">${money(p.precio)}${p.unidad&&p.unidad!=='unid'?'/'+p.unidad:''}</div>
-      <button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>
-    </div>`;
-  }).join('');
+
+  if(CATEGORIA_ACTIVA){
+    grid.innerHTML=`<div class="grid">${rows.map(renderProdCard).join('')}</div>`;
+    return;
+  }
+  // "Todos": agrupar por categoría, como en la grilla de Productos del admin
+  const porCat={};
+  rows.forEach(p=>{ const c=p.categoria||'otros'; (porCat[c]=porCat[c]||[]).push(p); });
+  grid.innerHTML=Object.keys(porCat).map(c=>`
+    <div class="cat-group">
+      <div class="cat-group-title">${c.charAt(0).toUpperCase()+c.slice(1)}</div>
+      <div class="grid">${porCat[c].map(renderProdCard).join('')}</div>
+    </div>
+  `).join('');
 }
 
 function togglePesoPicker(id){
@@ -400,10 +565,35 @@ function cantidadCarrito(){ return CARRITO.reduce((s,i)=>s+(i.vender_por_peso?1:
 
 function renderCartBar(){
   const bar=document.getElementById('cartBar');
-  if(!CARRITO.length){ bar.classList.remove('show'); return; }
+  const badge=document.getElementById('hdrCartBadge');
+  if(!CARRITO.length){ bar.classList.remove('show'); badge.style.display='none'; return; }
   bar.classList.add('show');
   document.getElementById('cbCount').textContent=cantidadCarrito();
   document.getElementById('cbTotal').textContent=money(totalCarrito());
+  badge.style.display='flex';
+  badge.textContent=cantidadCarrito();
+}
+
+// ══════════════════════════════════════════════════════════
+//  GPS-ASSIST — sin API key de Google Maps todavía no hay
+//  geocodificación inversa disponible, así que solo guardamos
+//  lat/lng crudos como dato de apoyo para el equipo; el cliente
+//  igual completa calle/comuna a mano en los campos de arriba.
+// ══════════════════════════════════════════════════════════
+function usarUbicacionActual(){
+  const btn=document.getElementById('btnGps');
+  if(!('geolocation' in navigator)){ btn.style.display='none'; return; }
+  btn.disabled=true; btn.textContent='Obteniendo ubicación...';
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      GPS_COORDS={lat:pos.coords.latitude,lng:pos.coords.longitude};
+      btn.disabled=false;
+      btn.innerHTML=`<svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Usar mi ubicación actual`;
+      document.getElementById('gpsStatus').classList.add('show');
+    },
+    ()=>{ GPS_COORDS=null; btn.disabled=true; btn.style.display='none'; },
+    {enableHighAccuracy:true,timeout:8000}
+  );
 }
 
 function abrirCarrito(){
@@ -447,7 +637,8 @@ async function enviarPedido(){
   const calle=sanitize(document.getElementById('pedidoCalle').value);
   const depto=sanitize(document.getElementById('pedidoDepto').value);
   const comuna=sanitize(document.getElementById('pedidoComuna').value);
-  const notas=sanitize(document.getElementById('pedidoNotas').value);
+  let notas=sanitize(document.getElementById('pedidoNotas').value);
+  if(GPS_COORDS){ notas=(notas?notas+' | ':'')+`Ubicación GPS: ${GPS_COORDS.lat.toFixed(6)},${GPS_COORDS.lng.toFixed(6)}`; }
   if(!nombre){ toast('Ingresa tu nombre',true); return; }
   if(!telefono){ toast('Ingresa tu teléfono',true); return; }
   if(!CARRITO.length){ toast('Tu carrito está vacío',true); return; }
@@ -481,12 +672,15 @@ async function enviarPedido(){
 
 function nuevoPedido(){
   CARRITO=[];
+  GPS_COORDS=null;
+  document.getElementById('gpsStatus').classList.remove('show');
   renderCartBar();
   document.getElementById('checkoutForm').reset();
   document.getElementById('successOverlay').classList.remove('open');
 }
 
 cargarProductos();
+cargarConfig();
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/sw.js').catch(()=>{});
