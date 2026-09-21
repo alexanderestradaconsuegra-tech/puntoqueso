@@ -128,8 +128,23 @@ Esto se logra con, para cada app, sus propios archivos (no se comparte nada entr
 | `sw.js` | `puntoqueso-os.html` | `/sw.js` |
 | `sw-catalogo.js` | `catalogo.html` | `/sw.js` (mismo nombre en su propio contenedor) |
 | `icon-192.png`, `icon-512.png`, `icon-180.png` | ambas | `/icon-192.png`, `/icon-512.png`, `/icon-180.png` |
+| `favicon.png`, `favicon.ico` | ambas | `/favicon.png`, `/favicon.ico` |
+| `logo.png` | ambas | `/logo.png` (logo de marca para uso dentro de la UI, ver abajo) |
 
-Los íconos son un ícono genérico "PQ" (amarillo `#fed104` de fondo, letras oscuras `#1c1a15`) generado con Pillow porque el proyecto no tenía ningún logo/imagen de marca — si más adelante hay un logo real, basta con reemplazar esos tres PNG (mismo nombre, mismo tamaño) y no hay que tocar nada más.
+### Logo oficial
+
+El logo oficial de Punto Queso vive en `assets/logo-original.jpg` (225×225px, fondo amarillo de marca, ilustración de queso con contorno negro y texto "PUNTO QUESO"). Todos los archivos de íconos/favicon del repo (`icon-192.png`, `icon-512.png`, `icon-180.png`, `favicon.png`, `favicon.ico`, `logo.png`) están derivados de ese archivo fuente con Pillow (reescalado Lanczos) — **reemplazan** el ícono genérico "PQ" (lettermark) que se había generado antes de tener el logo real, en la misma pasada de configuración de PWA.
+
+Como el archivo fuente es de baja resolución (225×225), los íconos grandes (`icon-512.png` en particular) son un escalado hacia arriba y por lo tanto se ven algo suaves/borrosos — es una limitación real del archivo fuente, no algo que se pueda arreglar sin pedirle al dueño un logo en mayor resolución (idealmente un SVG o un PNG de al menos 1024×1024).
+
+El logo se muestra en estos lugares — si el logo cambia alguna vez, hay que regenerar los archivos derivados y estos son los puntos a revisar para que todo quede sincronizado:
+
+- **Favicon** de `puntoqueso-os.html` y `catalogo.html` (`favicon.ico` / `favicon.png`, enlazados en el `<head>`).
+- **Apple touch icon** (`icon-180.png`, ya enlazado desde la pasada de PWA anterior).
+- **Sidebar** del admin (`puntoqueso-os.html`, `.sb-brand`, junto al texto "PuntoQueso").
+- **Pantalla de login** del admin (`puntoqueso-os.html`, `#login .brand`, arriba del nombre del sistema).
+- **Header** del catálogo público (`catalogo.html`, `header.topbar`, junto al wordmark "Punto Queso").
+- **Boleta imprimible** (función `generarReciboHTML` en `puntoqueso-os.html`): el logo se referencia con una URL absoluta (`${location.origin}/logo.png`, porque la ventana de impresión se abre con `document.write` sobre `about:blank` y una ruta relativa no resolvería) y se le aplica `filter: grayscale(1) contrast(1.6)` solo en esa vista, porque las impresoras térmicas son monocromáticas y no reproducen bien fotos a color.
 
 El `sw.js`/`sw-catalogo.js` es un service worker mínimo: solo cachea el shell (el HTML) para que la app no muestre una pantalla en blanco si la conexión se corta un instante, con estrategia *network-first* (siempre intenta la red primero; solo usa la copia cacheada como último recurso). **Nunca cachea las llamadas a la API** (`api-puntoqueso.autix.pro/...`, PostgREST, Evolution API, Mercado Pago, OpenAI) — eso sigue siempre yendo directo a la red, como debe ser en un POS en vivo. Cada vez que se cambie sustancialmente `puntoqueso-os.html` o `catalogo.html` conviene subir el número de versión de `CACHE_NAME` dentro del `sw.js` correspondiente (ej. `pq-shell-v1` → `pq-shell-v2`) para forzar que los celus con la app instalada bajen el shell nuevo.
 
@@ -141,10 +156,10 @@ Si en cambio algún servicio quedó corriendo con un **bind-mount manual** de un
 
 ```bash
 # Admin (puntoqueso.autix.pro)
-scp manifest.json icon-192.png icon-512.png icon-180.png sw.js usuario@vps:/ruta/en/vps/admin/
+scp manifest.json icon-192.png icon-512.png icon-180.png favicon.png favicon.ico logo.png sw.js usuario@vps:/ruta/en/vps/admin/
 
 # Catálogo (pedidos.autix.pro) — sw-catalogo.js se sube como sw.js
-scp manifest-catalogo.json icon-192.png icon-512.png icon-180.png usuario@vps:/ruta/en/vps/catalogo/
+scp manifest-catalogo.json icon-192.png icon-512.png icon-180.png favicon.png favicon.ico logo.png usuario@vps:/ruta/en/vps/catalogo/
 scp sw-catalogo.js usuario@vps:/ruta/en/vps/catalogo/sw.js
 ```
 

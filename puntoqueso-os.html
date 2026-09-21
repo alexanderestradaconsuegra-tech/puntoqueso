@@ -7,6 +7,8 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#1c1a15">
 <link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -224,6 +226,7 @@ tr:last-child td{border-bottom:none;}
 <div id="login">
   <div class="box">
     <div class="brand">
+      <img src="logo.png" alt="Punto Queso" style="width:76px;height:76px;border-radius:16px;display:block;margin:0 auto 12px;">
       <div class="name">Punto Queso</div>
       <div class="sub">Sistema de ventas</div>
     </div>
@@ -243,7 +246,10 @@ tr:last-child td{border-bottom:none;}
 </div>
 <div id="app">
   <div class="sidebar">
-    <div class="sb-brand">Punto<span>Queso</span></div>
+    <div class="sb-brand" style="display:flex;align-items:center;gap:10px;">
+      <img src="logo.png" alt="Punto Queso" style="width:34px;height:34px;border-radius:8px;flex-shrink:0;">
+      Punto<span>Queso</span>
+    </div>
     <div class="nav-item active" data-view="dashboard" onclick="nav('dashboard')">
       <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
       Dashboard
@@ -1293,6 +1299,10 @@ function generarReciboHTML(venta,items){
     redesLinea=`Síguenos en TikTok — ${escapeHtml(tt)}`;
   }
 
+  // Logo del negocio para la boleta: URL absoluta (la ventana de impresión
+  // se abre con document.write sobre about:blank, así que una ruta relativa
+  // no resolvería contra el origen de la app).
+  const logoUrl=`${location.origin}/logo.png`;
   const fecha=venta.created_at?new Date(venta.created_at):new Date();
   const fechaStr=fecha.toLocaleDateString('es-CL')+' '+fecha.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
   const boleta=venta.boleta_numero||venta.id;
@@ -1331,6 +1341,11 @@ function generarReciboHTML(venta,items){
     box-shadow:0 4px 20px rgba(0,0,0,.12);
   }
   .r-header{text-align:center;margin-bottom:10px;}
+  /* Logo en blanco y negro de alto contraste: las impresoras térmicas son
+     monocromáticas y no renderizan bien fotos/JPEG a color, así que se
+     aplica escala de grises + contraste vía CSS solo para esta vista de
+     impresión (el archivo fuente sigue siendo el logo a color). */
+  .r-header .r-logo{width:64px;height:64px;margin:0 auto 8px;display:block;filter:grayscale(1) contrast(1.6);}
   .r-header .r-nombre{font-size:21px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;}
   .r-header .r-accent{width:46px;height:3px;background:var(--brand);margin:7px auto 9px;border-radius:2px;}
   .r-header .r-linea{font-size:11px;color:var(--ink2);line-height:1.55;}
@@ -1362,6 +1377,7 @@ function generarReciboHTML(venta,items){
 <body>
   <div class="recibo-print">
     <div class="r-header">
+      <img class="r-logo" src="${logoUrl}" alt="" onerror="this.style.display='none'">
       <div class="r-nombre">${nombreNegocio}</div>
       <div class="r-accent"></div>
       <div class="r-linea">
