@@ -137,6 +137,10 @@ tr:last-child td{border-bottom:none;}
 .pos-prod:hover{border-color:var(--brand);transform:translateY(-2px);}
 .pos-prod .pp-nombre{font-weight:700;font-size:13.5px;margin-bottom:4px;}
 .pos-prod .pp-precio{color:var(--brand-dark);font-weight:800;font-size:15px;}
+/* costo editable directo en la fila de Productos (carga rápida de costos) */
+.costo-inline{width:92px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;
+  font-size:13px;font-weight:600;text-align:right;background:#fff;color:var(--text);}
+.costo-inline:disabled{background:var(--mint);color:var(--muted);}
 .pos-prod .pp-mayor{font-size:11px;font-weight:700;color:var(--text2);background:var(--mint);border:1px solid var(--border2);border-radius:99px;padding:1px 7px;display:inline-block;margin-top:3px;}
 .pos-prod .pp-stock{font-size:11px;color:var(--muted);margin-top:3px;}
 /* interruptor normal/mayorista por línea del carrito */
@@ -556,7 +560,7 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Stock</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
       </div>
@@ -2193,22 +2197,46 @@ function stockDotColor(p){
   if(stock<=min) return 'var(--warn)';
   return 'var(--ok)';
 }
+// Margen de un producto: cuánto deja sobre el precio de venta.
+// Devuelve null si no hay costo cargado todavía (no es lo mismo que margen 0%).
+function margenProducto(p){
+  const precio=Number(p.precio)||0, costo=Number(p.costo)||0;
+  if(!costo) return null;
+  return {monto:precio-costo, pct:precio>0?((precio-costo)/precio*100):null};
+}
+async function guardarCostoInline(id,valor){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  const costo=Number(valor)||0;
+  const {error}=await supa.from('productos').update({costo}).eq('id',id);
+  if(error){ toast('Error al guardar el costo: '+error.message,true); return; }
+  const p=DB.productos.find(x=>x.id===id); if(p) p.costo=costo;
+  logAudit('Costo actualizado','productos',`${p?.nombre||'#'+id} — ${money(costo)}`);
+  renderProductos(document.getElementById('prodBuscar')?.value||'');
+}
 function renderProductos(filter=''){
   const btnNuevo=document.getElementById('btnNuevoProducto');
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
+  // Las columnas de costo/margen solo existen si el usuario puede ver costos:
+  // se ocultan los encabezados y tampoco se emiten las celdas (el dato no llega al DOM).
+  const verC=canDo('verCostos'), editar=canDo('editarInventario');
+  document.querySelectorAll('#view-productos .col-costo').forEach(el=>el.style.display=verC?'':'none');
   const rows=DB.productos
     .filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()))
     .filter(p=>PROD_CAT_FILTER==='todos'||p.categoria===PROD_CAT_FILTER);
-  document.getElementById('productosBody').innerHTML=rows.map(p=>`
+  document.getElementById('productosBody').innerHTML=rows.map(p=>{
+    const m=margenProducto(p);
+    return `
     <tr><td><input type="checkbox" class="bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)"></td>
     <td>${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
     <td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
     <td class="num">${money(p.precio)}/${p.unidad}</td>
+    ${verC?`<td class="num"><input class="costo-inline num" type="number" step="1" min="0" value="${Number(p.costo)||0}" ${editar?'':'disabled'} onchange="guardarCostoInline(${p.id},this.value)" title="Editar costo"></td>
+    <td class="num">${m?`<span style="font-weight:700;color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}</span>${m.pct!==null?`<div class="sub-xs">${m.pct.toFixed(0)}%</div>`:''}`:'<span class="sub-xs">Sin costo</span>'}</td>`:''}
     <td class="num" style="font-weight:600;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
     <td style="display:flex;gap:6px;">
-      ${canDo('editarInventario')?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
+      ${editar?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
-    </td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin productos</td></tr>';
+    </td></tr>`;}).join('')||`<tr><td colspan="${verC?9:7}" class="empty">Sin productos</td></tr>`;
 
   document.getElementById('productosCards').innerHTML=rows.map(p=>`
     <div class="lcard">
@@ -2218,6 +2246,7 @@ function renderProductos(filter=''){
         <div class="lc-main">
           <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
           <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
+          ${canDo('verCostos')?(()=>{const m=margenProducto(p);return `<div class="lc-meta">Costo: ${Number(p.costo)?money(p.costo):'—'}${m?` · Margen: <b style="color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}${m.pct!==null?` (${m.pct.toFixed(0)}%)`:''}</b>`:''}</div>`;})():''}
           <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span></div>
         </div>
         ${canDo('editarInventario')?`<div class="lc-actions">
