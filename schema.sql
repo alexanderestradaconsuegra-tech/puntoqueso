@@ -42,6 +42,10 @@ alter table productos add column if not exists vender_por_peso boolean default f
 alter table productos add column if not exists imagen_b64 text; -- foto del producto, comprimida en base64 (data URL JPEG), fuente única para POS y futuro catálogo WhatsApp
 alter table productos add column if not exists costo numeric default 0; -- costo unitario (base de margen), se actualiza al ingresar facturas de compra
 alter table productos add column if not exists descripcion text; -- descripción breve del producto, mostrada en la ficha del catálogo público
+-- precio mayorista, OPCIONAL por producto (null/0 = este producto no se vende al por mayor).
+-- Se elige por línea del carrito, no por venta completa: un mismo ticket puede llevar
+-- unos productos al por mayor y otros al detalle.
+alter table productos add column if not exists precio_mayor numeric;
 
 -- ── clientes ──
 create table if not exists clientes (
@@ -88,6 +92,9 @@ create table if not exists venta_items (
 -- (venta - costo de lo vendido) sin que cambios futuros en productos.costo
 -- reescriban silenciosamente el margen de ventas pasadas.
 alter table venta_items add column if not exists costo_unitario numeric default 0;
+-- true si esta línea se cobró al precio mayorista (para poder reportar cuánto se
+-- vendió al por mayor; el monto real cobrado siempre está en precio_unitario).
+alter table venta_items add column if not exists es_mayor boolean default false;
 
 -- ── pedidos (catálogo por WhatsApp → llegan aquí antes de facturarse) ──
 create table if not exists pedidos (
