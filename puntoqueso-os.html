@@ -1426,7 +1426,31 @@ function abrirReciboImprimir(venta,items){
 //  PEDIDOS (WhatsApp)
 // ══════════════════════════════════════════════════════════
 const PEDIDO_ETAPAS=['pendiente','preparando','en_camino','entregado'];
-const PEDIDO_ETAPA_LABEL={pendiente:'Pendiente',preparando:'Preparando',en_camino:'En camino',entregado:'Entregado',anulado:'Anulado'};
+// 'facturado' ya NO se escribe (ahora se marca con pedidos.venta_id), pero pedidos
+// históricos pueden tenerlo guardado: se mantiene la etiqueta para que el badge no
+// quede vacío y se trata como "ya facturado" (ver pedidoFacturado).
+const PEDIDO_ETAPA_LABEL={pendiente:'Pendiente',preparando:'Preparando',en_camino:'En camino',entregado:'Entregado',anulado:'Anulado',facturado:'Facturado'};
+
+// ── helpers de peso ──────────────────────────────────────
+// El sistema guarda SIEMPRE los pesos en kg (catalogo.html usa kg en
+// pedido_items.cantidad y el POS también), pero la balanza del local trabaja
+// en gramos: por eso el input del modal de preparación se muestra en g.
+function pedidoItemPorPeso(it){
+  const prod=DB.productos.find(x=>Number(x.id)===Number(it.producto_id));
+  return !!(prod&&prod.vender_por_peso);
+}
+function fmtPeso(kg){
+  const n=Number(kg)||0;
+  return n>=1?`${reciboFormatCantidad(n)}kg`:`${Math.round(n*1000)}g`;
+}
+function fmtCantidadPedido(cantidad,porPeso){
+  return porPeso?fmtPeso(cantidad):`x${reciboFormatCantidad(cantidad)}`;
+}
+// Un pedido está facturado si tiene venta_id (modelo nuevo) o si quedó con el
+// estado fantasma 'facturado' de antes de esta migración. En ambos casos no se
+// vuelve a ofrecer "Facturar": re-facturar descontaría el stock dos veces.
+function pedidoFacturado(p){ return !!p.venta_id||p.estado==='facturado'; }
+
 function renderPedidos(filter=''){
   const rows=DB.pedidos.filter(p=>(p.cliente_nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
   document.getElementById('pedidosBody').innerHTML=rows.map(p=>{
@@ -1437,25 +1461,27 @@ function renderPedidos(filter=''){
     <tr><td>#${p.id}<div style="color:var(--muted);font-size:11px;">${p.cliente_tel||'-'}</div></td>
     <td>${p.cliente_nombre||'-'}</td>
     <td style="font-size:12.5px;">${dir||'-'}</td>
-    <td class="num">${money(p.total)}</td>
+    <td class="num">${money(p.total)}${p.pesos_ajustados?`<div style="color:var(--muted);font-size:11px;">peso ajustado</div>`:''}</td>
     <td>
       <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
       ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
+      ${pedidoFacturado(p)?`<span class="badge pagado" style="margin-left:5px;">Facturado</span>`:''}
     </td>
     <td>${new Date(p.created_at).toLocaleDateString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
-      ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
-      ${p.estado==='entregado'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
-      ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="anularPedido(${p.id})">Anular</button>`:''}
-      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="generarLinkPago(${p.id})">${p.mp_link?'Ver link de pago':'Generar link de pago'}</button>
-      <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarPedido(${p.id})">Eliminar</button>
+      <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / preparar</button>
     </td></tr>`;
   }).join('')||'<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
 }
 async function avanzarEstadoPedido(id,nuevoEstado){
   const p=DB.pedidos.find(x=>x.id===id);
   if(!p) return;
+  // El flujo del local es: el cliente paga el link → recién ahí se despacha.
+  // Se avisa, pero NO se bloquea: hay entregas que se pagan contra entrega.
+  if(nuevoEstado==='en_camino'&&p.estado_pago==='pendiente'){
+    if(!confirm('Este pedido aún no está pagado. ¿Despachar de todas formas?')) return;
+  }
   await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',id);
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → ${nuevoEstado}`);
   const msg=mensajePedidoEstado(p,nuevoEstado);
@@ -1469,12 +1495,12 @@ async function anularPedido(id){
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → anulado`);
   const msg=mensajePedidoEstado(p||{id},'anulado');
   if(msg&&p?.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
-  toast('Pedido anulado'); await loadAll(); renderPedidos();
+  toast('Pedido anulado'); closeModal(); await loadAll(); renderPedidos();
 }
 async function marcarPagoPedido(id,nuevoEstadoPago){
   await supa.from('pedidos').update({estado_pago:nuevoEstadoPago}).eq('id',id);
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → pago ${nuevoEstadoPago}`);
-  toast('Pago actualizado'); await loadAll(); renderPedidos();
+  toast('Pago actualizado'); closeModal(); await loadAll(); renderPedidos();
 }
 function openPedidoModal(){
   const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre}</option>`).join('');
@@ -1529,15 +1555,43 @@ async function guardarPedido(){
 // flujo real de una entrega: la venta/boleta se cierra una vez que el cliente ya
 // recibió el pedido, no antes. El pedido sigue pudiendo estar "por cobrar"
 // (estado_pago='pendiente') al facturarse — eso no bloquea la facturación.
-async function facturarPedido(id){
+function facturarPedido(id){
   const p=DB.pedidos.find(x=>x.id===id);
   if(!p) return;
-  if(!confirm(`¿Facturar el pedido de ${p.cliente_nombre}? Se convertirá en una venta y descontará el stock.`)) return;
-  const {data:items}=await supa.from('pedido_items').select('*').eq('pedido_id',id);
+  if(pedidoFacturado(p)){ toast('Este pedido ya fue facturado',true); return; }
+  // El método de pago real ya no se asume 'efectivo': si se pagó por el link de
+  // Mercado Pago se propone 'tarjeta'. El empleado confirma o cambia — de esto
+  // dependen Contabilidad y el cierre de caja, que agrupan por metodo_pago.
+  const sugerido=(p.mp_link&&p.estado_pago==='pagado')?'tarjeta':'efectivo';
+  const opts=['efectivo','transferencia','tarjeta','mixto']
+    .map(m=>`<option value="${m}" ${m===sugerido?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('');
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Facturar pedido #${p.id}</h3>
+    <div style="font-size:13px;color:var(--text2);">Se creará una venta por <b>${money(p.total)}</b> a nombre de ${escapeHtml(p.cliente_nombre||'-')} y se descontará el stock.</div>
+    <label>Método de pago</label>
+    <select id="fpMetodo">${opts}</select>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px;">Estado de pago de la venta: <b>${p.estado_pago||'pendiente'}</b> (se toma del pedido).</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarFacturarPedido(${p.id})">Facturar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function confirmarFacturarPedido(id){
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  if(pedidoFacturado(p)){ toast('Este pedido ya fue facturado',true); return; }
+  const metodo=document.getElementById('fpMetodo').value;
+  // Siempre se leen los items frescos desde la base (no de una copia en DB):
+  // pueden haberse ajustado los pesos hace un momento y la venta debe salir
+  // con las cantidades finales realmente preparadas.
+  const {data:items,error:itErr}=await supa.from('pedido_items').select('*').eq('pedido_id',id);
+  if(itErr){ toast('Error al leer el detalle del pedido: '+itErr.message,true); console.error(itErr); return; }
   const {data:ventaIns,error}=await supa.from('ventas').insert({
-    cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:'efectivo',estado_pago:'pagado',origen:'whatsapp',registrado_por:SESSION.usuario
+    cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,
+    estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario
   }).select();
-  if(error){ toast('Error: '+error.message,true); return; }
+  if(error){ toast('Error: '+error.message,true); console.error(error); return; }
   const venta=ventaIns[0];
   for(const it of (items||[])){
     await supa.from('venta_items').insert({venta_id:venta.id,producto_id:it.producto_id,producto_nombre:it.producto_nombre,cantidad:it.cantidad,precio_unitario:it.precio_unitario,subtotal:it.subtotal});
@@ -1548,14 +1602,226 @@ async function facturarPedido(id){
       await supa.from('stock_movimientos').insert({producto_id:it.producto_id,tipo:'salida',cantidad:it.cantidad,motivo:'Pedido WhatsApp facturado',origen:'whatsapp',referencia_id:venta.id,registrado_por:SESSION.usuario});
     }
   }
-  await supa.from('pedidos').update({estado:'facturado'}).eq('id',id);
-  toast('Pedido facturado'); await loadAll(); renderPedidos();
+  // El pedido conserva su etapa real de entrega ('entregado'); la marca de
+  // facturado es venta_id, que además impide volver a facturarlo.
+  const {error:pedErr}=await supa.from('pedidos').update({venta_id:venta.id}).eq('id',id);
+  if(pedErr){
+    console.error(pedErr);
+    toast(`Venta #${venta.id} creada, pero no se pudo marcar el pedido como facturado: ${pedErr.message}. NO vuelvas a facturarlo.`,true);
+  }else{
+    toast('Pedido facturado');
+  }
+  logAudit('Pedido facturado','pedidos',`Pedido #${id} → venta #${venta.id} (${metodo}, ${p.estado_pago||'pendiente'})`);
+  closeModal(); await loadAll(); renderPedidos();
+}
+
+// ══════════════════════════════════════════════════════════
+//  DETALLE / PREPARACIÓN DEL PEDIDO
+//  Aquí el empleado ve el detalle que pidió el cliente y ajusta los
+//  pesos reales de la balanza (el corte nunca sale exacto).
+// ══════════════════════════════════════════════════════════
+let PEDIDO_DET={id:null,items:[]};
+async function abrirPedidoDetalle(id){
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  const {data:items,error}=await supa.from('pedido_items').select('*').eq('pedido_id',id).order('id');
+  if(error){ toast('Error al cargar el detalle: '+error.message,true); console.error(error); return; }
+  PEDIDO_DET={id,items:items||[]};
+  const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
+  const editable=p.estado!=='anulado'&&!pedidoFacturado(p);
+  const filas=PEDIDO_DET.items.map((it,i)=>{
+    const porPeso=pedidoItemPorPeso(it);
+    const val=porPeso?Math.round(Number(it.cantidad)*1000):Number(it.cantidad);
+    const orig=it.cantidad_original==null?null:Number(it.cantidad_original);
+    const cambio=(orig!=null&&Math.abs(orig-Number(it.cantidad))>1e-9)
+      ? `<div style="font-size:11.5px;color:var(--warn);">Pedido: ${fmtCantidadPedido(orig,porPeso)} → Real: ${fmtCantidadPedido(it.cantidad,porPeso)}</div>`:'';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13.5px;font-weight:600;">${escapeHtml(it.producto_nombre||'-')}</div>
+        <div style="font-size:11.5px;color:var(--muted);">${money(it.precio_unitario)} ${porPeso?'/ kg':'c/u'}</div>
+        ${cambio}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;width:110px;">
+        <input id="pdiQty${i}" type="number" step="${porPeso?'1':'0.1'}" min="0" value="${val}" oninput="recalcPedidoDetalle()" style="text-align:right;">
+        <span style="font-size:12px;color:var(--muted);">${porPeso?'g':'u'}</span>
+      </div>
+      <div id="pdiSub${i}" class="num" style="width:82px;text-align:right;font-weight:600;">${money(it.subtotal)}</div>
+    </div>`;
+  }).join('')||'<div style="color:var(--muted);font-size:13px;padding:8px 0;">Este pedido no tiene items.</div>';
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Pedido #${p.id} — ${escapeHtml(p.cliente_nombre||'-')}</h3>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.6;">
+      📞 ${escapeHtml(p.cliente_tel||'-')}<br>
+      📍 ${escapeHtml(dir||'Sin dirección')}<br>
+      ${p.notas?`📝 ${escapeHtml(p.notas)}<br>`:''}
+    </div>
+    <div style="margin:10px 0;">
+      <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
+      <span class="badge ${p.estado_pago==='pagado'?'pagado':'por-cobrar'}">${p.estado_pago==='pagado'?'Pagado':'Por cobrar'}</span>
+      ${pedidoFacturado(p)?`<span class="badge pagado" style="margin-left:5px;">Facturado</span>`:''}
+    </div>
+    <div style="font-size:12px;color:var(--muted);">Ajusta el peso real que saliste de la balanza. Se guarda en kg; aquí escribes gramos.</div>
+    <div style="margin-top:8px;">${filas}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:16px;font-weight:700;">
+      <span>Total</span><span id="pdiTotal" class="num">${money(p.total)}</span>
+    </div>
+    ${p.total_original!=null?`<div style="font-size:11.5px;color:var(--muted);text-align:right;">Total original del pedido: ${money(p.total_original)}</div>`:''}
+    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="guardarPesosPedido()">Guardar pesos</button></div>`:''}
+    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="enviarBoletaYLinkPago(${p.id})">📤 Enviar boleta + link de pago</button></div>`:''}
+    <div class="actions">
+      ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
+      ${p.estado==='entregado'&&!pedidoFacturado(p)?`<button class="btn secondary" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
+      ${p.mp_link?`<button class="btn secondary" onclick="mostrarLinkPago(DB.pedidos.find(x=>x.id===${p.id}))">Ver link de pago</button>`:''}
+    </div>
+    <div class="actions">
+      ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" onclick="anularPedido(${p.id})">Anular</button>`:''}
+      <button class="btn danger" onclick="eliminarPedido(${p.id})">Eliminar</button>
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  recalcPedidoDetalle();
+}
+// Lee los inputs del modal y devuelve las cantidades en kg (unidad de guardado).
+function leerCantidadesPedidoDetalle(){
+  return PEDIDO_DET.items.map((it,i)=>{
+    const el=document.getElementById('pdiQty'+i);
+    const porPeso=pedidoItemPorPeso(it);
+    let v=parseFloat(el?el.value:'');
+    if(!isFinite(v)||v<0) v=Number(it.cantidad)||0;
+    else if(porPeso) v=v/1000;
+    return v;
+  });
+}
+function recalcPedidoDetalle(){
+  const cants=leerCantidadesPedidoDetalle();
+  let total=0;
+  PEDIDO_DET.items.forEach((it,i)=>{
+    const sub=(Number(it.precio_unitario)||0)*cants[i];
+    total+=sub;
+    const el=document.getElementById('pdiSub'+i);
+    if(el) el.textContent=money(sub);
+  });
+  const t=document.getElementById('pdiTotal');
+  if(t) t.textContent=money(total);
+  return total;
+}
+async function guardarPesosPedido(){
+  const id=PEDIDO_DET.id;
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  const cants=leerCantidadesPedidoDetalle();
+  const nuevoTotal=cants.reduce((s,c,i)=>s+(Number(PEDIDO_DET.items[i].precio_unitario)||0)*c,0);
+  const cambios=PEDIDO_DET.items.map((it,i)=>({it,nueva:cants[i]})).filter(({it,nueva})=>Math.abs(nueva-Number(it.cantidad))>1e-9);
+  if(!cambios.length&&Math.abs(nuevoTotal-Number(p.total))<0.5){ toast('No hay cambios que guardar'); return; }
+  // Orden deliberado: primero los items, el pedido (padre) al final. Sin
+  // transacciones en PostgREST, si algo falla a mitad de camino los items
+  // quedan consistentes y el total es recalculable desde ellos.
+  for(const {it,nueva} of cambios){
+    const patch={cantidad:nueva,subtotal:(Number(it.precio_unitario)||0)*nueva};
+    // cantidad_original se fija SOLO en el primer ajuste: es lo que pidió el
+    // cliente y no se puede pisar en ediciones posteriores.
+    if(it.cantidad_original==null) patch.cantidad_original=Number(it.cantidad);
+    const {error}=await supa.from('pedido_items').update(patch).eq('id',it.id);
+    if(error){
+      console.error(error);
+      toast(`Error al guardar "${it.producto_nombre}": ${error.message}. El total del pedido NO se actualizó — revisa y reintenta.`,true);
+      return;
+    }
+  }
+  const patchPedido={total:nuevoTotal,pesos_ajustados:true};
+  if(p.total_original==null) patchPedido.total_original=Number(p.total);
+  const totalCambio=Math.abs(nuevoTotal-Number(p.total))>=0.5;
+  // ⚠️ El link de Mercado Pago se emitió por el monto anterior: si el total
+  // cambió, ese link cobraría mal. Se borra en el MISMO update, así nunca
+  // queda un link obsoleto alcanzable desde la UI.
+  const linkInvalidado=totalCambio&&!!p.mp_link;
+  if(linkInvalidado){ patchPedido.mp_preference_id=null; patchPedido.mp_link=null; }
+  const {error}=await supa.from('pedidos').update(patchPedido).eq('id',id);
+  if(error){
+    console.error(error);
+    toast('Los pesos se guardaron, pero falló la actualización del total del pedido: '+error.message,true);
+    return;
+  }
+  logAudit('Ajuste de pesos pedido','pedidos',`Pedido #${id}: total ${money(p.total)} → ${money(nuevoTotal)}${linkInvalidado?' (link de pago invalidado)':''}`);
+  toast(linkInvalidado?'Pesos guardados — el link de pago quedó obsoleto, vuelve a generarlo con el nuevo monto':'Pesos guardados');
+  await loadAll(); renderPedidos();
+  abrirPedidoDetalle(id);
+}
+
+// ══════════════════════════════════════════════════════════
+//  BOLETA + LINK DE PAGO por WhatsApp (acción combinada)
+// ══════════════════════════════════════════════════════════
+function nombreNegocio(){
+  const cfg=CONFIG_CACHE||{};
+  return cfg.nombre_negocio||cfg.negocio_nombre||'Punto Queso';
+}
+function mensajeBoletaPedido(p,items,link){
+  const lineas=items.map(it=>{
+    const porPeso=pedidoItemPorPeso(it);
+    const orig=it.cantidad_original==null?null:Number(it.cantidad_original);
+    const cambio=orig!=null&&Math.abs(orig-Number(it.cantidad))>1e-9;
+    const detalle=cambio
+      ?`  Pediste ${fmtCantidadPedido(orig,porPeso)} → preparamos ${fmtCantidadPedido(it.cantidad,porPeso)}\n  ${money(it.subtotal)}`
+      :`  ${fmtCantidadPedido(it.cantidad,porPeso)} — ${money(it.subtotal)}`;
+    return `• ${it.producto_nombre||''}\n${detalle}`;
+  }).join('\n');
+  return `🧀 *${nombreNegocio()}* — Pedido #${p.id}\n\n${lineas}\n\n*Total: ${money(p.total)}*\n\nPaga aquí 👉 ${link}`;
+}
+function whatsappConfigurado(){
+  return !!(CONFIG_CACHE.evolution_api_url&&CONFIG_CACHE.evolution_api_key&&CONFIG_CACHE.evolution_instance);
+}
+async function enviarBoletaYLinkPago(id){
+  const token=CONFIG_CACHE.mercadopago_access_token;
+  if(!token){ toast('Configura tu Access Token de Mercado Pago en Configuración primero',true); return; }
+  const p=DB.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  if(!(Number(p.total)>0)){ toast('El pedido no tiene monto que cobrar',true); return; }
+  // Invariante anti-link-obsoleto: la boleta SIEMPRE se envía con una
+  // preferencia recién creada por el total actual. Guardar pesos ya borra el
+  // link viejo, pero regenerar aquí cubre también cualquier otro camino que
+  // haya cambiado pedidos.total — el cliente nunca recibe un monto viejo.
+  let pref;
+  try{ pref=await crearPreferenciaMP(p,token); }
+  catch(e){ console.error(e); toast('Error de Mercado Pago: '+e.message,true); return; }
+  const {error:upErr}=await supa.from('pedidos').update({mp_preference_id:pref.id,mp_link:pref.init_point}).eq('id',id);
+  if(upErr){ console.error(upErr); toast('No se pudo guardar el link de pago: '+upErr.message,true); return; }
+  const {data:items,error:itErr}=await supa.from('pedido_items').select('*').eq('pedido_id',id).order('id');
+  if(itErr){ console.error(itErr); toast('Error al leer el detalle: '+itErr.message,true); return; }
+  const msg=mensajeBoletaPedido(p,items||[],pref.init_point);
+  if(whatsappConfigurado()&&p.cliente_tel){
+    await enviarWhatsApp(p.cliente_tel,msg);
+    toast('Boleta y link de pago enviados por WhatsApp');
+    logAudit('Boleta + link enviados','pedidos',`Pedido #${id} a ${p.cliente_tel} por ${money(p.total)}`);
+    closeModal();
+  }else{
+    // WhatsApp sin configurar (o pedido sin teléfono): nunca dejamos al
+    // empleado sin nada — se muestra el mensaje listo para copiar y pegar.
+    mostrarMensajeParaCopiar('Boleta — Pedido #'+id,msg,!p.cliente_tel?'Este pedido no tiene teléfono registrado.':'Evolution API (WhatsApp) no está configurada.');
+    logAudit('Boleta + link generados (envío manual)','pedidos',`Pedido #${id} por ${money(p.total)}`);
+  }
+  await loadAll(); renderPedidos();
+}
+function mostrarMensajeParaCopiar(titulo,mensaje,aviso){
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${escapeHtml(titulo)}</h3>
+    ${aviso?`<div style="font-size:12.5px;color:var(--warn);">${escapeHtml(aviso)} Copia el mensaje y envíalo tú mismo.</div>`:''}
+    <textarea id="msgCopiar" rows="12" style="margin-top:10px;font-size:12.5px;">${escapeHtml(mensaje)}</textarea>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      <button class="btn" onclick="copiarMensajeModal()">Copiar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function copiarMensajeModal(){
+  const val=document.getElementById('msgCopiar').value;
+  try{ await navigator.clipboard.writeText(val); toast('Mensaje copiado'); }
+  catch(e){ toast('No se pudo copiar automáticamente — selecciona y copia manualmente',true); }
 }
 async function eliminarPedido(id){
   if(!confirm('¿Eliminar este pedido?')) return;
   await supa.from('pedido_items').delete().eq('pedido_id',id);
   await supa.from('pedidos').delete().eq('id',id);
-  toast('Pedido eliminado'); await loadAll(); renderPedidos();
+  toast('Pedido eliminado'); closeModal(); await loadAll(); renderPedidos();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2053,10 +2319,14 @@ async function enviarWhatsApp(telefono,mensaje){
     });
   }catch(e){ console.error('Error enviando WhatsApp:',e); }
 }
+// Avisos de etapa: se mantienen CORTOS a propósito. El detalle (items, pesos
+// reales ajustados, total y link de pago) va en el mensaje de boleta
+// (mensajeBoletaPedido), así el cliente no recibe dos mensajes casi iguales
+// cuando el empleado manda la boleta y enseguida avanza la etapa.
 function mensajePedidoEstado(p,estado){
   const nombre=p.cliente_nombre||'';
   switch(estado){
-    case 'preparando': return `Hola ${nombre}! Tu pedido #${p.id} en Punto Queso está siendo preparado 🧀`;
+    case 'preparando': return `Hola ${nombre}! Tu pedido #${p.id} en ${nombreNegocio()} está siendo preparado 🧀`;
     case 'en_camino': return `Tu pedido #${p.id} va en camino 🚚`;
     case 'entregado': return `Tu pedido #${p.id} fue entregado. ¡Gracias por tu compra!`;
     case 'anulado': return `Tu pedido #${p.id} fue anulado. Cualquier duda contáctanos.`;
@@ -2078,18 +2348,24 @@ async function generarLinkPago(id){
   if(p.mp_link){ mostrarLinkPago(p); return; }
   await regenerarLinkPago(id,token,p);
 }
+// Única llamada a la API de Mercado Pago: la usan tanto "Generar/Regenerar link"
+// como "Enviar boleta + link de pago". Siempre cobra el total ACTUAL del pedido.
+async function crearPreferenciaMP(p,token){
+  const res=await fetch('https://api.mercadopago.com/checkout/preferences',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+    body:JSON.stringify({
+      items:[{title:`Pedido #${p.id} - ${nombreNegocio()}`,quantity:1,unit_price:Number(p.total)||0,currency_id:'CLP'}],
+      external_reference:String(p.id)
+    })
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok||!data.init_point) throw new Error(data.message||res.statusText||'respuesta inválida');
+  return data;
+}
 async function regenerarLinkPago(id,token,p){
   try{
-    const res=await fetch('https://api.mercadopago.com/checkout/preferences',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-      body:JSON.stringify({
-        items:[{title:`Pedido #${p.id} - Punto Queso`,quantity:1,unit_price:Number(p.total)||0,currency_id:'CLP'}],
-        external_reference:String(p.id)
-      })
-    });
-    const data=await res.json();
-    if(!res.ok||!data.init_point){ toast('Error de Mercado Pago: '+(data.message||res.statusText),true); return; }
+    const data=await crearPreferenciaMP(p,token);
     await supa.from('pedidos').update({mp_preference_id:data.id,mp_link:data.init_point}).eq('id',id);
     logAudit('Link de pago generado','pedidos',`Pedido #${id}`);
     await loadAll();
@@ -2101,6 +2377,7 @@ async function regenerarLinkPago(id,token,p){
 function mostrarLinkPago(p){
   document.getElementById('modalContent').innerHTML=`
     <h3>Link de pago — Pedido #${p.id}</h3>
+    <div style="font-size:12.5px;color:var(--text2);">Monto actual del pedido: <b>${money(p.total)}</b>. Si ajustas pesos después, este link se borra solo y hay que generarlo de nuevo.</div>
     <label>Link de Mercado Pago</label>
     <input id="mpLinkInput" readonly value="${p.mp_link}">
     <div class="actions">

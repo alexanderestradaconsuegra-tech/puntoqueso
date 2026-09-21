@@ -118,6 +118,18 @@ create table if not exists pedido_items (
   subtotal numeric,
   created_at timestamptz default now()
 );
+-- cantidad que pidió el cliente en el catálogo, ANTES de ajustar el peso real
+-- en la balanza. Se escribe una sola vez (el primer ajuste) para que la
+-- comparación "pediste X → preparamos Y" siga siendo verdadera.
+alter table pedido_items add column if not exists cantidad_original numeric;
+
+-- total del pedido tal como lo hizo el cliente (se fija en el primer ajuste de pesos)
+alter table pedidos add column if not exists total_original numeric;
+alter table pedidos add column if not exists pesos_ajustados boolean default false;
+-- se llena al facturar; reemplaza el estado fantasma 'facturado' (que no era
+-- una etapa válida de PEDIDO_ETAPAS y rompía el badge/botón de avance).
+-- Además sirve de guarda contra doble facturación (doble descuento de stock).
+alter table pedidos add column if not exists venta_id bigint references ventas(id) on delete set null;
 
 -- ── gastos ──
 create table if not exists gastos (
