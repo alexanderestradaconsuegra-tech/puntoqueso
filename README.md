@@ -102,6 +102,14 @@ El **Access Token** de tu cuenta de Mercado Pago Chile se configura en **Configu
 
 **Por qué esto es admin-only y no está en `catalogo.html`:** el Access Token es una credencial secreta de tu cuenta de Mercado Pago. `catalogo.html` es una página pública sin login que cualquiera puede abrir — si el token se usara ahí, quedaría expuesto en las peticiones de red a cada visitante del catálogo. Por eso la generación del link vive exclusivamente en el sistema admin (autenticado), y el catálogo público nunca hace ninguna llamada a Mercado Pago. El link ya generado se guarda en `pedidos.mp_link`/`pedidos.mp_preference_id` para poder reutilizarlo o regenerarlo después sin volver a exponer el token en ningún lado público.
 
+## OpenAI (lectura de facturas de compra)
+
+La **API Key** de OpenAI se configura en **Configuración → OpenAI (lectura de facturas)** (admin, con login). Con eso guardado, en **Proveedores → Nueva factura de compra** aparece un campo para subir una **foto de la factura**: la imagen se comprime en el navegador y se envía a la API de OpenAI (`gpt-4o-mini`, visión) para extraer proveedor, número de factura, fecha y las líneas de producto (nombre, cantidad, costo unitario).
+
+El resultado **solo pre-llena el formulario existente** — proveedor, número, fecha e ítems — y nunca guarda nada por sí solo. Los productos detectados que no coinciden con ningún producto del catálogo quedan marcados con una advertencia y un selector vacío: el admin debe asignarlos manualmente (o eliminarlos) antes de que el botón **"Guardar factura"** quede habilitado para esa línea. El admin siempre revisa y confirma los datos antes de que la factura toque stock/inventario, igual que el resto de las importaciones de este sistema.
+
+**Misma postura de seguridad que Mercado Pago:** la API Key de OpenAI es una credencial secreta y se usa exclusivamente desde el sistema admin autenticado (`puntoqueso-os.html`), nunca desde `catalogo.html`, que es público y sin login.
+
 ## Pendiente (próximos pasos)
 
 - Nada pendiente de WhatsApp/MercadoPago por ahora — ambas integraciones están implementadas y solo falta que completes tus credenciales reales en Configuración.
