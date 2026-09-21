@@ -5,7 +5,7 @@
 //
 // VERSIONING: bump CACHE_NAME (e.g. pq-catalogo-shell-v2) on every deploy that changes
 // catalogo.html, so old clients pick up the new shell instead of a stale cache.
-const CACHE_NAME = 'pq-catalogo-shell-v1';
+const CACHE_NAME = 'pq-catalogo-shell-v2';
 const SHELL_URLS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
   if (req.mode !== 'navigate' && req.destination !== 'document') return;
 
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-store' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy)).catch(() => {});
