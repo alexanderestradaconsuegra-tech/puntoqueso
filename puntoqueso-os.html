@@ -2255,6 +2255,7 @@ function openProductoModal(id){
     <label>Stock actual</label><input id="prStock" type="number" step="0.1" value="${p.stock||0}">
     <label>Stock mínimo (alerta)</label><input id="prStockMin" type="number" step="0.1" value="${p.stock_minimo||0}">
     <label>SKU / código de barras</label><input id="prSku" value="${p.sku||''}">
+    <label>Descripción</label><textarea id="prDescripcion" rows="3" placeholder="Descripción breve para el catálogo público">${p.descripcion||''}</textarea>
     <label>Foto del producto</label>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
       <div id="prFotoPreview"></div>
@@ -2285,6 +2286,7 @@ async function guardarProducto(id){
     stock:Number(document.getElementById('prStock').value)||0,
     stock_minimo:Number(document.getElementById('prStockMin').value)||0,
     sku:sanitize(document.getElementById('prSku').value)||null,
+    descripcion:sanitize(document.getElementById('prDescripcion').value)||null,
     vender_por_peso:document.getElementById('prVenderPeso').checked,
     imagen_b64:_prodImagenB64||null,
     updated_at:new Date().toISOString()

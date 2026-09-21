@@ -41,6 +41,7 @@ alter table productos add column if not exists codigo_barras text;
 alter table productos add column if not exists vender_por_peso boolean default false;
 alter table productos add column if not exists imagen_b64 text; -- foto del producto, comprimida en base64 (data URL JPEG), fuente única para POS y futuro catálogo WhatsApp
 alter table productos add column if not exists costo numeric default 0; -- costo unitario (base de margen), se actualiza al ingresar facturas de compra
+alter table productos add column if not exists descripcion text; -- descripción breve del producto, mostrada en la ficha del catálogo público
 
 -- ── clientes ──
 create table if not exists clientes (

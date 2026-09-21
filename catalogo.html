@@ -82,6 +82,22 @@ main{max-width:960px;margin:0 auto;padding:0 0 20px;}
 
 .section-title{font-size:16px;font-weight:800;margin:22px 0 10px;}
 
+/* ── BRAND STORY ── */
+.story{padding:0 14px;margin-bottom:22px;}
+.story-inner{max-width:960px;margin:0 auto;background:#fff;border:1.5px solid var(--border);border-radius:var(--r-md);padding:18px 20px;}
+.story-inner h2{font-size:15px;margin-bottom:6px;}
+.story-inner p{color:var(--text2);font-size:13px;line-height:1.6;max-width:64ch;}
+
+/* ── PRODUCT DETAIL SHEET ── */
+.detail-img-wrap{width:100%;aspect-ratio:1.3/1;border-radius:var(--r-md);overflow:hidden;background:var(--mint);margin-bottom:14px;}
+.detail-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;}
+.detail-ph{width:100%;aspect-ratio:1.3/1;border-radius:var(--r-md);margin-bottom:14px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:52px;}
+.detail-cat{display:inline-block;background:var(--mint);color:var(--brand-dark);font-weight:700;font-size:11px;padding:4px 10px;border-radius:99px;text-transform:capitalize;margin-bottom:8px;}
+.detail-name{font-size:18px;font-weight:800;margin-bottom:4px;}
+.detail-price{color:var(--brand-dark);font-weight:800;font-size:17px;margin-bottom:12px;}
+.detail-desc{color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:16px;}
+.detail-desc.empty{color:var(--muted);font-style:italic;}
+
 .search-bar{margin-bottom:14px;}
 .search-bar input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:#fff;}
 .search-bar input:focus{border-color:var(--brand);}
@@ -91,10 +107,16 @@ main{max-width:960px;margin:0 auto;padding:0 0 20px;}
 .cat-tab.active{background:var(--brand);color:var(--brand-text);border-color:var(--brand);}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
-.prod-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-md);padding:12px;box-shadow:var(--sh);display:flex;flex-direction:column;}
-.prod-img{width:100%;height:100px;object-fit:cover;border-radius:var(--r-sm);margin-bottom:8px;background:var(--mint);}
-.prod-ph{width:100%;height:100px;border-radius:var(--r-sm);margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:30px;}
+.prod-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-md);padding:12px;box-shadow:var(--sh);display:flex;flex-direction:column;transition:transform .15s cubic-bezier(.2,.7,.3,1);}
+.prod-card:active{transform:scale(.97);}
+.prod-tap{display:block;cursor:pointer;border-radius:var(--r-sm);}
+.prod-tap:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px;border-radius:var(--r-sm);}
+.prod-img-wrap{width:100%;aspect-ratio:1.4/1;border-radius:var(--r-sm);margin-bottom:8px;overflow:hidden;background:var(--mint);}
+.prod-img{width:100%;height:100%;object-fit:cover;display:block;}
+.prod-ph{width:100%;aspect-ratio:1.4/1;border-radius:var(--r-sm);margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:30px;}
 .prod-name{font-weight:700;font-size:13.5px;margin-bottom:3px;}
+.prod-name-tap{cursor:pointer;}
+.prod-name-tap:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px;border-radius:4px;}
 .prod-price{color:var(--brand-dark);font-weight:800;font-size:15px;margin-bottom:8px;}
 .prod-card .btn{width:100%;justify-content:center;margin-top:auto;}
 
@@ -244,6 +266,14 @@ form textarea{resize:vertical;min-height:64px;}
   </div>
 </div>
 
+<section class="story">
+  <div class="story-inner">
+    <h2>Nuestra historia</h2>
+    <!-- Editar este texto para personalizar la historia de la marca -->
+    <p>Somos una quesería y fiambrería de barrio: elegimos cada producto probando calidad y frescura antes de ponerlo en el mostrador. Trabajamos con proveedores locales y cuidamos la cadena de frío desde que llega a la tienda hasta que te lo entregamos. Gracias por preferir un negocio de cercanía.</p>
+  </div>
+</section>
+
 <main id="menu" class="wrap">
   <div class="search-bar">
     <input type="text" id="buscarInput" placeholder="Buscar producto..." oninput="renderGrid()">
@@ -344,6 +374,19 @@ form textarea{resize:vertical;min-height:64px;}
         <button type="submit" class="btn block" id="btnEnviarPedido" style="margin-top:18px;">Enviar pedido</button>
       </form>
     </div>
+  </div>
+</div>
+
+<!-- DETALLE PRODUCTO -->
+<div class="overlay" id="detailOverlay" onclick="if(event.target===this)cerrarDetalle()">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Detalle</h2>
+      <div class="sheet-close" onclick="cerrarDetalle()" role="button" aria-label="Cerrar" style="width:44px;height:44px;">
+        <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+    </div>
+    <div class="sheet-body" id="detailBody"></div>
   </div>
 </div>
 
@@ -478,12 +521,16 @@ function filtrarCategoria(c){ CATEGORIA_ACTIVA=c; renderTabs(); renderGrid(); }
 
 function renderProdCard(p){
   const inicial=(p.nombre||'?').trim().charAt(0).toUpperCase();
-  const img=p.imagen_b64?`<img class="prod-img" src="${p.imagen_b64}" alt="">`:`<div class="prod-ph">${inicial}</div>`;
+  const nombreAttr=(p.nombre||'').replace(/"/g,'&quot;');
+  const img=p.imagen_b64
+    ?`<div class="prod-img-wrap prod-tap" tabindex="0" role="button" aria-label="Ver detalle de ${nombreAttr}" onclick="abrirDetalle(${p.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();abrirDetalle(${p.id})}"><img class="prod-img" src="${p.imagen_b64}" alt="${nombreAttr}"></div>`
+    :`<div class="prod-ph prod-tap" tabindex="0" role="button" aria-label="Ver detalle de ${nombreAttr}" onclick="abrirDetalle(${p.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();abrirDetalle(${p.id})}">${inicial}</div>`;
+  const nombreEl=`<div class="prod-name prod-name-tap" tabindex="0" role="button" aria-label="Ver detalle de ${nombreAttr}" onclick="abrirDetalle(${p.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();abrirDetalle(${p.id})}">${p.nombre}</div>`;
   if(p.vender_por_peso){
     return `
     <div class="prod-card">
       ${img}
-      <div class="prod-name">${p.nombre}</div>
+      ${nombreEl}
       <div class="prod-price num">${money(p.precio)}/kg</div>
       <div class="wpick" id="wpick-${p.id}">
         <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g')">250g</div>
@@ -499,7 +546,7 @@ function renderProdCard(p){
   return `
   <div class="prod-card">
     ${img}
-    <div class="prod-name">${p.nombre}</div>
+    ${nombreEl}
     <div class="prod-price num">${money(p.precio)}${p.unidad&&p.unidad!=='unid'?'/'+p.unidad:''}</div>
     <button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>
   </div>`;
@@ -529,6 +576,41 @@ function renderGrid(){
     </div>
   `).join('');
 }
+
+function abrirDetalle(id){
+  const p=PRODUCTOS.find(x=>x.id===id);
+  if(!p) return;
+  const inicial=(p.nombre||'?').trim().charAt(0).toUpperCase();
+  const img=p.imagen_b64?`<div class="detail-img-wrap"><img src="${p.imagen_b64}" alt="${p.nombre||''}"></div>`:`<div class="detail-ph">${inicial}</div>`;
+  const desc=(p.descripcion||'').toString().trim();
+  const descHtml=desc?`<p class="detail-desc">${desc}</p>`:`<p class="detail-desc empty">Sin descripción</p>`;
+  const precioTxt=p.vender_por_peso?`${money(p.precio)}/kg`:`${money(p.precio)}${p.unidad&&p.unidad!=='unid'?'/'+p.unidad:''}`;
+  let controls;
+  if(p.vender_por_peso){
+    controls=`
+      <div class="wpick" id="wpick-detail-${p.id}">
+        <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g');cerrarDetalle();">250g</div>
+        <div class="wpick-chip" onclick="seleccionarPeso(${p.id},0.5,'500g');cerrarDetalle();">500g</div>
+        <div class="wpick-chip" onclick="seleccionarPeso(${p.id},1,'1kg');cerrarDetalle();">1kg</div>
+      </div>
+      <div class="wpick-custom">
+        <input type="number" id="wcustom-input-detail-${p.id}" min="0.05" step="0.05" placeholder="kg (ej: 0.75)">
+        <button class="btn secondary" onclick="const v=parseFloat(document.getElementById('wcustom-input-detail-${p.id}').value); if(v>0){seleccionarPeso(${p.id},v,v>=1?v+'kg':Math.round(v*1000)+'g');cerrarDetalle();}">Agregar</button>
+      </div>`;
+  }else{
+    controls=`<button class="btn block" onclick="agregarAlCarrito(${p.id});cerrarDetalle();">Agregar</button>`;
+  }
+  document.getElementById('detailBody').innerHTML=`
+    ${img}
+    <span class="detail-cat">${p.categoria||'otros'}</span>
+    <div class="detail-name">${p.nombre||''}</div>
+    <div class="detail-price num">${precioTxt}</div>
+    ${descHtml}
+    ${controls}
+  `;
+  document.getElementById('detailOverlay').classList.add('open');
+}
+function cerrarDetalle(){ document.getElementById('detailOverlay').classList.remove('open'); }
 
 function togglePesoPicker(id){
   const w=document.getElementById('wpick-'+id);
