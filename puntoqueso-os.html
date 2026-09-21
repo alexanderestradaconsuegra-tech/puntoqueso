@@ -1131,7 +1131,8 @@ async function renderDashboard(){
     <div class="kpi-card"><div class="kpi-label">Ventas esta semana</div><div class="kpi-value num">${money(totalSemana)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Ventas este mes</div><div class="kpi-value num">${money(totalVentasMes)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Gastos este mes</div><div class="kpi-value num">${money(totalGastosMes)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Ganancia neta (mes)</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Ganancia neta (ventas - gastos)</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+    ${canDo('verCostos')?'<div class="kpi-card" id="kpiMargenBrutoMes"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num">…</div></div>':''}
     <div class="kpi-card"><div class="kpi-label">Pedidos pendientes</div><div class="kpi-value num">${pendientes.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Stock bajo</div><div class="kpi-value num" style="color:${bajoStock.length?'var(--danger)':'inherit'}">${bajoStock.length}</div></div>
   `;
@@ -1143,7 +1144,7 @@ async function renderDashboard(){
   renderChartVentas14d();
   renderChartPedidosEstado();
   renderChartGastosCategoria(gastosMes);
-  await renderChartTopProductos(monthISO);
+  await renderChartTopProductos(monthISO,ganancia);
 }
 
 // ── Gráfico de barras (inline SVG) — ventas de los últimos 14 días ──
@@ -1213,23 +1214,38 @@ function renderChartGastosCategoria(gastosMes){
 }
 
 // ── Top 5 productos por monto vendido (venta_items del mes en curso) ──
-async function renderChartTopProductos(monthISO){
+async function renderChartTopProductos(monthISO,ganancia){
   const el=document.getElementById('chartTopProductos');
-  const {data,error}=await supa.from('venta_items').select('producto_nombre,subtotal,created_at').gte('created_at',monthISO);
+  const {data,error}=await supa.from('venta_items').select('producto_nombre,cantidad,subtotal,costo_unitario,created_at').gte('created_at',monthISO);
   if(error){ el.innerHTML='<p class="empty">No se pudo cargar</p>'; return; }
   const items=data||[];
+  // Margen bruto del mes (KPI del Dashboard, gated por verCostos): revenue - COGS
+  // usando el costo_unitario congelado en cada venta_item, no productos.costo actual.
+  const kpiMargen=document.getElementById('kpiMargenBrutoMes');
+  if(kpiMargen){
+    const margenBruto=items.reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
+    kpiMargen.querySelector('.kpi-value').textContent=money(margenBruto);
+    kpiMargen.querySelector('.kpi-value').style.color=margenBruto<0?'var(--danger)':'var(--ok)';
+  }
   if(!items.length){ el.innerHTML='<p class="empty">Aún no hay ventas este mes</p>'; return; }
   const byProd={};
-  items.forEach(it=>{ const n=it.producto_nombre||'—'; byProd[n]=(byProd[n]||0)+Number(it.subtotal||0); });
-  const top=Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const max=Math.max(...top.map(t=>t[1]));
-  el.innerHTML=top.map(([nombre,val])=>`
+  items.forEach(it=>{
+    const n=it.producto_nombre||'—';
+    if(!byProd[n]) byProd[n]={monto:0,margen:0};
+    byProd[n].monto+=Number(it.subtotal||0);
+    byProd[n].margen+=Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0);
+  });
+  const top=Object.entries(byProd).sort((a,b)=>b[1].monto-a[1].monto).slice(0,5);
+  const max=Math.max(...top.map(t=>t[1].monto));
+  const verCostos=canDo('verCostos');
+  el.innerHTML=top.map(([nombre,d])=>`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">
       <span style="width:110px;font-size:12px;color:var(--text2);flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${nombre}">${nombre}</span>
       <div style="flex:1;background:var(--border);border-radius:6px;height:14px;overflow:hidden;">
-        <div style="width:${Math.round((val/max)*100)}%;height:100%;background:var(--brand);border-radius:6px;"></div>
+        <div style="width:${Math.round((d.monto/max)*100)}%;height:100%;background:var(--brand);border-radius:6px;"></div>
       </div>
-      <b class="num" style="width:70px;text-align:right;font-size:12.5px;">${money(val)}</b>
+      <b class="num" style="width:70px;text-align:right;font-size:12.5px;">${money(d.monto)}</b>
+      ${verCostos?`<b class="num" style="width:70px;text-align:right;font-size:11.5px;color:var(--text2);" title="Margen bruto">${money(d.margen)}</b>`:''}
     </div>`).join('');
 }
 
@@ -1460,12 +1476,13 @@ async function cobrar(){
   const itemsParaBoleta=[];
   for(const item of CARRITO){
     const producto_nombre=item.nombre+(item.qtyLabel?` (${item.qtyLabel})`:'');
+    const prod=DB.productos.find(p=>p.id===item.producto_id);
     await supa.from('venta_items').insert({
       venta_id:venta.id,producto_id:item.producto_id,producto_nombre,
-      cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad
+      cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad,
+      costo_unitario:Number(prod?.costo)||0
     });
     itemsParaBoleta.push({producto_nombre,cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad});
-    const prod=DB.productos.find(p=>p.id===item.producto_id);
     if(prod){
       const nuevoStock=Math.max(0,Number(prod.stock)-item.cantidad);
       await supa.from('productos').update({stock:nuevoStock}).eq('id',item.producto_id);
@@ -1839,8 +1856,8 @@ async function confirmarFacturarPedido(id){
   if(error){ toast('Error: '+error.message,true); console.error(error); return; }
   const venta=ventaIns[0];
   for(const it of (items||[])){
-    await supa.from('venta_items').insert({venta_id:venta.id,producto_id:it.producto_id,producto_nombre:it.producto_nombre,cantidad:it.cantidad,precio_unitario:it.precio_unitario,subtotal:it.subtotal});
     const prod=DB.productos.find(x=>x.id===it.producto_id);
+    await supa.from('venta_items').insert({venta_id:venta.id,producto_id:it.producto_id,producto_nombre:it.producto_nombre,cantidad:it.cantidad,precio_unitario:it.precio_unitario,subtotal:it.subtotal,costo_unitario:Number(prod?.costo)||0});
     if(prod){
       const nuevoStock=Math.max(0,Number(prod.stock)-Number(it.cantidad));
       await supa.from('productos').update({stock:nuevoStock}).eq('id',it.producto_id);
@@ -2251,8 +2268,9 @@ function openProductoModal(id){
       <option value="kg" ${(!p.unidad||p.unidad==='kg')?'selected':''}>Kilos</option>
       <option value="unid" ${p.unidad==='unid'?'selected':''}>Unidad</option>
     </select>
-    <label>Precio</label><input id="prPrecio" type="number" step="1" value="${p.precio||0}">
-    ${canDo('verCostos')?`<label>Costo unitario</label><input id="prCosto" type="number" step="1" value="${p.costo||0}">`:''}
+    <label>Precio</label><input id="prPrecio" type="number" step="1" value="${p.precio||0}" ${canDo('verCostos')?"oninput=\"actualizarMargenProducto()\"":''}>
+    ${canDo('verCostos')?`<label>Costo unitario</label><input id="prCosto" type="number" step="1" value="${p.costo||0}" oninput="actualizarMargenProducto()">
+    <div id="prMargen" style="font-size:12.5px;color:var(--text2);margin-top:-4px;margin-bottom:8px;"></div>`:''}
     <label>Stock actual</label><input id="prStock" type="number" step="0.1" value="${p.stock||0}">
     <label>Stock mínimo (alerta)</label><input id="prStockMin" type="number" step="0.1" value="${p.stock_minimo||0}">
     <label>SKU / código de barras</label><input id="prSku" value="${p.sku||''}">
@@ -2275,6 +2293,16 @@ function openProductoModal(id){
     </div>`;
   renderProductoFotoPreview();
   document.getElementById('modalBg').style.display='flex';
+  if(document.getElementById('prMargen')) actualizarMargenProducto();
+}
+function actualizarMargenProducto(){
+  const el=document.getElementById('prMargen');
+  if(!el) return;
+  const precio=Number(document.getElementById('prPrecio').value)||0;
+  const costo=Number(document.getElementById('prCosto').value)||0;
+  const margen=precio-costo;
+  const pct=precio>0?((margen/precio)*100).toFixed(1)+'%':'—';
+  el.textContent=`Margen: ${money(margen)} (${pct})`;
 }
 async function guardarProducto(id){
   if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
@@ -3150,11 +3178,22 @@ async function generarReporteRango(){
   const ganancia=totalVentas-totalGastos;
   const porMetodo={};
   REP_VENTAS.forEach(v=>{ const m=v.metodo_pago||'efectivo'; porMetodo[m]=(porMetodo[m]||0)+Number(v.total||0); });
+  let margenTile='';
+  if(canDo('verCostos')){
+    const ventaIds=REP_VENTAS.map(v=>v.id);
+    let margenBruto=0;
+    if(ventaIds.length){
+      const {data:itemsR}=await supa.from('venta_items').select('cantidad,subtotal,costo_unitario').in('venta_id',ventaIds);
+      margenBruto=(itemsR||[]).reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
+    }
+    margenTile=`<div class="kpi-card"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num" style="color:${margenBruto<0?'var(--danger)':'var(--ok)'}">${money(margenBruto)}</div></div>`;
+  }
   document.getElementById('repResultado').innerHTML=`
     <div class="kpi-grid" style="margin-top:16px;">
       <div class="kpi-card"><div class="kpi-label">Total ventas</div><div class="kpi-value num">${money(totalVentas)}</div><div class="kpi-sub">${REP_VENTAS.length} boletas</div></div>
       <div class="kpi-card"><div class="kpi-label">Total gastos</div><div class="kpi-value num">${money(totalGastos)}</div><div class="kpi-sub">${REP_GASTOS.length} gastos</div></div>
-      <div class="kpi-card"><div class="kpi-label">Ganancia neta</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ganancia neta (ventas - gastos)</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+      ${margenTile}
     </div>
     <h4 style="margin:10px 0;font-size:13px;">Ventas por método de pago</h4>
     ${Object.entries(porMetodo).map(([m,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;"><span style="text-transform:capitalize;">${m}</span><b class="num">${money(v)}</b></div>`).join('')||'<p class="empty">Sin ventas en el rango</p>'}

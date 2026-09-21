@@ -84,6 +84,10 @@ create table if not exists venta_items (
   subtotal numeric not null,
   created_at timestamptz default now()
 );
+-- Costo del producto AL MOMENTO DE LA VENTA, para calcular margen bruto real
+-- (venta - costo de lo vendido) sin que cambios futuros en productos.costo
+-- reescriban silenciosamente el margen de ventas pasadas.
+alter table venta_items add column if not exists costo_unitario numeric default 0;
 
 -- ── pedidos (catálogo por WhatsApp → llegan aquí antes de facturarse) ──
 create table if not exists pedidos (
