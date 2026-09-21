@@ -1,0 +1,14 @@
+{
+  "name": "Punto Queso — Pedidos",
+  "short_name": "Pedidos",
+  "description": "Catálogo público de Punto Queso. Arma tu pedido y te contactamos para confirmar.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf6ea",
+  "theme_color": "#fed104",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

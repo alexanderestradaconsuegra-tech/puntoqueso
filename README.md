@@ -110,6 +110,44 @@ El resultado **solo pre-llena el formulario existente** — proveedor, número, 
 
 **Misma postura de seguridad que Mercado Pago:** la API Key de OpenAI es una credencial secreta y se usa exclusivamente desde el sistema admin autenticado (`puntoqueso-os.html`), nunca desde `catalogo.html`, que es público y sin login.
 
+## PWA / Instalación como app
+
+Ambos sistemas (`puntoqueso-os.html` en `puntoqueso.autix.pro` y `catalogo.html` en `pedidos.autix.pro`) son instalables como app en el celular:
+
+- **Android/Chrome:** menú (⋮) → "Instalar app" / "Agregar a pantalla de inicio".
+- **iOS Safari:** botón de compartir (□↑) → "Agregar a pantalla de inicio".
+
+Una vez instalados abren en pantalla completa (sin barra de direcciones), con ícono propio y color de estado a juego con la marca — se sienten como una app nativa aunque siguen siendo la misma página web de siempre.
+
+Esto se logra con, para cada app, sus propios archivos (no se comparte nada entre las dos porque cada una vive en su propio contenedor nginx con su propio dominio):
+
+| Archivo (repo) | Para | Sirve como |
+|---|---|---|
+| `manifest.json` | `puntoqueso-os.html` | `/manifest.json` |
+| `manifest-catalogo.json` | `catalogo.html` | `/manifest-catalogo.json` |
+| `sw.js` | `puntoqueso-os.html` | `/sw.js` |
+| `sw-catalogo.js` | `catalogo.html` | `/sw.js` (mismo nombre en su propio contenedor) |
+| `icon-192.png`, `icon-512.png`, `icon-180.png` | ambas | `/icon-192.png`, `/icon-512.png`, `/icon-180.png` |
+
+Los íconos son un ícono genérico "PQ" (amarillo `#fed104` de fondo, letras oscuras `#1c1a15`) generado con Pillow porque el proyecto no tenía ningún logo/imagen de marca — si más adelante hay un logo real, basta con reemplazar esos tres PNG (mismo nombre, mismo tamaño) y no hay que tocar nada más.
+
+El `sw.js`/`sw-catalogo.js` es un service worker mínimo: solo cachea el shell (el HTML) para que la app no muestre una pantalla en blanco si la conexión se corta un instante, con estrategia *network-first* (siempre intenta la red primero; solo usa la copia cacheada como último recurso). **Nunca cachea las llamadas a la API** (`api-puntoqueso.autix.pro/...`, PostgREST, Evolution API, Mercado Pago, OpenAI) — eso sigue siempre yendo directo a la red, como debe ser en un POS en vivo. Cada vez que se cambie sustancialmente `puntoqueso-os.html` o `catalogo.html` conviene subir el número de versión de `CACHE_NAME` dentro del `sw.js` correspondiente (ej. `pq-shell-v1` → `pq-shell-v2`) para forzar que los celus con la app instalada bajen el shell nuevo.
+
+### Requisito de deploy
+
+No hace falta configuración extra de nginx (sirve estos archivos como estáticos igual que el HTML), pero **si el deploy en el VPS usa el patrón de imagen Docker construida por EasyPanel a partir del `Dockerfile`** (como está documentado arriba), ya está resuelto: `Dockerfile` (admin) y `Dockerfile.catalogo` (catálogo) fueron actualizados para copiar también `manifest*.json`, `sw*.js` y los tres `icon-*.png` a `/usr/share/nginx/html/` — con volver a construir/desplegar el servicio en EasyPanel desde este repo alcanza, no hay pasos manuales sueltos en el VPS.
+
+Si en cambio algún servicio quedó corriendo con un **bind-mount manual** de un solo archivo (`-v /ruta/en/vps/puntoqueso-os.html:/usr/share/nginx/html/index.html`) en vez de construir la imagen con el `Dockerfile`, hay que además copiar ahí mismo, junto al HTML, estos archivos nuevos (ajustando `/ruta/en/vps/` a la carpeta real usada en ese `docker run`/`docker-compose`):
+
+```bash
+# Admin (puntoqueso.autix.pro)
+scp manifest.json icon-192.png icon-512.png icon-180.png sw.js usuario@vps:/ruta/en/vps/admin/
+
+# Catálogo (pedidos.autix.pro) — sw-catalogo.js se sube como sw.js
+scp manifest-catalogo.json icon-192.png icon-512.png icon-180.png usuario@vps:/ruta/en/vps/catalogo/
+scp sw-catalogo.js usuario@vps:/ruta/en/vps/catalogo/sw.js
+```
+
 ## Pendiente (próximos pasos)
 
 - Nada pendiente de WhatsApp/MercadoPago por ahora — ambas integraciones están implementadas y solo falta que completes tus credenciales reales en Configuración.
