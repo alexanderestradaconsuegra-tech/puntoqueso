@@ -3,9 +3,9 @@
 // This page always needs fresh product/stock data: never cache API calls, only the
 // app shell (index.html) itself.
 //
-// VERSIONING: bump CACHE_NAME (e.g. pq-catalogo-shell-v2) on every deploy that changes
+// VERSIONING: bump CACHE_NAME (e.g. pq-catalogo-shell-v3) on every deploy that changes
 // catalogo.html, so old clients pick up the new shell instead of a stale cache.
-const CACHE_NAME = 'pq-catalogo-shell-v2';
+const CACHE_NAME = 'pq-catalogo-shell-v3';
 const SHELL_URLS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
