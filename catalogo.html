@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Punto Queso — Catálogo de pedidos</title>
-<meta name="description" content="Catálogo público de Punto Queso. Arma tu pedido y te contactamos para confirmar.">
+<title id="pageTitle">Punto Queso — Catálogo de pedidos</title>
+<meta id="pageDesc" name="description" content="Catálogo público de Punto Queso. Arma tu pedido y te contactamos para confirmar.">
 <meta name="theme-color" content="#fed104">
 <link rel="manifest" href="manifest-catalogo.json">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -119,6 +119,10 @@ main{max-width:960px;margin:0 auto;padding:0 0 20px;}
 .prod-name-tap:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px;border-radius:4px;}
 .prod-price{color:var(--brand-dark);font-weight:800;font-size:15px;margin-bottom:8px;}
 .prod-card .btn{width:100%;justify-content:center;margin-top:auto;}
+.qty-stepper{display:flex;align-items:center;justify-content:space-between;background:var(--brand);border-radius:var(--r-sm);padding:2px;margin-top:auto;}
+.qty-stepper button{flex:0 0 34px;height:34px;border:none;background:transparent;color:var(--brand-text);font-weight:800;font-size:17px;cursor:pointer;border-radius:8px;display:flex;align-items:center;justify-content:center;}
+.qty-stepper button:active{background:rgba(28,26,21,.12);}
+.qty-stepper .qty-n{flex:1;text-align:center;font-weight:800;font-size:14px;color:var(--brand-text);}
 
 .cat-group{margin-bottom:20px;}
 .cat-group-title{font-size:14.5px;font-weight:800;margin-bottom:10px;text-transform:capitalize;display:flex;align-items:center;gap:8px;}
@@ -225,8 +229,8 @@ form textarea{resize:vertical;min-height:64px;}
   <div style="display:flex;align-items:center;gap:10px;">
     <img src="logo.png" alt="Punto Queso" style="width:38px;height:38px;border-radius:9px;flex-shrink:0;">
     <div>
-      <div class="name">Punto <span>Queso</span></div>
-      <div class="sub">Arma tu pedido — te contactamos para confirmar</div>
+      <div class="name" id="hdrName">Punto <span>Queso</span></div>
+      <div class="sub" id="hdrSub">Arma tu pedido — te contactamos para confirmar</div>
     </div>
   </div>
   <div class="hdr-cart" onclick="abrirCarrito()" aria-label="Ver carrito">
@@ -238,10 +242,10 @@ form textarea{resize:vertical;min-height:64px;}
 <section class="hero">
   <div class="hero-inner">
     <div class="hero-copy">
-      <h1>Quesos y fiambres frescos.<br>Entrega rápida.</h1>
-      <p>Selección diaria de la mejor mantención de frío, directo de la tienda a tu puerta. Arma tu pedido en un minuto.</p>
+      <h1 id="heroH1">Quesos y fiambres frescos.<br>Entrega rápida.</h1>
+      <p id="heroP">Selección diaria de la mejor mantención de frío, directo de la tienda a tu puerta. Arma tu pedido en un minuto.</p>
       <button class="hero-cta" onclick="document.getElementById('menu').scrollIntoView({behavior:'smooth'})">
-        Ver catálogo
+        <span id="heroCtaTxt">Ver catálogo</span>
         <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
       </button>
     </div>
@@ -253,7 +257,7 @@ form textarea{resize:vertical;min-height:64px;}
   <div class="trust-inner">
     <div class="trust-card">
       <div class="trust-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2l3 6 6 1-4.5 4.5L18 20l-6-3-6 3 1.5-6.5L3 9l6-1z"/></svg></div>
-      <div class="trust-txt"><strong>100% fresco</strong><span>Rotación diaria</span></div>
+      <div class="trust-txt"><strong id="trust1Strong">100% fresco</strong><span id="trust1Span">Rotación diaria</span></div>
     </div>
     <div class="trust-card">
       <div class="trust-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
@@ -268,9 +272,15 @@ form textarea{resize:vertical;min-height:64px;}
 
 <section class="story">
   <div class="story-inner">
-    <h2>Nuestra historia</h2>
-    <!-- Editar este texto para personalizar la historia de la marca -->
-    <p>Somos una quesería y fiambrería de barrio: elegimos cada producto probando calidad y frescura antes de ponerlo en el mostrador. Trabajamos con proveedores locales y cuidamos la cadena de frío desde que llega a la tienda hasta que te lo entregamos. Gracias por preferir un negocio de cercanía.</p>
+    <h2 id="storyH2">Nuestra historia</h2>
+    <!-- El texto se elige según el dominio (ver DOMINIO_VE más abajo en el script) -->
+    <p id="storyP">Somos una quesería y fiambrería de barrio: elegimos cada producto probando calidad y frescura antes de ponerlo en el mostrador. Trabajamos con proveedores locales y cuidamos la cadena de frío desde que llega a la tienda hasta que te lo entregamos. Gracias por preferir un negocio de cercanía.</p>
+    <div id="storyLinkFull" style="display:none;margin-top:12px;">
+      <a href="https://pedidos.autix.pro" style="color:var(--brand-dark);font-weight:700;font-size:12.5px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;">
+        ¿Buscas otros quesos, fiambres o embutidos? Ve el catálogo completo de Punto Queso
+        <svg class="ic-sm" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+      </a>
+    </div>
   </div>
 </section>
 
@@ -284,7 +294,7 @@ form textarea{resize:vertical;min-height:64px;}
 
 <footer class="pq-footer">
   <div class="pq-footer-inner">
-    <div class="pq-footer-name">Punto <span>Queso</span></div>
+    <div class="pq-footer-name" id="footerName">Punto <span>Queso</span></div>
 
     <div class="pwa-cta">
       <div class="pwa-ic"><svg class="ic" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div>
@@ -479,10 +489,45 @@ let CATEGORIA_ACTIVA='';
 let CARRITO=[]; // {producto_id,nombre,precio,cantidad,unidad,vender_por_peso,qtyLabel}
 let GPS_COORDS=null;
 
+// ══════════════════════════════════════════════════════════
+//  MARCA SEGÚN DOMINIO — un solo archivo sirve dos puertas de entrada
+//  al mismo sistema: quesosvenezolanos.cl (nicho SEO, marca Campolac,
+//  quesos venezolanos artesanales) y pedidos.autix.pro (catálogo
+//  completo de Punto Queso: fiambrería en general). Mismo carrito,
+//  mismo backend, mismo WhatsApp — solo cambia la vitrina.
+// ══════════════════════════════════════════════════════════
+const DOMINIO_VE=/quesosvenezolanos\.cl$/i.test(location.hostname);
+if(DOMINIO_VE){
+  document.getElementById('pageTitle').textContent='Quesos Venezolanos en Chile — Campolac | Punto Queso';
+  document.getElementById('pageDesc').setAttribute('content','Quesos venezolanos artesanales marca Campolac: queso de mano, queso guayanés, telita y más. Entrega en Chile. Arma tu pedido en un minuto.');
+  document.getElementById('hdrName').innerHTML='Quesos <span>Venezolanos</span>';
+  document.getElementById('hdrSub').textContent='Marca Campolac — por Punto Queso';
+  document.getElementById('heroH1').innerHTML='Quesos venezolanos artesanales.<br>Marca Campolac.';
+  document.getElementById('heroP').textContent='El sabor de Venezuela hecho en Chile: queso de mano, guayanés y más, elaborados de forma artesanal bajo nuestra marca Campolac. Arma tu pedido en un minuto.';
+  document.getElementById('heroCtaTxt').textContent='Ver quesos Campolac';
+  document.getElementById('trust1Strong').textContent='Receta venezolana';
+  document.getElementById('trust1Span').textContent='Elaboración artesanal Campolac';
+  document.getElementById('storyH2').textContent='La historia de Campolac';
+  document.getElementById('storyP').textContent='Campolac nació para traer a Chile el sabor auténtico del queso venezolano: recetas artesanales, maduración cuidada y la misma pasión con la que se hace en casa. Cada queso se elabora en pequeños lotes, cuidando la cadena de frío desde que sale de producción hasta que llega a tu mesa. Somos Punto Queso, la tienda donde nació Campolac.';
+  document.getElementById('storyLinkFull').style.display='block';
+  document.getElementById('footerName').innerHTML='Quesos <span>Venezolanos</span> · Campolac';
+}
+
+// Al cargar productos, si estamos en el dominio venezolano se filtra de
+// entrada por la categoría de quesos venezolanos (si existe esa categoría);
+// el cliente puede tocar "Todos" para ver el resto igual.
+function autoFiltrarCategoriaVenezolana(){
+  if(!DOMINIO_VE) return;
+  const cats=Array.from(new Set(PRODUCTOS.map(p=>p.categoria||'otros')));
+  const match=cats.find(c=>/venezolan/i.test(c));
+  if(match){ CATEGORIA_ACTIVA=match; }
+}
+
 async function cargarProductos(){
   const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,imagen_b64,descripcion,activo').eq('activo','true').order('nombre',{ascending:true});
   if(error){ document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo más tarde.</p>'; return; }
   PRODUCTOS=data||[];
+  autoFiltrarCategoriaVenezolana();
   renderTabs();
   renderGrid();
   renderHero();
@@ -551,13 +596,50 @@ function renderProdCard(p){
       <button class="btn block" onclick="togglePesoPicker(${p.id})">Agregar</button>
     </div>`;
   }
+  const cant=cantidadSimpleEnCarrito(p.id);
+  const controlHtml=cant>0
+    ?`<div class="qty-stepper" id="qs-${p.id}">
+        <button onclick="ajustarCantidadSimple(${p.id},-1)" aria-label="Quitar uno">−</button>
+        <span class="qty-n num" id="qs-n-${p.id}">${cant}</span>
+        <button onclick="ajustarCantidadSimple(${p.id},1)" aria-label="Agregar uno">+</button>
+      </div>`
+    :`<button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>`;
   return `
   <div class="prod-card">
     ${img}
     ${nombreEl}
     <div class="prod-price num">${money(p.precio)}${p.unidad&&p.unidad!=='unid'?'/'+p.unidad:''}</div>
-    <button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>
+    <div id="qwrap-${p.id}">${controlHtml}</div>
   </div>`;
+}
+// Cantidad ya en el carrito de un producto simple (no vendido por peso, sin
+// variantes de peso — por eso qtyLabel siempre es null para estos).
+function cantidadSimpleEnCarrito(id){
+  const it=CARRITO.find(i=>i.producto_id===id&&i.qtyLabel==null);
+  return it?it.cantidad:0;
+}
+// +1/-1 directo desde la tarjeta, estilo apps de comida rápida: sin abrir
+// el carrito. Si llega a 0 vuelve a mostrar el botón "Agregar".
+function ajustarCantidadSimple(id,delta){
+  const p=PRODUCTOS.find(x=>x.id===id);
+  if(!p) return;
+  const idx=CARRITO.findIndex(i=>i.producto_id===id&&i.qtyLabel==null);
+  if(idx<0){ if(delta>0) agregarAlCarrito(id); return; }
+  CARRITO[idx].cantidad+=delta;
+  if(CARRITO[idx].cantidad<=0) CARRITO.splice(idx,1);
+  renderCartBar();
+  const wrap=document.getElementById('qwrap-'+id);
+  if(wrap) wrap.innerHTML=renderQtyControl(p);
+}
+function renderQtyControl(p){
+  const cant=cantidadSimpleEnCarrito(p.id);
+  return cant>0
+    ?`<div class="qty-stepper" id="qs-${p.id}">
+        <button onclick="ajustarCantidadSimple(${p.id},-1)" aria-label="Quitar uno">−</button>
+        <span class="qty-n num" id="qs-n-${p.id}">${cant}</span>
+        <button onclick="ajustarCantidadSimple(${p.id},1)" aria-label="Agregar uno">+</button>
+      </div>`
+    :`<button class="btn block" onclick="agregarAlCarrito(${p.id})">Agregar</button>`;
 }
 
 function renderGrid(){
@@ -646,6 +728,8 @@ function agregarAlCarrito(id){
   const p=PRODUCTOS.find(x=>x.id===id);
   if(!p) return;
   agregarAlCarritoConCantidad(p,1,null);
+  const wrap=document.getElementById('qwrap-'+id);
+  if(wrap) wrap.innerHTML=renderQtyControl(p);
 }
 function agregarAlCarritoConCantidad(p,cantidad,qtyLabel){
   const existente=CARRITO.find(i=>i.producto_id===p.id&&i.qtyLabel===qtyLabel);
@@ -717,7 +801,7 @@ function renderCartList(){
   }).join('');
   document.getElementById('cartTotalTxt').textContent=money(totalCarrito());
 }
-function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCartList(); renderCartBar(); }
+function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCartList(); renderCartBar(); renderGrid(); }
 
 function abrirCheckout(){
   if(!CARRITO.length){ toast('Tu carrito está vacío',true); return; }
@@ -767,6 +851,7 @@ function nuevoPedido(){
   renderCartBar();
   document.getElementById('checkoutForm').reset();
   document.getElementById('successOverlay').classList.remove('open');
+  renderGrid();
 }
 
 cargarProductos();
