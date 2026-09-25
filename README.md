@@ -13,6 +13,34 @@ Corre `schema.sql` completo en tu Postgres **una sola vez**. Antes de correrlo:
 psql "postgresql://usuario:password@localhost:5432/tu_base" -f schema.sql
 ```
 
+Después, **siempre**, aplica los permisos con la migración de autenticación (sin ella nadie puede usar la API):
+
+```bash
+psql "postgresql://..." -v ON_ERROR_STOP=1 -v jwt_secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" -f migraciones/001_auth_jwt.sql
+```
+
+En el VPS actual todo esto lo hace `scripts/desplegar_seguridad.sh` (ver **Seguridad** más abajo).
+
+## Seguridad: quién puede hacer qué
+
+La API tiene dos niveles de acceso:
+
+| | Sin sesión (catálogo público, cualquier visitante) | Con sesión (panel admin) |
+|---|---|---|
+| Productos | Solo activos; nunca costo, precio mayorista ni stock | Todo |
+| Datos del negocio | Dirección, teléfono, redes, links públicos | Todo, incluidas las claves |
+| Claves (Mercado Pago, OpenAI, Evolution) | ❌ | ✅ |
+| Clientes, ventas, gastos, usuarios, pedidos | ❌ | ✅ |
+| Crear pedido | Solo vía `crear_pedido_publico` — el precio lo calcula el servidor | ✅ |
+| Cambiar contraseñas / PIN | ❌ | ✅ |
+
+- El login (`login()`) entrega un **token firmado** (JWT, 7 días) que el panel manda en cada petición. PostgREST lo valida con `PGRST_JWT_SECRET`.
+- El secreto vive en `/root/puntoqueso-secretos/jwt_secret` en el VPS y en la tabla `private.secretos` (schema que PostgREST no expone). **Nunca** en este repo, que es público.
+- Si un token vence o es inválido, el panel avisa y vuelve al login.
+- El texto que manda el público en un pedido se limpia de `<`, `>`, `"` y `` ` `` en el servidor, para que nadie pueda inyectar código en el panel.
+- El cron de gastos recurrentes usa su propio token de servicio en `/root/puntoqueso-cron/token` (fuera de las carpetas que publica nginx).
+- Emergencia: `migraciones/001_auth_jwt_revertir.sql` vuelve a abrir la API como estaba antes.
+
 ## 2. Instalar PostgREST en EasyPanel
 
 PostgREST es un contenedor liviano que expone tu Postgres como una API REST — es la misma tecnología que usa Supabase por debajo, así que el sistema le habla exactamente igual que le hablaría a Supabase.
@@ -24,10 +52,11 @@ PostgREST es un contenedor liviano que expone tu Postgres como una API REST — 
    PGRST_DB_SCHEMA=public
    PGRST_DB_ANON_ROLE=web_anon
    PGRST_SERVER_PORT=3000
+   PGRST_JWT_SECRET=<el mismo secreto que usaste en la migración>
    ```
    `<host-de-tu-postgres>` es el nombre interno del servicio de Postgres en EasyPanel (normalmente algo como `postgresql` o el nombre que le pusiste — EasyPanel te lo muestra en la pestaña de conexión del servicio de Postgres).
 3. Puerto interno: `3000`. Actívale un dominio (puede ser un subdominio tuyo, ej: `api-puntoqueso.tudominio.com`) con HTTPS automático de EasyPanel.
-4. Una vez arriba, prueba en el navegador: `https://api-puntoqueso.tudominio.com/productos` — debería devolver `[]` (lista vacía, todavía sin productos).
+4. Una vez arriba, prueba en el navegador: `https://api-puntoqueso.tudominio.com/productos?select=id` — debería devolver `[]` (lista vacía, todavía sin productos). Sin sesión, pedir `select=*` responde 401 a propósito: el público no puede ver columnas como el costo.
 
 ## 3. Conectar el sistema a tu PostgREST
 

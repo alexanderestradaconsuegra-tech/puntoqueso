@@ -253,34 +253,10 @@ create table if not exists config (
 );
 
 -- ══════════════════════════════════════════════════════════
---  LOGIN seguro — contraseña hasheada + función de verificación
---  (mismo patrón ya aplicado en Campolac)
+--  ROLES PARA POSTGREST — se crean ANTES de cualquier permiso.
+--  web_anon = peticiones sin token (catálogo público).
+--  CAMBIA 'clave_segura_aqui' por una contraseña real.
 -- ══════════════════════════════════════════════════════════
-
--- Crea el primer usuario admin. CAMBIA 'TU_CLAVE_AQUI' antes de correr esto.
-insert into usuarios (usuario, nombre, rol, activo, password_hash)
-values ('admin', 'Administrador', 'admin', true, crypt('TU_CLAVE_AQUI', gen_salt('bf')))
-on conflict (usuario) do nothing;
-
-create or replace function verificar_login(p_usuario text, p_password text)
-returns boolean
-language sql security definer
-as $$
-  select exists(
-    select 1 from usuarios
-    where usuario = p_usuario
-      and activo = true
-      and password_hash = crypt(p_password, password_hash)
-  );
-$$;
-revoke all on function verificar_login from public;
-grant execute on function verificar_login to web_anon;
-
--- ══════════════════════════════════════════════════════════
---  ROL PARA POSTGREST (equivalente al "anon" de Supabase)
--- ══════════════════════════════════════════════════════════
--- Crea el rol que PostgREST usa para peticiones sin JWT.
--- CAMBIA 'clave_segura_aqui' por una contraseña real.
 do $$
 begin
   if not exists (select from pg_roles where rolname = 'web_anon') then
@@ -294,63 +270,28 @@ grant web_anon to authenticator;
 grant usage on schema public to web_anon;
 
 -- ══════════════════════════════════════════════════════════
---  RLS — activado en todo, con política de acceso total para
---  web_anon (igual criterio que usamos en Campolac: la seguridad
---  real la da no exponer nunca la password en las consultas, no
---  el RLS en sí — RLS aquí es la barrera contra acceso externo
---  directo a la base, no el control de permisos de la app).
+--  USUARIOS — contraseña y PIN siempre hasheados con bcrypt
 -- ══════════════════════════════════════════════════════════
-do $$
-declare t text;
-begin
-  for t in select unnest(array[
-    'productos','clientes','ventas','venta_items','pedidos','pedido_items',
-    'gastos','stock_movimientos','config',
-    'proveedores','facturas_compra','factura_compra_items','cierres_caja',
-    'gastos_recurrentes'
-  ]) loop
-    execute format('alter table %I enable row level security', t);
-    execute format('grant select, insert, update, delete on %I to web_anon', t);
-    execute format('grant usage, select on sequence %I_id_seq to web_anon', t);
-    execute format(
-      'drop policy if exists "web_anon acceso total" on %I; create policy "web_anon acceso total" on %I for all to web_anon using (true) with check (true)',
-      t, t
-    );
-  end loop;
-end $$;
-grant usage, select on sequence boleta_seq to web_anon;
+-- Crea el primer usuario admin. CAMBIA 'TU_CLAVE_AQUI' antes de correr esto.
+insert into usuarios (usuario, nombre, rol, activo, password_hash)
+values ('admin', 'Administrador', 'admin', true, crypt('TU_CLAVE_AQUI', gen_salt('bf')))
+on conflict (usuario) do nothing;
 
--- usuarios: RLS estricto — nunca exponer password_hash
-alter table usuarios enable row level security;
-grant select (usuario, nombre, rol, activo) on usuarios to web_anon;
-drop policy if exists "web_anon lectura basica" on usuarios;
-create policy "web_anon lectura basica" on usuarios for select to web_anon using (true);
+-- Obsoleta: el login real es login() en migraciones/001_auth_jwt.sql, que además
+-- entrega el token. Queda definida pero sin permiso para nadie.
+create or replace function verificar_login(p_usuario text, p_password text)
+returns boolean
+language sql security definer
+as $$
+  select exists(
+    select 1 from usuarios
+    where usuario = p_usuario
+      and activo = true
+      and password_hash = crypt(p_password, password_hash)
+  );
+$$;
+revoke all on function verificar_login from public;
 
--- ══════════════════════════════════════════════════════════
---  AUDITORÍA — bitácora de acciones (venta, producto, config, etc.)
--- ══════════════════════════════════════════════════════════
-create table if not exists auditlog (
-  id bigserial primary key,
-  usuario text,
-  accion text not null,
-  modulo text,
-  detalle text,
-  created_at timestamptz default now()
-);
-alter table auditlog enable row level security;
-grant select, insert on auditlog to web_anon;
-grant usage, select on sequence auditlog_id_seq to web_anon;
-drop policy if exists "web_anon acceso total" on auditlog;
-create policy "web_anon acceso total" on auditlog for all to web_anon using (true) with check (true);
-
--- ══════════════════════════════════════════════════════════
---  PIN de cajero — login rápido sin contraseña completa
---  (mismo modelo de confianza que el resto de este esquema: no
---  hay capa JWT/app-level auth sobre estas funciones, así que su
---  única protección es que no se exponen fuera de la UI de admin
---  de Usuarios / del selector de cajero — "seguridad por
---  obscuridad + acceso de red", igual que el resto de este archivo)
--- ══════════════════════════════════════════════════════════
 create or replace function verificar_pin(p_usuario_id bigint, p_pin text)
 returns boolean
 language sql security definer
@@ -364,9 +305,7 @@ as $$
   );
 $$;
 revoke all on function verificar_pin from public;
-grant execute on function verificar_pin to web_anon;
 
--- Solo debe invocarse desde la UI de administración de Usuarios (admin-only en la app).
 create or replace function set_pin_hash(p_usuario_id bigint, p_pin text)
 returns void
 language plpgsql security definer
@@ -376,11 +315,7 @@ begin
 end;
 $$;
 revoke all on function set_pin_hash from public;
-grant execute on function set_pin_hash to web_anon;
 
--- Fija la contraseña de un usuario (creación desde la UI de Usuarios, admin-only).
--- Mismo patrón/criterio de confianza que set_pin_hash: sin capa JWT, la única
--- protección es que no se expone fuera de la UI de administración de Usuarios.
 create or replace function set_password_hash(p_usuario_id bigint, p_password text)
 returns void
 language plpgsql security definer
@@ -390,18 +325,26 @@ begin
 end;
 $$;
 revoke all on function set_password_hash from public;
-grant execute on function set_password_hash to web_anon;
 
--- usuarios: permitir lectura de id/permisos para el switch de cajero y roles
--- (nunca password_hash ni pin_hash)
-grant select (id, usuario, nombre, rol, activo, permisos) on usuarios to web_anon;
--- permitir a la UI de administración (admin-only en la app) editar rol/activo/permisos
--- y crear nuevos usuarios; el PIN y la contraseña siempre se fijan vía RPC (crypt), nunca en texto plano
-grant update (nombre, rol, activo, permisos) on usuarios to web_anon;
-grant insert (usuario, nombre, rol, activo, permisos, password_hash) on usuarios to web_anon;
-drop policy if exists "web_anon editar permisos" on usuarios;
-create policy "web_anon editar permisos" on usuarios for update to web_anon using (true) with check (true);
-drop policy if exists "web_anon crear usuarios" on usuarios;
-create policy "web_anon crear usuarios" on usuarios for insert to web_anon with check (true);
+-- ══════════════════════════════════════════════════════════
+--  AUDITORÍA — bitácora de acciones (venta, producto, config, etc.)
+-- ══════════════════════════════════════════════════════════
+create table if not exists auditlog (
+  id bigserial primary key,
+  usuario text,
+  accion text not null,
+  modulo text,
+  detalle text,
+  created_at timestamptz default now()
+);
 
--- listo. Revisa el README.md para configurar PostgREST.
+-- ══════════════════════════════════════════════════════════
+--  PERMISOS: este archivo NO otorga ninguno.
+--  Después de correrlo, corre SIEMPRE migraciones/001_auth_jwt.sql
+--  (o scripts/desplegar_seguridad.sh en el VPS), que crea el rol
+--  autenticado pq_admin, el login con token y deja al público
+--  (web_anon) solo con lo que necesita el catálogo.
+--
+--  Antes este archivo le daba acceso total a web_anon: volver a
+--  correrlo reabría la base entera a internet. Ya no.
+-- ══════════════════════════════════════════════════════════

@@ -835,7 +835,8 @@ class PGQuery{
   async _exec(){
     const qs=this.params.length?('?'+this.params.join('&')):'';
     try{
-      const res=await fetch(`${this.url}/${this.table}${qs}`,{method:this._method,headers:this.headers,body:this._body?JSON.stringify(this._body):undefined});
+      const res=await fetch(`${this.url}/${this.table}${qs}`,{method:this._method,headers:conToken(this.headers),body:this._body?JSON.stringify(this._body):undefined});
+      if(res.status===401) sesionVencida();
       if(!res.ok){
         let msg=res.statusText;
         try{ const j=await res.json(); msg=j.message||j.hint||msg; }catch(e){}
@@ -853,14 +854,42 @@ class PG{
   from(table){ return new PGQuery(this.url,table); }
   async rpc(fn,args={}){
     try{
-      const res=await fetch(`${this.url}/rpc/${fn}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)});
+      const res=await fetch(`${this.url}/rpc/${fn}`,{method:'POST',headers:conToken({'Content-Type':'application/json'}),body:JSON.stringify(args)});
+      if(res.status===401) sesionVencida();
       if(!res.ok){ let msg=res.statusText; try{const j=await res.json();msg=j.message||msg;}catch(e){} return {data:null,error:{message:msg}}; }
-      const data=await res.json();
-      return {data,error:null};
+      // Funciones que no devuelven nada (set_pin_hash, set_password_hash) responden
+      // sin cuerpo: antes res.json() fallaba y se mostraba un error falso.
+      const texto=await res.text();
+      return {data:texto?JSON.parse(texto):null,error:null};
     }catch(e){ return {data:null,error:{message:e.message}}; }
   }
 }
 const supa = new PG(PG_URL);
+
+// ══════════════════════════════════════════════════════════
+//  AUTENTICACIÓN — el login entrega un token firmado (JWT) que
+//  PostgREST exige para todo lo que no sea el catálogo público.
+//  Sin token la API solo deja ver productos activos y crear pedidos.
+// ══════════════════════════════════════════════════════════
+function conToken(headers){
+  if(typeof SESSION!=='undefined'&&SESSION&&SESSION.token) headers['Authorization']='Bearer '+SESSION.token;
+  return headers;
+}
+function tokenVigente(token){
+  try{
+    const b64=token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    return JSON.parse(atob(b64)).exp*1000>Date.now()+60000;
+  }catch(e){ return false; }
+}
+// 401 con token = token vencido o inválido (sin permiso, PostgREST responde 403).
+let _sesionVencidaAvisada=false;
+function sesionVencida(){
+  if(_sesionVencidaAvisada||typeof SESSION==='undefined'||!SESSION||!SESSION.token) return;
+  _sesionVencidaAvisada=true;
+  localStorage.removeItem('pq_session');
+  alert('Tu sesión venció. Vuelve a ingresar.');
+  location.reload();
+}
 
 // ══════════════════════════════════════════════════════════
 //  ESTADO GLOBAL
@@ -947,13 +976,11 @@ async function doLogin(){
   errBox.style.display='none';
   if(!u||!p){ errBox.style.display='block'; return; }
 
-  const {data:rows}=await supa.from('usuarios').select('id,usuario,nombre,rol,activo,permisos').eq('usuario',u).eq('activo',true).limit(1);
-  if(!rows||!rows.length){ errBox.style.display='block'; return; }
+  const {data,error}=await supa.rpc('login',{p_usuario:u,p_password:p});
+  if(error||!data||!data.token){ errBox.style.display='block'; return; }
 
-  const {data:ok,error}=await supa.rpc('verificar_login',{p_usuario:u,p_password:p});
-  if(error||!ok){ errBox.style.display='block'; return; }
-
-  SESSION={id:rows[0].id,usuario:rows[0].usuario,nombre:rows[0].nombre,rol:rows[0].rol,permisos:rows[0].permisos||{}};
+  const us=data.usuario;
+  SESSION={id:us.id,usuario:us.usuario,nombre:us.nombre,rol:us.rol,permisos:us.permisos||{},token:data.token};
   localStorage.setItem('pq_session',JSON.stringify(SESSION));
   iniciarApp();
 }
@@ -1139,7 +1166,9 @@ async function iniciarApp(){
 (function(){
   try{
     const saved=JSON.parse(localStorage.getItem('pq_session')||'null');
-    if(saved){ SESSION=saved; iniciarApp(); }
+    // Sesiones guardadas antes del login con token, o con token vencido: pedir login de nuevo.
+    if(saved&&saved.token&&tokenVigente(saved.token)){ SESSION=saved; iniciarApp(); }
+    else if(saved) localStorage.removeItem('pq_session');
   }catch(e){}
 })();
 
@@ -2922,7 +2951,7 @@ async function guardarUsuario(id){
   const permisos={};
   PERM_KEYS.forEach(([k])=>{ permisos[k]=document.getElementById('usPerm_'+k).checked; });
   if(id){
-    const {error}=await supa.from('usuarios').update({nombre,rol,activo,permisos}).eq('id',id);
+    const {error}=await supa.from('usuarios').update({nombre,rol,activo,permisos}).eq('id',id).select('id');
     if(error){ toast('Error: '+error.message,true); return; }
     logAudit('Usuario editado','usuarios',nombre);
     toast('Usuario actualizado');
@@ -2932,7 +2961,7 @@ async function guardarUsuario(id){
     if(!usuario||!password){ toast('Usuario y contraseña son obligatorios',true); return; }
     // password_hash es not null en el esquema: se inserta con un placeholder y de
     // inmediato se fija la contraseña real vía RPC (crypt), igual patrón que el PIN.
-    const {data:ins,error}=await supa.from('usuarios').insert({usuario,nombre,rol,activo,permisos,password_hash:'x'}).select();
+    const {data:ins,error}=await supa.from('usuarios').insert({usuario,nombre,rol,activo,permisos,password_hash:'x'}).select('id');
     if(error){ toast('Error: '+error.message,true); return; }
     const nuevo=ins[0];
     const {error:errPass}=await supa.rpc('set_password_hash',{p_usuario_id:nuevo.id,p_password:password});
@@ -2945,7 +2974,7 @@ async function guardarUsuario(id){
 async function toggleActivoUsuario(id,nuevoActivo){
   const u=DB.usuarios.find(x=>x.id===id);
   if(!confirm(`¿${nuevoActivo?'Activar':'Desactivar'} a ${u?.nombre}?`)) return;
-  const {error}=await supa.from('usuarios').update({activo:nuevoActivo}).eq('id',id);
+  const {error}=await supa.from('usuarios').update({activo:nuevoActivo}).eq('id',id).select('id');
   if(error){ toast('Error: '+error.message,true); return; }
   logAudit(nuevoActivo?'Usuario activado':'Usuario desactivado','usuarios',u?.nombre||('#'+id));
   toast('Usuario actualizado'); await loadAll(); renderUsuariosPage();
@@ -2954,7 +2983,7 @@ async function guardarPermiso(uid,key,val){
   const u=DB.usuarios.find(x=>x.id===uid);
   if(!u) return;
   const permisos={...(u.permisos||{}),[key]:val};
-  const {error}=await supa.from('usuarios').update({permisos}).eq('id',uid);
+  const {error}=await supa.from('usuarios').update({permisos}).eq('id',uid).select('id');
   if(error){ toast('Error: '+error.message,true); return; }
   u.permisos=permisos;
   logAudit('Permiso actualizado','usuarios',`${u.nombre}: ${key}=${val}`);
@@ -3413,7 +3442,8 @@ async function confirmarCajeroPin(){
     return;
   }
   const u=DB.usuarios.find(x=>x.id===_cajeroSeleccionado);
-  SESSION={id:u.id,usuario:u.usuario,nombre:u.nombre,rol:u.rol,permisos:u.permisos||{}};
+  // El token es de la caja (la sesión ya autenticada), no de la persona: se conserva.
+  SESSION={id:u.id,usuario:u.usuario,nombre:u.nombre,rol:u.rol,permisos:u.permisos||{},token:SESSION.token};
   localStorage.setItem('pq_session',JSON.stringify(SESSION));
   document.getElementById('sbUserName').textContent=SESSION.nombre;
   document.getElementById('sbUserRol').textContent=SESSION.rol;

@@ -447,6 +447,14 @@ class PGQuery{
 class PG{
   constructor(url){ this.url=url.replace(/\/$/,''); }
   from(table){ return new PGQuery(this.url,table); }
+  async rpc(fn,args={}){
+    try{
+      const res=await fetch(`${this.url}/rpc/${fn}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)});
+      if(!res.ok){ let msg=res.statusText; try{const j=await res.json();msg=j.message||msg;}catch(e){} return {data:null,error:{message:msg}}; }
+      const texto=await res.text();
+      return {data:texto?JSON.parse(texto):null,error:null};
+    }catch(e){ return {data:null,error:{message:e.message||'Error de red'}}; }
+  }
 }
 const supa = new PG(PG_URL);
 
@@ -472,7 +480,7 @@ let CARRITO=[]; // {producto_id,nombre,precio,cantidad,unidad,vender_por_peso,qt
 let GPS_COORDS=null;
 
 async function cargarProductos(){
-  const {data,error}=await supa.from('productos').select('*').eq('activo','true').order('nombre',{ascending:true});
+  const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,imagen_b64,descripcion,activo').eq('activo','true').order('nombre',{ascending:true});
   if(error){ document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo más tarde.</p>'; return; }
   PRODUCTOS=data||[];
   renderTabs();
@@ -730,23 +738,18 @@ async function enviarPedido(){
   if(!telefono){ toast('Ingresa tu teléfono',true); return; }
   if(!CARRITO.length){ toast('Tu carrito está vacío',true); return; }
 
-  const total=totalCarrito();
   const btn=document.getElementById('btnEnviarPedido');
   btn.disabled=true; btn.textContent='Enviando...';
   try{
-    const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,direccion_calle:calle,direccion_depto:depto,direccion_comuna:comuna,notas,total,estado:'pendiente'}).select();
-    if(error){ toast('Error: '+error.message,true); return; }
-    const pedidoId=ped[0].id;
-    for(const item of CARRITO){
-      await supa.from('pedido_items').insert({
-        pedido_id:pedidoId,
-        producto_id:item.producto_id,
-        producto_nombre:item.nombre,
-        cantidad:item.cantidad,
-        precio_unitario:item.precio,
-        subtotal:item.precio*item.cantidad
-      });
-    }
+    // Precio y total los calcula el servidor desde el catálogo: acá solo se
+    // manda qué productos y cuánto (así nadie puede mandar un precio inventado).
+    const {data:pedidoId,error}=await supa.rpc('crear_pedido_publico',{
+      p_cliente_nombre:nombre,p_cliente_tel:telefono,
+      p_direccion_calle:calle||null,p_direccion_depto:depto||null,p_direccion_comuna:comuna||null,
+      p_notas:notas||null,
+      p_items:CARRITO.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad}))
+    });
+    if(error||!pedidoId){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
     document.getElementById('successOrderNum').textContent='#'+String(pedidoId).padStart(4,'0');
     cerrarCheckout();
     document.getElementById('successOverlay').classList.add('open');
