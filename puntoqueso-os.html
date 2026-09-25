@@ -1098,6 +1098,21 @@ async function generarGastosRecurrentesPendientes(){
     }
   }catch(e){ console.error('Error en generarGastosRecurrentesPendientes:',e); }
 }
+// Confirmación al cliente cuando su pedido llega. Se manda desde ACÁ (panel admin,
+// ya autenticado) y no desde el catálogo público, para no tener que exponerle a
+// cualquier visitante las claves de Evolution API. Corre al abrir el panel y cada
+// vez que se refrescan los datos (cada 45s), así llega en minutos aunque nadie
+// toque el pedido a mano.
+async function enviarConfirmacionesPedidosNuevos(){
+  try{
+    const pendientes=DB.pedidos.filter(p=>p.estado==='pendiente'&&!p.confirmacion_enviada&&p.cliente_tel);
+    for(const p of pendientes){
+      await enviarWhatsApp(p.cliente_tel,`¡Hola ${p.cliente_nombre||''}! Recibimos tu pedido #${p.id} en ${nombreNegocio()} 🧀 Te avisamos apenas esté listo.`);
+      await supa.from('pedidos').update({confirmacion_enviada:true}).eq('id',p.id);
+      p.confirmacion_enviada=true;
+    }
+  }catch(e){ console.error('Error en enviarConfirmacionesPedidosNuevos:',e); }
+}
 async function iniciarApp(){
   document.getElementById('login').style.display='none';
   document.getElementById('app').style.display='flex';
@@ -1112,13 +1127,14 @@ async function iniciarApp(){
   await loadAll();
   await cargarConfigForm();
   if(canDo('verGastos')) await generarGastosRecurrentesPendientes();
+  await enviarConfirmacionesPedidosNuevos();
   document.getElementById('sbCambiarCajero').style.display=DB.usuarios.filter(u=>u.activo).length>1?'block':'none';
   renderDashboard();
   initBarcodeListener();
   initWeightKeyboard();
   // Config tiene formularios largos: si el refresco automático la recargara
   // mientras alguien está escribiendo, borraría todo antes de guardar.
-  setInterval(async()=>{ await loadAll(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
+  setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
 }
 (function(){
   try{

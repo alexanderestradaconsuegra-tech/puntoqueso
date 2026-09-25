@@ -142,6 +142,9 @@ alter table pedidos add column if not exists pesos_ajustados boolean default fal
 -- una etapa válida de PEDIDO_ETAPAS y rompía el badge/botón de avance).
 -- Además sirve de guarda contra doble facturación (doble descuento de stock).
 alter table pedidos add column if not exists venta_id bigint references ventas(id) on delete set null;
+-- confirmación automática por WhatsApp al cliente cuando el pedido llega (la manda
+-- el panel admin, nunca el catálogo público, para no exponer las claves de Evolution API)
+alter table pedidos add column if not exists confirmacion_enviada boolean default false;
 
 -- ── gastos ──
 create table if not exists gastos (
