@@ -696,6 +696,16 @@ tr:last-child td{border-bottom:none;}
         <input id="cfgOpenaiKey" type="password" placeholder="sk-..." style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
         <button class="btn" onclick="guardarConfig()">Guardar</button>
       </div>
+      <div class="card" style="padding:20px;max-width:480px;margin-top:18px;">
+        <h3 style="margin-bottom:12px;">Códigos QR (catálogo y reseñas)</h3>
+        <div class="sub" style="margin-bottom:12px;">Genera un QR para imprimir y pegar en el local. Se arma con un servicio externo gratuito (api.qrserver.com) solo para dibujar la imagen — el link en sí sigue siendo tuyo.</div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Dominio del catálogo</label>
+        <input id="cfgCatalogoUrl" placeholder="https://pedidos.autix.pro" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:8px;">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Link de reseñas de Google</label>
+        <input id="cfgGoogleReviewUrl" placeholder="https://g.page/r/.../review" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <button class="btn" onclick="guardarConfig()">Guardar</button>
+        <div id="qrPreviews" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:16px;"></div>
+      </div>
       <div class="card" style="padding:20px;max-width:480px;margin-top:18px;" id="cfgExcelCard">
         <h3 style="margin-bottom:12px;">Excel</h3>
         <button class="btn secondary" style="width:100%;justify-content:center;" onclick="exportarExcel()">Exportar Excel (ventas, productos, clientes, gastos)</button>
@@ -1106,7 +1116,9 @@ async function iniciarApp(){
   renderDashboard();
   initBarcodeListener();
   initWeightKeyboard();
-  setInterval(async()=>{ await loadAll(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView) nav(activeView); },45000);
+  // Config tiene formularios largos: si el refresco automático la recargara
+  // mientras alguien está escribiendo, borraría todo antes de guardar.
+  setInterval(async()=>{ await loadAll(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
 }
 (function(){
   try{
@@ -2657,7 +2669,25 @@ async function cargarConfigForm(){
   document.getElementById('cfgEvoInstance').value=cfg.evolution_instance||'';
   document.getElementById('cfgMpToken').value=cfg.mercadopago_access_token||'';
   document.getElementById('cfgOpenaiKey').value=cfg.openai_api_key||'';
+  document.getElementById('cfgCatalogoUrl').value=cfg.catalogo_url||'';
+  document.getElementById('cfgGoogleReviewUrl').value=cfg.google_review_url||'';
+  renderQrPreviews(cfg.catalogo_url,cfg.google_review_url);
   document.getElementById('importProductosFile').style.display=canDo('editarInventario')?'block':'none';
+}
+function qrCardHtml(titulo,url){
+  const img=`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}`;
+  return `<div style="text-align:center;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px;">${titulo}</div>
+    <img src="${img}" alt="QR ${titulo}" style="width:160px;height:160px;border:1px solid var(--border);border-radius:var(--r-sm);">
+    <div style="margin-top:6px;"><a href="${img}" target="_blank" rel="noopener" download style="font-size:12px;color:var(--brand-dark);font-weight:700;">Descargar QR</a></div>
+  </div>`;
+}
+function renderQrPreviews(catalogoUrl,googleUrl){
+  const el=document.getElementById('qrPreviews'); if(!el) return;
+  let html='';
+  if(catalogoUrl) html+=qrCardHtml('Catálogo',catalogoUrl);
+  if(googleUrl) html+=qrCardHtml('Reseñas Google',googleUrl);
+  el.innerHTML=html;
 }
 async function guardarConfig(){
   const claves={
@@ -2675,6 +2705,8 @@ async function guardarConfig(){
     evolution_instance:document.getElementById('cfgEvoInstance').value,
     mercadopago_access_token:document.getElementById('cfgMpToken').value,
     openai_api_key:document.getElementById('cfgOpenaiKey').value,
+    catalogo_url:document.getElementById('cfgCatalogoUrl').value,
+    google_review_url:document.getElementById('cfgGoogleReviewUrl').value,
   };
   for(const [clave,valor] of Object.entries(claves)){
     const {error}=await supa.from('config').upsert({clave,valor},{onConflict:'clave'});
@@ -2682,6 +2714,7 @@ async function guardarConfig(){
     CONFIG_CACHE[clave]=valor;
   }
   logAudit('Configuración actualizada','config','');
+  renderQrPreviews(claves.catalogo_url,claves.google_review_url);
   toast('Configuración guardada');
 }
 
