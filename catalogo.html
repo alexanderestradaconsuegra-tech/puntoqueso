@@ -1,10 +1,48 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-CL">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title id="pageTitle">Punto Queso — Quesos y fiambres a domicilio</title>
-<meta id="pageDesc" name="description" content="Punto Queso: quesos venezolanos, nacionales e importados y fiambrería. Arma tu pedido en un minuto y te lo llevamos.">
+<!-- SEO: lo estático es la versión de quesosvenezolanos.cl (el dominio que
+     queremos posicionar). WhatsApp/Facebook leen solo esto, sin ejecutar JS.
+     En pedidos.autix.pro el script cambia el título y marca noindex para que
+     Google no vea dos páginas iguales compitiendo entre sí. -->
+<title id="pageTitle">Quesos Venezolanos en Chile | Queso de Mano, Llanero y Guayanés — Punto Queso</title>
+<meta id="pageDesc" name="description" content="Quesos venezolanos artesanales en Chile, marca Campolac: queso de mano, llanero, guayanés, palmita y trenza. Punto Queso: quesería y fiambrería con pedidos online y entrega a domicilio.">
+<meta name="keywords" content="quesos venezolanos, queso venezolano Chile, queso de mano, queso llanero, queso guayanés, queso palmita, queso trenza, Campolac, Punto Queso, quesería, fiambrería">
+<meta name="robots" id="metaRobots" content="index,follow,max-image-preview:large">
+<link rel="canonical" id="linkCanonical" href="https://quesosvenezolanos.cl/">
+<meta name="author" content="Punto Queso">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_CL">
+<meta property="og:site_name" content="Punto Queso · Quesos Venezolanos Campolac">
+<meta property="og:title" content="Quesos Venezolanos en Chile — Campolac | Punto Queso">
+<meta property="og:description" content="Queso de mano, llanero, guayanés, palmita y trenza artesanales. Pide online y te lo llevamos.">
+<meta property="og:url" content="https://quesosvenezolanos.cl/">
+<meta property="og:image" content="https://quesosvenezolanos.cl/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Punto Queso — Quesos venezolanos Campolac">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Quesos Venezolanos en Chile — Campolac | Punto Queso">
+<meta name="twitter:description" content="Queso de mano, llanero, guayanés, palmita y trenza artesanales. Pide online.">
+<meta name="twitter:image" content="https://quesosvenezolanos.cl/og-image.jpg">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"WebSite","@id":"https://quesosvenezolanos.cl/#web","url":"https://quesosvenezolanos.cl/","name":"Quesos Venezolanos — Punto Queso","inLanguage":"es-CL"},
+ {"@type":"Brand","@id":"https://quesosvenezolanos.cl/#campolac","name":"Campolac","description":"Marca de quesos venezolanos artesanales elaborados en Chile por Punto Queso."},
+ {"@type":["Store","LocalBusiness"],"@id":"https://quesosvenezolanos.cl/#tienda","name":"Punto Queso","alternateName":["Quesos Venezolanos Campolac","Campolac"],"description":"Quesería y fiambrería en Chile. Productores de quesos venezolanos artesanales marca Campolac: queso de mano, llanero, guayanés, palmita y trenza.","url":"https://quesosvenezolanos.cl/","logo":"https://quesosvenezolanos.cl/icon-512.png","image":"https://quesosvenezolanos.cl/og-image.jpg","brand":{"@id":"https://quesosvenezolanos.cl/#campolac"},"areaServed":{"@type":"Country","name":"Chile"},"currenciesAccepted":"CLP","paymentAccepted":"Mercado Pago, transferencia, efectivo","telephone":"+56939045793","address":{"@type":"PostalAddress","addressCountry":"CL"}}
+]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+ {"@type":"Question","name":"¿Dónde comprar quesos venezolanos en Chile?","acceptedAnswer":{"@type":"Answer","text":"En Punto Queso elaboramos quesos venezolanos artesanales con nuestra marca Campolac. Puedes pedirlos online en quesosvenezolanos.cl y te los llevamos a domicilio."}},
+ {"@type":"Question","name":"¿Qué quesos venezolanos venden?","acceptedAnswer":{"@type":"Answer","text":"Queso de mano, queso llanero, queso guayanés, queso palmita y queso trenza, todos de elaboración artesanal Campolac."}},
+ {"@type":"Question","name":"¿Cómo se paga el pedido?","acceptedAnswer":{"@type":"Answer","text":"Haces el pedido en la web, te confirmamos por WhatsApp el peso exacto y el total, y recién ahí pagas con Mercado Pago o transferencia."}},
+ {"@type":"Question","name":"¿Venden queso venezolano por mayor?","acceptedAnswer":{"@type":"Answer","text":"Sí. Si tienes arepera, restaurante o minimarket, escríbenos por WhatsApp y te cotizamos precios por volumen."}},
+ {"@type":"Question","name":"¿Qué es el queso llanero?","acceptedAnswer":{"@type":"Answer","text":"Es un queso blanco venezolano, firme y salado, ideal para rallar sobre arepas, cachapas y pabellón."}}
+]}
+</script>
 <meta name="theme-color" content="#FFD100">
 <link rel="manifest" href="manifest-catalogo.json">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
@@ -210,6 +248,15 @@ button{cursor:pointer;}
 .perk strong{display:block;font-size:14px;}
 .perk span{display:block;font-size:12.5px;color:rgba(255,255,255,.6);}
 
+/* ── PREGUNTAS FRECUENTES ── */
+.faq{margin-top:40px;}
+.faq details{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;box-shadow:var(--sh);}
+.faq summary{list-style:none;cursor:pointer;padding:16px 18px;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.faq summary::-webkit-details-marker{display:none;}
+.faq summary::after{content:'+';font-family:var(--disp);font-size:24px;line-height:1;width:32px;height:32px;border-radius:99px;background:var(--yellow);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.faq details[open] summary::after{content:'−';}
+.faq details p{padding:0 18px 16px;color:var(--text2);max-width:70ch;}
+
 /* ── FOOTER ── */
 footer.foot{margin-top:44px;background:var(--yellow);color:var(--ink);padding:30px 0 110px;}
 .foot-top{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
@@ -389,6 +436,14 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
       <div class="perk"><div class="perk-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div><strong>Entrega el mismo día</strong><span>Coordinamos por WhatsApp</span></div></div>
       <div class="perk"><div class="perk-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div><strong>Pagas al confirmar</strong><span>Mercado Pago o transferencia</span></div></div>
     </div>
+  </section>
+  <section class="sec faq" id="preguntas">
+    <div class="sec-head"><div><div class="sec-eyebrow">Quesos venezolanos en Chile</div><h2>Preguntas frecuentes</h2></div></div>
+    <details><summary>¿Dónde comprar quesos venezolanos en Chile?</summary><p>En Punto Queso elaboramos quesos venezolanos artesanales con nuestra marca Campolac. Puedes pedirlos online en quesosvenezolanos.cl y te los llevamos a domicilio.</p></details>
+    <details><summary>¿Qué quesos venezolanos venden?</summary><p>Queso de mano, queso llanero, queso guayanés, queso palmita y queso trenza, todos de elaboración artesanal Campolac.</p></details>
+    <details><summary>¿Cómo se paga el pedido?</summary><p>Haces el pedido en la web, te confirmamos por WhatsApp el peso exacto y el total, y recién ahí pagas con Mercado Pago o transferencia.</p></details>
+    <details><summary>¿Venden queso venezolano por mayor?</summary><p>Sí. Si tienes arepera, restaurante o minimarket, escríbenos por WhatsApp y te cotizamos precios por volumen.</p></details>
+    <details><summary>¿Qué es el queso llanero?</summary><p>Es un queso blanco venezolano, firme y salado, ideal para rallar sobre arepas, cachapas y pabellón.</p></details>
   </section>
 </main>
 
@@ -612,8 +667,12 @@ const SLIDES = DOMINIO_VE ? [
    cta:'Escribir por WhatsApp',accion:'wa',pic:'logo'},
 ];
 
+if(!DOMINIO_VE){
+  document.getElementById('pageTitle').textContent='Punto Queso — Quesos y fiambres a domicilio';
+  document.getElementById('metaRobots').setAttribute('content','noindex,follow');
+  document.getElementById('linkCanonical').remove();
+}
 if(DOMINIO_VE){
-  document.getElementById('pageTitle').textContent='Quesos Venezolanos en Chile — Campolac | Punto Queso';
   document.getElementById('pageDesc').setAttribute('content','Quesos venezolanos artesanales marca Campolac: queso de mano, guayanés, llanero, palmita y trenza. Pide online con entrega en Chile.');
   document.getElementById('hdrName').innerHTML='Quesos <span>Venezolanos</span>';
   document.getElementById('hdrSub').textContent='Marca Campolac · por Punto Queso';
@@ -641,7 +700,7 @@ async function cargarProductos(){
   PRODUCTOS=data||[];
   renderTodo();
 }
-function renderTodo(){ renderCarrusel(); renderCatBar(); renderPromos(); renderTiles(); renderGrid(); renderCartBar(); }
+function renderTodo(){ publicarProductosSEO(); renderCarrusel(); renderCatBar(); renderPromos(); renderTiles(); renderGrid(); renderCartBar(); }
 
 async function cargarConfig(){
   try{
@@ -1039,6 +1098,35 @@ function nuevoPedido(){
   document.getElementById('successOverlay').classList.remove('open');
   renderCartBar(); renderGrid();
 }
+// Cuando el cliente cambia de pestaña, el título le recuerda volver
+// (y si dejó productos en el carrito, se lo dice). Al volver se restaura.
+let _tituloReal=document.title;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    _tituloReal=document.title;
+    document.title=CARRITO.length?`🧀 ¡Tu pedido te espera! (${cantidadCarrito()})`:'🧀 ¡No te vayas! Te extrañamos…';
+  }else{
+    document.title=_tituloReal;
+  }
+});
+
+// Datos estructurados de los productos (Google muestra precio y marca en
+// los resultados). Solo en el dominio que se posiciona.
+function publicarProductosSEO(){
+  if(!DOMINIO_VE||!PRODUCTOS.length) return;
+  const base='https://quesosvenezolanos.cl/';
+  const items=PRODUCTOS.slice(0,40).map((p,i)=>({"@type":"ListItem","position":i+1,"item":{
+    "@type":"Product","name":p.nombre,"category":p.categoria||undefined,
+    "description":(p.descripcion||p.nombre)+'',
+    ...(ES_VE(p.categoria)||ES_VE(p.nombre)?{"brand":{"@type":"Brand","name":"Campolac"}}:{}),
+    "offers":{"@type":"Offer","price":Math.round(Number(p.precio)||0),"priceCurrency":"CLP","availability":"https://schema.org/InStock","url":base+'#cat-'+slug(p.categoria),
+      ...(p.vender_por_peso?{"priceSpecification":{"@type":"UnitPriceSpecification","price":Math.round(Number(p.precio)||0),"priceCurrency":"CLP","unitCode":"KGM"}}:{})}
+  }}));
+  let el=document.getElementById('ldProductos');
+  if(!el){ el=document.createElement('script'); el.type='application/ld+json'; el.id='ldProductos'; document.head.appendChild(el); }
+  el.textContent=JSON.stringify({"@context":"https://schema.org","@type":"ItemList","name":"Quesos venezolanos y fiambres — Punto Queso","itemListElement":items});
+}
+
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
   ['detailOverlay','cartOverlay','checkoutOverlay'].forEach(id=>document.getElementById(id).classList.remove('open'));
