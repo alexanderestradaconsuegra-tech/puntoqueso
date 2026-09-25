@@ -19,7 +19,13 @@ Después, **siempre**, aplica los permisos con la migración de autenticación (
 psql "postgresql://..." -v ON_ERROR_STOP=1 -v jwt_secret="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" -f migraciones/001_auth_jwt.sql
 ```
 
-En el VPS actual todo esto lo hace `scripts/desplegar_seguridad.sh` (ver **Seguridad** más abajo).
+Luego la migración de anulación de ventas (agrega `ventas.anulada` y afines; sin ella el panel no puede listar ni anular ventas):
+
+```bash
+psql "postgresql://..." -v ON_ERROR_STOP=1 -f migraciones/002_anular_ventas.sql
+```
+
+En el VPS actual el esquema y la 001 los aplica `scripts/desplegar_seguridad.sh` (la 002 se corre a mano con el comando de arriba) (ver **Seguridad** más abajo).
 
 ## Seguridad: quién puede hacer qué
 

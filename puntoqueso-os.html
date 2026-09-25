@@ -358,6 +358,16 @@ tr:last-child td{border-bottom:none;}
 .cat-chip{padding:9px 14px;border:1.5px solid var(--border);background:#fff;border-radius:99px;font-weight:700;font-size:12.5px;cursor:pointer;color:var(--text2);}
 .cat-chip:hover{border-color:var(--brand);}
 .cat-chip.active{background:var(--brand);border-color:var(--brand);color:var(--brand-text);}
+/* ── período (Ventas / Historial de pedidos) ── */
+.periodo-fecha{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--text2);margin:0;}
+.periodo-fecha input{padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:#fff;}
+.periodo-resumen{font-size:13px;color:var(--text2);margin:-4px 0 12px;}
+.periodo-resumen:empty{display:none;}
+.periodo-resumen b{color:var(--text);}
+.periodo-resumen .pr-anuladas{color:var(--danger);font-weight:700;}
+.periodo-resumen .pr-nota{color:var(--muted);font-size:12px;}
+.venta-anulada .tachado{text-decoration:line-through;color:var(--muted);}
+.venta-anulada td{color:var(--muted);}
 .stock-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;flex-shrink:0;}
 
 /* ── permisos ── */
@@ -517,7 +527,23 @@ tr:last-child td{border-bottom:none;}
     <div class="view" id="view-pedidos">
       <div class="topbar"><div><h2>Pedidos</h2><div class="sub">Pedidos que llegan por el catálogo de WhatsApp</div></div>
         <button class="btn" onclick="openPedidoModal()">+ Nuevo pedido</button></div>
-      <div class="toolbar"><input placeholder="Buscar cliente..." oninput="renderPedidos(this.value)"></div>
+      <div class="toolbar">
+        <div class="cat-chips" id="pedidosTabs">
+          <button type="button" class="cat-chip active" data-tab="curso" onclick="setTabPedidos('curso')">En curso <span class="num" id="pedidosCountCurso"></span></button>
+          <button type="button" class="cat-chip" data-tab="historial" onclick="setTabPedidos('historial')">Historial <span class="num" id="pedidosCountHistorial"></span></button>
+        </div>
+        <input placeholder="Buscar cliente..." oninput="filtrarPedidos(this.value)">
+      </div>
+      <div class="toolbar" id="pedidosPeriodoBar" style="display:none;">
+        <div class="cat-chips" id="pedidosPeriodoChips">
+          <button type="button" class="cat-chip" data-p="hoy" onclick="setPeriodoPedidos('hoy')">Hoy</button>
+          <button type="button" class="cat-chip" data-p="7d" onclick="setPeriodoPedidos('7d')">7 días</button>
+          <button type="button" class="cat-chip active" data-p="mes" onclick="setPeriodoPedidos('mes')">Mes</button>
+          <button type="button" class="cat-chip" data-p="todo" onclick="setPeriodoPedidos('todo')">Todo</button>
+        </div>
+        <label class="periodo-fecha">Fecha… <input type="date" id="filtroFechaPedidos" onchange="setFechaPedidos(this.value)"></label>
+      </div>
+      <div class="periodo-resumen" id="pedidosResumen"></div>
       <div class="list-wrap">
         <div class="table-scroll"><table><thead><tr><th>#</th><th>Cliente</th><th>Dirección</th><th>Total</th><th>Estado</th><th>Fecha</th><th></th></tr></thead><tbody id="pedidosBody"></tbody></table></div>
         <div class="card-list" id="pedidosCards"></div>
@@ -527,10 +553,19 @@ tr:last-child td{border-bottom:none;}
     <!-- VENTAS -->
     <div class="view" id="view-ventas">
       <div class="topbar"><div><h2>Ventas</h2><div class="sub">Historial de ventas del terminal</div></div></div>
-      <div class="toolbar"><input type="date" id="filtroFechaVentas" onchange="renderVentas()"></div>
+      <div class="toolbar">
+        <div class="cat-chips" id="ventasPeriodoChips">
+          <button type="button" class="cat-chip active" data-p="hoy" onclick="setPeriodoVentas('hoy')">Hoy</button>
+          <button type="button" class="cat-chip" data-p="7d" onclick="setPeriodoVentas('7d')">7 días</button>
+          <button type="button" class="cat-chip" data-p="mes" onclick="setPeriodoVentas('mes')">Mes</button>
+          <button type="button" class="cat-chip" data-p="todo" onclick="setPeriodoVentas('todo')">Todo</button>
+        </div>
+        <label class="periodo-fecha">Fecha… <input type="date" id="filtroFechaVentas" onchange="setFechaVentas(this.value)"></label>
+      </div>
+      <div class="periodo-resumen" id="ventasResumen"></div>
       <div class="bulk-bar" id="bulkBarventas">
         <span class="bulk-count" id="bulkCountventas">0 seleccionadas</span>
-        <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarVentas()">Eliminar seleccionadas</button>
+        <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkAnularVentas()">Anular seleccionadas</button>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('ventas')">Cancelar</button>
       </div>
       <div class="list-wrap">
@@ -824,6 +859,8 @@ class PGQuery{
   gte(col,val){ this.params.push(`${encodeURIComponent(col)}=gte.${encodeURIComponent(val)}`); return this; }
   lte(col,val){ this.params.push(`${encodeURIComponent(col)}=lte.${encodeURIComponent(val)}`); return this; }
   in(col,arr){ this.params.push(`${encodeURIComponent(col)}=in.(${arr.map(encodeURIComponent).join(',')})`); return this; }
+  // filtro lógico de PostgREST, ej: or('(estado.eq.anulado,venta_id.is.null)')
+  or(expr){ this.params.push('or='+encodeURIComponent(expr)); return this; }
   ilike(col,val){ this.params.push(`${encodeURIComponent(col)}=ilike.${encodeURIComponent(val)}`); return this; }
   order(col,{ascending=true}={}){ this.params.push(`order=${encodeURIComponent(col)}.${ascending?'asc':'desc'}`); return this; }
   limit(n){ this.params.push('limit='+n); return this; }
@@ -917,6 +954,7 @@ function bulkToggle(scope,id,checked){
 }
 function bulkToggleAll(scope,checked){
   document.querySelectorAll(`#${scope}Body input.bulk-chk, #${scope}Cards input.bulk-chk`).forEach(chk=>{
+    if(chk.disabled) return;   // p.ej. ventas anuladas: no se pueden volver a anular
     const id=Number(chk.dataset.id);
     chk.checked=checked;
     if(checked) BULK[scope].add(id); else BULK[scope].delete(id);
@@ -965,6 +1003,38 @@ function toast(msg,err=false){
 function money(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-CL'); }
 function sanitize(s){ return (s||'').toString().trim().replace(/<[^>]*>/g,''); }
 function closeModal(){ document.getElementById('modalBg').style.display='none'; }
+
+// ── fechas LOCALES (hora de Chile del navegador), no UTC ──
+// toISOString() da la fecha UTC: una venta de las 22:00 caía en "mañana".
+// Los límites se calculan a medianoche local y se mandan al servidor como
+// instante ISO (timestamptz), así el filtro es exacto en cualquier zona.
+function fechaLocalISO(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function inicioDiaLocal(d){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()); }
+function diaDeTimestamp(ts){ return ts?fechaLocalISO(new Date(ts)):''; }
+// Rango [desde, hasta) de un período de los chips: hoy | 7d | mes | todo | fecha 'YYYY-MM-DD'.
+function rangoPeriodo(periodo,fecha){
+  const hoy=inicioDiaLocal(new Date());
+  if(fecha){
+    const [y,m,d]=fecha.split('-').map(Number);
+    const desde=new Date(y,m-1,d);
+    return {desde,hasta:new Date(y,m-1,d+1)};
+  }
+  if(periodo==='hoy') return {desde:hoy,hasta:null};
+  if(periodo==='7d') return {desde:new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate()-6),hasta:null};
+  if(periodo==='mes') return {desde:new Date(hoy.getFullYear(),hoy.getMonth(),1),hasta:null};
+  return {desde:null,hasta:null};
+}
+const LIMITE_TODO=500;
+function aplicarRango(q,col,rango){
+  if(rango.desde) q=q.gte(col,rango.desde.toISOString());
+  if(rango.hasta) q=q.lt(col,rango.hasta.toISOString());
+  return q;
+}
+function marcarChipsPeriodo(contId,periodo){
+  document.querySelectorAll(`#${contId} .cat-chip`).forEach(b=>b.classList.toggle('active',!!periodo&&b.dataset.p===periodo));
+}
 
 // ══════════════════════════════════════════════════════════
 //  LOGIN
@@ -1180,19 +1250,34 @@ async function iniciarApp(){
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
 async function renderDashboard(){
+  // Mismas definiciones de siempre (hoy / semana desde el lunes / mes desde el
+  // día 1), pero en fecha LOCAL y consultando al servidor por rango: DB.ventas
+  // y DB.gastos traen solo las últimas 200 filas y con más de 200 ventas en el
+  // mes el Dashboard subcontaba sin avisar.
   const now=new Date();
-  const hoy=now.toISOString().slice(0,10);
-  const startOfWeek=new Date(now); startOfWeek.setDate(now.getDate()-((now.getDay()+6)%7));
-  const weekISO=startOfWeek.toISOString().slice(0,10);
-  const monthISO=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);
+  const hoyD=inicioDiaLocal(now);
+  const semanaD=new Date(hoyD.getFullYear(),hoyD.getMonth(),hoyD.getDate()-((hoyD.getDay()+6)%7));
+  const mesD=new Date(now.getFullYear(),now.getMonth(),1);
+  const hace14D=new Date(hoyD.getFullYear(),hoyD.getMonth(),hoyD.getDate()-13);
+  // la semana y los 14 días del gráfico pueden empezar en el mes anterior
+  const desdeVentas=new Date(Math.min(mesD,semanaD,hace14D));
+  const hoy=fechaLocalISO(hoyD);
+  const monthISO=fechaLocalISO(mesD);
 
-  const ventasHoy=DB.ventas.filter(v=>(v.created_at||'').slice(0,10)===hoy);
+  const [ventR,gasR]=await Promise.all([
+    supa.from('ventas').select('total,created_at').eq('anulada',false).gte('created_at',desdeVentas.toISOString()),
+    supa.from('gastos').select('monto,categoria,fecha').gte('fecha',monthISO),
+  ]);
+  if(ventR.error){ console.error(ventR.error); toast('Error cargando ventas del Dashboard: '+ventR.error.message,true); }
+  if(gasR.error){ console.error(gasR.error); toast('Error cargando gastos del Dashboard: '+gasR.error.message,true); }
+  const ventasRango=ventR.data||[];
+  const ventasHoy=ventasRango.filter(v=>diaDeTimestamp(v.created_at)===hoy);
   const totalHoy=ventasHoy.reduce((s,v)=>s+Number(v.total||0),0);
-  const ventasSemana=DB.ventas.filter(v=>(v.created_at||'').slice(0,10)>=weekISO);
+  const ventasSemana=ventasRango.filter(v=>new Date(v.created_at)>=semanaD);
   const totalSemana=ventasSemana.reduce((s,v)=>s+Number(v.total||0),0);
-  const ventasMes=DB.ventas.filter(v=>(v.created_at||'').slice(0,10)>=monthISO);
+  const ventasMes=ventasRango.filter(v=>new Date(v.created_at)>=mesD);
   const totalVentasMes=ventasMes.reduce((s,v)=>s+Number(v.total||0),0);
-  const gastosMes=DB.gastos.filter(g=>(g.fecha||'')>=monthISO);
+  const gastosMes=gasR.data||[];
   const totalGastosMes=gastosMes.reduce((s,g)=>s+Number(g.monto||0),0);
   const ganancia=totalVentasMes-totalGastosMes;
   const bajoStock=DB.productos.filter(p=>Number(p.stock)<=Number(p.stock_minimo||0));
@@ -1213,18 +1298,21 @@ async function renderDashboard(){
     ? pendientes.slice(0,8).map(p=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span>${p.cliente_nombre||'Sin nombre'} · ${p.cliente_tel||''}</span><b class="num">${money(p.total)}</b></div>`).join('')
     : '<p class="empty">No hay pedidos pendientes</p>';
 
-  renderChartVentas14d();
+  renderChartVentas14d(ventasRango);
   renderChartPedidosEstado();
   renderChartGastosCategoria(gastosMes);
-  await renderChartTopProductos(monthISO,ganancia);
+  await renderChartTopProductos(mesD,ganancia);
 }
 
 // ── Gráfico de barras (inline SVG) — ventas de los últimos 14 días ──
-function renderChartVentas14d(){
-  const now=new Date();
+// Recibe las ventas NO anuladas ya traídas del servidor (cubren los 14 días).
+function renderChartVentas14d(ventas){
+  const hoyD=inicioDiaLocal(new Date());
   const days=[];
-  for(let i=13;i>=0;i--){ const d=new Date(now); d.setDate(now.getDate()-i); days.push(d.toISOString().slice(0,10)); }
-  const totals=days.map(d=>DB.ventas.filter(v=>(v.created_at||'').slice(0,10)===d).reduce((s,v)=>s+Number(v.total||0),0));
+  for(let i=13;i>=0;i--) days.push(fechaLocalISO(new Date(hoyD.getFullYear(),hoyD.getMonth(),hoyD.getDate()-i)));
+  const porDia={};
+  (ventas||[]).forEach(v=>{ const k=diaDeTimestamp(v.created_at); porDia[k]=(porDia[k]||0)+Number(v.total||0); });
+  const totals=days.map(d=>porDia[d]||0);
   const max=Math.max(...totals,0);
   const hasData=max>0;
   const w=560,h=180,padL=6,padR=6,padB=22,padT=10;
@@ -1286,11 +1374,19 @@ function renderChartGastosCategoria(gastosMes){
 }
 
 // ── Top 5 productos por monto vendido (venta_items del mes en curso) ──
-async function renderChartTopProductos(monthISO,ganancia){
+async function renderChartTopProductos(mesD,ganancia){
   const el=document.getElementById('chartTopProductos');
-  const {data,error}=await supa.from('venta_items').select('producto_nombre,cantidad,subtotal,costo_unitario,created_at').gte('created_at',monthISO);
-  if(error){ el.innerHTML='<p class="empty">No se pudo cargar</p>'; return; }
-  const items=data||[];
+  // Las anuladas son pocas: se traen sus ids (con un día de holgura por si los
+  // items se grabaron segundos después de la medianoche) y se excluyen acá.
+  // Así no hace falta un .in() con miles de ids ni depende del tope de 200.
+  const holgura=new Date(mesD.getFullYear(),mesD.getMonth(),mesD.getDate()-1);
+  const [itR,anR]=await Promise.all([
+    supa.from('venta_items').select('venta_id,producto_nombre,cantidad,subtotal,costo_unitario,created_at').gte('created_at',mesD.toISOString()),
+    supa.from('ventas').select('id').eq('anulada',true).gte('created_at',holgura.toISOString()),
+  ]);
+  if(itR.error||anR.error){ console.error(itR.error||anR.error); el.innerHTML='<p class="empty">No se pudo cargar</p>'; return; }
+  const anuladas=new Set((anR.data||[]).map(v=>v.id));
+  const items=(itR.data||[]).filter(it=>!anuladas.has(it.venta_id));
   // Margen bruto del mes (KPI del Dashboard, gated por verCostos): revenue - COGS
   // usando el costo_unitario congelado en cada venta_item, no productos.costo actual.
   const kpiMargen=document.getElementById('kpiMargenBrutoMes');
@@ -1654,7 +1750,7 @@ function generarReciboHTML(venta,items){
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Boleta ${escapeHtml(boleta)} — ${nombreNegocio}</title>
+<title>Boleta ${escapeHtml(boleta)}${venta.anulada?' (ANULADA)':''} — ${nombreNegocio}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap">
@@ -1676,6 +1772,8 @@ function generarReciboHTML(venta,items){
   .r-header .r-nombre{font-size:21px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;}
   .r-header .r-accent{width:46px;height:3px;background:var(--brand);margin:7px auto 9px;border-radius:2px;}
   .r-header .r-linea{font-size:11px;color:var(--ink2);line-height:1.55;}
+  .r-anulada{margin:10px 0 0;padding:8px;border:3px solid var(--ink);text-align:center;font-size:22px;font-weight:800;letter-spacing:.2em;}
+  .r-anulada .r-anulada-det{font-size:10.5px;font-weight:600;letter-spacing:0;margin-top:4px;color:var(--ink2);}
   .r-div{border-top:1px dashed #999;margin:14px 0;}
   .r-div.solid{border-top:2px solid var(--ink);}
   .r-info{font-size:11.5px;color:var(--ink2);line-height:1.7;}
@@ -1714,6 +1812,8 @@ function generarReciboHTML(venta,items){
         ${telefono?`Tel. ${telefono}`:''}
       </div>
     </div>
+    ${venta.anulada?`<div class="r-anulada">ANULADA
+      <div class="r-anulada-det">${venta.anulada_at?escapeHtml(new Date(venta.anulada_at).toLocaleString('es-CL')):''}${venta.anulada_por?' · '+escapeHtml(venta.anulada_por):''}${venta.motivo_anulacion?'<br>'+escapeHtml(venta.motivo_anulacion):''}</div></div>`:''}
     <div class="r-div"></div>
     <div class="r-info">
       <div>Boleta N° <span class="r-boleta">${escapeHtml(boleta)}</span></div>
@@ -1778,16 +1878,103 @@ function fmtCantidadPedido(cantidad,porPeso){
 // vuelve a ofrecer "Facturar": re-facturar descontaría el stock dos veces.
 function pedidoFacturado(p){ return !!p.venta_id||p.estado==='facturado'; }
 
-function renderPedidos(filter=''){
-  const rows=DB.pedidos.filter(p=>(p.cliente_nombre||'').toLowerCase().includes((filter||'').toLowerCase()));
+// ── "En curso" vs "Historial" ────────────────────────────
+// Un pedido está CERRADO (Historial) si está anulado, o si ya se entregó,
+// se cobró y se facturó. Todo lo demás sigue En curso: p.ej. un entregado que
+// sigue "por cobrar" o que falta facturar no se pierde de vista.
+// (El estado heredado 'facturado' cuenta como entregado + facturado.)
+function pedidoCerrado(p){
+  if(p.estado==='anulado') return true;
+  const entregado=p.estado==='entregado'||p.estado==='facturado';
+  return entregado&&p.estado_pago==='pagado'&&pedidoFacturado(p);
+}
+// Mismos criterios, como filtro de PostgREST (se piden al servidor, no al caché de 200).
+const PEDIDOS_OR_EN_CURSO='(estado.not.in.(entregado,facturado),estado_pago.is.null,estado_pago.neq.pagado,and(venta_id.is.null,estado.neq.facturado))';
+const PEDIDOS_OR_HISTORIAL='(estado.eq.anulado,and(estado.in.(entregado,facturado),estado_pago.eq.pagado,or(venta_id.not.is.null,estado.eq.facturado)))';
+
+let PEDIDOS_VIEW={tab:'curso',periodo:'mes',fecha:'',filtro:'',rows:[],req:0,countCurso:null,countHistorial:null};
+// Los pedidos que se ven en pantalla pueden ser más viejos que los 200 de
+// DB.pedidos: este mapa guarda los que llegaron por las consultas de la vista.
+const PEDIDOS_EXTRA=new Map();
+function pedidoPorId(id){
+  id=Number(id);
+  return DB.pedidos.find(x=>x.id===id)||PEDIDOS_EXTRA.get(id)||null;
+}
+function recordarPedidos(rows){ (rows||[]).forEach(p=>PEDIDOS_EXTRA.set(p.id,p)); }
+
+function setTabPedidos(tab){
+  PEDIDOS_VIEW.tab=tab;
+  renderPedidos();
+}
+function setPeriodoPedidos(periodo){
+  PEDIDOS_VIEW.periodo=periodo; PEDIDOS_VIEW.fecha='';
+  const inp=document.getElementById('filtroFechaPedidos'); if(inp) inp.value='';
+  renderPedidos();
+}
+function setFechaPedidos(fecha){
+  PEDIDOS_VIEW.fecha=fecha||'';
+  renderPedidos();
+}
+function filtrarPedidos(txt){
+  PEDIDOS_VIEW.filtro=txt||'';
+  pintarPedidos();
+}
+async function renderPedidos(){
+  const v=PEDIDOS_VIEW;
+  document.querySelectorAll('#pedidosTabs .cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.tab===v.tab));
+  document.getElementById('pedidosPeriodoBar').style.display=v.tab==='historial'?'flex':'none';
+  marcarChipsPeriodo('pedidosPeriodoChips',v.fecha?null:v.periodo);
+  const req=++v.req;
+  const rango=rangoPeriodo(v.periodo,v.fecha);
+  const esTodo=!v.fecha&&v.periodo==='todo';
+  let qHist=aplicarRango(supa.from('pedidos').select('*').or(PEDIDOS_OR_HISTORIAL),'created_at',rango).order('created_at',{ascending:false});
+  if(esTodo) qHist=qHist.limit(LIMITE_TODO);
+  // Siempre se piden ambas listas: así los dos contadores de las pestañas son reales.
+  const [curR,histR]=await Promise.all([
+    supa.from('pedidos').select('*').neq('estado','anulado').or(PEDIDOS_OR_EN_CURSO).order('created_at',{ascending:false}),
+    qHist,
+  ]);
+  if(req!==v.req) return;
+  if(curR.error||histR.error){
+    const e=curR.error||histR.error; console.error(e);
+    toast('Error cargando pedidos: '+e.message,true); return;
+  }
+  // el filtro del servidor y pedidoCerrado() son la misma regla; se re-aplica
+  // en el cliente para que ninguna fila quede en la pestaña equivocada
+  const curso=(curR.data||[]).filter(p=>!pedidoCerrado(p));
+  const hist=(histR.data||[]).filter(p=>pedidoCerrado(p));
+  recordarPedidos(curso); recordarPedidos(hist);
+  v.countCurso=curso.length; v.countHistorial=hist.length;
+  v.rows=v.tab==='historial'?hist:curso;
+  v.esTodo=esTodo;
+  pintarPedidos();
+}
+function pintarPedidos(){
+  const v=PEDIDOS_VIEW;
+  const cc=document.getElementById('pedidosCountCurso'), ch=document.getElementById('pedidosCountHistorial');
+  if(cc) cc.textContent=v.countCurso==null?'':`(${v.countCurso})`;
+  if(ch) ch.textContent=v.countHistorial==null?'':`(${v.countHistorial})`;
+  const filtro=(v.filtro||'').toLowerCase();
+  const rows=v.rows.filter(p=>(p.cliente_nombre||'').toLowerCase().includes(filtro));
+  const res=document.getElementById('pedidosResumen');
+  if(v.tab==='historial'){
+    const noAnulados=v.rows.filter(p=>p.estado!=='anulado');
+    const nAn=v.rows.length-noAnulados.length;
+    res.innerHTML=`<b class="num">${noAnulados.length}</b> pedido${noAnulados.length===1?'':'s'} cerrado${noAnulados.length===1?'':'s'} · total <b class="num">${money(noAnulados.reduce((s,p)=>s+Number(p.total||0),0))}</b>`+
+      (nAn?` · <span class="pr-anuladas">${nAn} anulado${nAn===1?'':'s'}</span>`:'')+
+      (v.esTodo?` <span class="pr-nota">(mostrando los últimos ${LIMITE_TODO})</span>`:'');
+  }else{
+    res.innerHTML='';
+  }
+  const vacio=v.tab==='historial'?'Sin pedidos cerrados en este período':'No hay pedidos en curso';
   document.getElementById('pedidosBody').innerHTML=rows.map(p=>{
     const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
     const idx=PEDIDO_ETAPAS.indexOf(p.estado);
     const siguiente=(p.estado!=='anulado'&&idx>=0&&idx<PEDIDO_ETAPAS.length-1)?PEDIDO_ETAPAS[idx+1]:null;
     return `
-    <tr><td>#${p.id}<div style="color:var(--muted);font-size:11px;">${p.cliente_tel||'-'}</div></td>
-    <td>${p.cliente_nombre||'-'}</td>
-    <td style="font-size:12.5px;">${dir||'-'}</td>
+    <tr><td>#${p.id}<div style="color:var(--muted);font-size:11px;">${escapeHtml(p.cliente_tel||'-')}</div></td>
+    <td>${escapeHtml(p.cliente_nombre||'-')}</td>
+    <td style="font-size:12.5px;">${escapeHtml(dir||'-')}</td>
     <td class="num">${money(p.total)}${p.pesos_ajustados?`<div style="color:var(--muted);font-size:11px;">peso ajustado</div>`:''}</td>
     <td>
       <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
@@ -1799,7 +1986,7 @@ function renderPedidos(filter=''){
       ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
       <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / preparar</button>
     </td></tr>`;
-  }).join('')||'<tr><td colspan="7" class="empty">Sin pedidos</td></tr>';
+  }).join('')||`<tr><td colspan="7" class="empty">${vacio}</td></tr>`;
 
   document.getElementById('pedidosCards').innerHTML=rows.map(p=>{
     const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
@@ -1808,9 +1995,9 @@ function renderPedidos(filter=''){
     return `
     <div class="lcard">
       <div class="lc-row"><div class="lc-main">
-        <div class="lc-top"><div class="lc-title">#${p.id} · ${p.cliente_nombre||'-'}</div>
+        <div class="lc-top"><div class="lc-title">#${p.id} · ${escapeHtml(p.cliente_nombre||'-')}</div>
           <div class="lc-fig">${money(p.total)}${p.pesos_ajustados?`<span class="lc-fig-sub">peso ajustado</span>`:''}</div></div>
-        <div class="lc-meta">${dir||'-'}${p.cliente_tel?` · ${p.cliente_tel}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
+        <div class="lc-meta">${escapeHtml(dir||'-')}${p.cliente_tel?` · ${escapeHtml(p.cliente_tel)}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
         <div class="lc-badges">
           <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
           ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
@@ -1822,10 +2009,10 @@ function renderPedidos(filter=''){
         ${siguiente?`<button class="btn secondary" style="flex:1;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
       </div>
     </div>`;
-  }).join('')||'<p class="empty">Sin pedidos</p>';
+  }).join('')||`<p class="empty">${vacio}</p>`;
 }
 async function avanzarEstadoPedido(id,nuevoEstado){
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   // El flujo del local es: el cliente paga el link → recién ahí se despacha.
   // Se avisa, pero NO se bloquea: hay entregas que se pagan contra entrega.
@@ -1840,7 +2027,7 @@ async function avanzarEstadoPedido(id,nuevoEstado){
 }
 async function anularPedido(id){
   if(!confirm('¿Anular este pedido?')) return;
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   await supa.from('pedidos').update({estado:'anulado'}).eq('id',id);
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → anulado`);
   const msg=mensajePedidoEstado(p||{id},'anulado');
@@ -1906,7 +2093,7 @@ async function guardarPedido(){
 // recibió el pedido, no antes. El pedido sigue pudiendo estar "por cobrar"
 // (estado_pago='pendiente') al facturarse — eso no bloquea la facturación.
 function facturarPedido(id){
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   if(pedidoFacturado(p)){ toast('Este pedido ya fue facturado',true); return; }
   // El método de pago real ya no se asume 'efectivo': si se pagó por el link de
@@ -1928,7 +2115,7 @@ function facturarPedido(id){
   document.getElementById('modalBg').style.display='flex';
 }
 async function confirmarFacturarPedido(id){
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   if(pedidoFacturado(p)){ toast('Este pedido ya fue facturado',true); return; }
   const metodo=document.getElementById('fpMetodo').value;
@@ -1972,13 +2159,31 @@ async function confirmarFacturarPedido(id){
 // ══════════════════════════════════════════════════════════
 let PEDIDO_DET={id:null,items:[]};
 async function abrirPedidoDetalle(id){
-  const p=DB.pedidos.find(x=>x.id===id);
+  // El pedido se lee fresco: puede ser más viejo que los 200 del caché o
+  // haber cambiado desde otra caja (facturado, anulado, total nuevo).
+  const {data:pf,error:pErr}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
+  if(pErr) console.error(pErr);
+  const p=(pf&&pf[0])||pedidoPorId(id);
   if(!p) return;
+  recordarPedidos([p]);
+  const enCache=DB.pedidos.findIndex(x=>x.id===p.id);
+  if(enCache>=0) DB.pedidos[enCache]=p;
   const {data:items,error}=await supa.from('pedido_items').select('*').eq('pedido_id',id).order('id');
   if(error){ toast('Error al cargar el detalle: '+error.message,true); console.error(error); return; }
   PEDIDO_DET={id,items:items||[]};
   const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
   const editable=p.estado!=='anulado'&&!pedidoFacturado(p);
+  const prodOpts=DB.productos.map(x=>`<option value="${x.id}">${escapeHtml(x.nombre)} — ${money(x.precio)}${x.vender_por_peso?' / kg':' c/u'}</option>`).join('');
+  const agregarHTML=editable&&DB.productos.length?`
+    <div style="margin-top:12px;padding:10px;background:var(--mint);border:1px solid var(--border2);border-radius:var(--r-sm);">
+      <div style="font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:6px;">Agregar producto</div>
+      <select id="pdiNuevoProd" onchange="syncUnidadNuevoItemPedido()">${prodOpts}</select>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+        <input id="pdiNuevoCant" type="number" min="0" style="flex:1;text-align:right;" placeholder="Cantidad">
+        <span id="pdiNuevoUnidad" style="font-size:12px;color:var(--muted);width:14px;">u</span>
+        <button type="button" class="btn secondary" onclick="agregarItemPedido()">+ Agregar</button>
+      </div>
+    </div>`:'';
   const filas=PEDIDO_DET.items.map((it,i)=>{
     const porPeso=pedidoItemPorPeso(it);
     const val=porPeso?Math.round(Number(it.cantidad)*1000):Number(it.cantidad);
@@ -1996,6 +2201,7 @@ async function abrirPedidoDetalle(id){
         <span style="font-size:12px;color:var(--muted);">${porPeso?'g':'u'}</span>
       </div>
       <div id="pdiSub${i}" class="num" style="width:82px;text-align:right;font-weight:600;">${money(it.subtotal)}</div>
+      ${editable?`<button type="button" class="lc-more" style="min-width:34px;min-height:34px;color:var(--danger);" title="Quitar producto" aria-label="Quitar ${escapeHtml(it.producto_nombre||'producto')}" onclick="quitarItemPedido(${it.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:''}
     </div>`;
   }).join('')||'<div style="color:var(--muted);font-size:13px;padding:8px 0;">Este pedido no tiene items.</div>';
   document.getElementById('modalContent').innerHTML=`
@@ -2005,6 +2211,7 @@ async function abrirPedidoDetalle(id){
       📍 ${escapeHtml(dir||'Sin dirección')}<br>
       ${p.notas?`📝 ${escapeHtml(p.notas)}<br>`:''}
     </div>
+    <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px;margin-top:8px;" onclick="editarDatosClientePedido(${p.id})">Editar datos del cliente</button>
     <div style="margin:10px 0;">
       <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
       <span class="badge ${p.estado_pago==='pagado'?'pagado':'por-cobrar'}">${p.estado_pago==='pagado'?'Pagado':'Por cobrar'}</span>
@@ -2012,6 +2219,7 @@ async function abrirPedidoDetalle(id){
     </div>
     <div style="font-size:12px;color:var(--muted);">Ajusta el peso real que saliste de la balanza. Se guarda en kg; aquí escribes gramos.</div>
     <div style="margin-top:8px;">${filas}</div>
+    ${agregarHTML}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:16px;font-weight:700;">
       <span>Total</span><span id="pdiTotal" class="num">${money(p.total)}</span>
     </div>
@@ -2021,7 +2229,7 @@ async function abrirPedidoDetalle(id){
     <div class="actions">
       ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
       ${p.estado==='entregado'&&!pedidoFacturado(p)?`<button class="btn secondary" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
-      ${p.mp_link?`<button class="btn secondary" onclick="mostrarLinkPago(DB.pedidos.find(x=>x.id===${p.id}))">Ver link de pago</button>`:''}
+      ${p.mp_link?`<button class="btn secondary" onclick="mostrarLinkPago(pedidoPorId(${p.id}))">Ver link de pago</button>`:''}
     </div>
     <div class="actions">
       ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" onclick="anularPedido(${p.id})">Anular</button>`:''}
@@ -2029,6 +2237,7 @@ async function abrirPedidoDetalle(id){
       <button class="btn secondary" onclick="closeModal()">Cerrar</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
+  if(editable) syncUnidadNuevoItemPedido();
   recalcPedidoDetalle();
 }
 // Lee los inputs del modal y devuelve las cantidades en kg (unidad de guardado).
@@ -2057,7 +2266,7 @@ function recalcPedidoDetalle(){
 }
 async function guardarPesosPedido(){
   const id=PEDIDO_DET.id;
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   const cants=leerCantidadesPedidoDetalle();
   const nuevoTotal=cants.reduce((s,c,i)=>s+(Number(PEDIDO_DET.items[i].precio_unitario)||0)*c,0);
@@ -2097,6 +2306,135 @@ async function guardarPesosPedido(){
   await loadAll(); renderPedidos();
   abrirPedidoDetalle(id);
 }
+// ── Edición del pedido: datos del cliente y productos ─────
+function editarDatosClientePedido(id){
+  const p=pedidoPorId(id);
+  if(!p) return;
+  const val=s=>escapeHtml(s||'');
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Datos del cliente — Pedido #${p.id}</h3>
+    <label>Nombre</label><input id="edpNombre" value="${val(p.cliente_nombre)}">
+    <label>Teléfono</label><input id="edpTelefono" value="${val(p.cliente_tel)}" inputmode="tel">
+    <label>Calle y número</label><input id="edpCalle" value="${val(p.direccion_calle)}">
+    <label>Depto/Casa (opcional)</label><input id="edpDepto" value="${val(p.direccion_depto)}">
+    <label>Comuna</label><input id="edpComuna" value="${val(p.direccion_comuna)}">
+    <label>Notas</label><textarea id="edpNotas" rows="2">${val(p.notas)}</textarea>
+    <div class="actions">
+      <button class="btn secondary" onclick="abrirPedidoDetalle(${p.id})">Volver</button>
+      <button class="btn" onclick="guardarDatosClientePedido(${p.id})">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarDatosClientePedido(id){
+  const p=pedidoPorId(id);
+  if(!p) return;
+  const patch={
+    cliente_nombre:sanitize(document.getElementById('edpNombre').value),
+    cliente_tel:sanitize(document.getElementById('edpTelefono').value),
+    direccion_calle:sanitize(document.getElementById('edpCalle').value),
+    direccion_depto:sanitize(document.getElementById('edpDepto').value),
+    direccion_comuna:sanitize(document.getElementById('edpComuna').value),
+    notas:sanitize(document.getElementById('edpNotas').value),
+  };
+  if(!patch.cliente_nombre){ toast('Ingresa el nombre del cliente',true); return; }
+  const campos={cliente_nombre:'nombre',cliente_tel:'teléfono',direccion_calle:'calle',direccion_depto:'depto',direccion_comuna:'comuna',notas:'notas'};
+  const cambiados=Object.keys(patch).filter(k=>(patch[k]||'')!==(p[k]||''));
+  if(!cambiados.length){ toast('No hay cambios que guardar'); abrirPedidoDetalle(id); return; }
+  const {data,error}=await supa.from('pedidos').update(patch).eq('id',id).select('id');
+  if(error||!data||!data.length){ console.error(error); toast('No se pudieron guardar los datos'+(error?': '+error.message:''),true); return; }
+  logAudit('Datos de cliente editados','pedidos',`Pedido #${id}: ${cambiados.map(k=>campos[k]).join(', ')}`);
+  toast('Datos del cliente guardados');
+  await loadAll(); renderPedidos();
+  abrirPedidoDetalle(id);
+}
+function syncUnidadNuevoItemPedido(){
+  const sel=document.getElementById('pdiNuevoProd');
+  const inp=document.getElementById('pdiNuevoCant');
+  const uni=document.getElementById('pdiNuevoUnidad');
+  if(!sel||!inp||!uni) return;
+  const prod=DB.productos.find(x=>x.id===Number(sel.value));
+  const porPeso=!!(prod&&prod.vender_por_peso);
+  // misma convención que los inputs de peso del detalle: gramos para lo que se
+  // vende al peso (se guarda en kg), unidades para el resto
+  uni.textContent=porPeso?'g':'u';
+  inp.step=porPeso?'1':'0.1';
+  inp.placeholder=porPeso?'Gramos':'Unidades';
+}
+// Hay pesos escritos en el detalle que no se guardaron: agregar/quitar un
+// producto vuelve a dibujar el modal y se perderían.
+function pesosSinGuardar(){
+  const cants=leerCantidadesPedidoDetalle();
+  return PEDIDO_DET.items.some((it,i)=>Math.abs(cants[i]-Number(it.cantidad))>1e-9);
+}
+// Relee el pedido y confirma que todavía se puede editar (otra caja pudo
+// facturarlo o anularlo mientras el modal estaba abierto).
+async function pedidoEditableFresco(id){
+  const {data,error}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
+  if(error){ console.error(error); toast('Error al leer el pedido: '+error.message,true); return null; }
+  const p=(data||[])[0];
+  if(!p){ toast('El pedido ya no existe',true); return null; }
+  if(p.estado==='anulado'||pedidoFacturado(p)){ toast('El pedido ya está '+(p.estado==='anulado'?'anulado':'facturado')+': no se puede editar',true); abrirPedidoDetalle(id); return null; }
+  return p;
+}
+async function agregarItemPedido(){
+  const id=PEDIDO_DET.id;
+  if(pesosSinGuardar()){ toast('Primero guarda los pesos que cambiaste',true); return; }
+  const sel=document.getElementById('pdiNuevoProd');
+  const prod=DB.productos.find(x=>x.id===Number(sel?.value));
+  if(!prod){ toast('Elige un producto',true); return; }
+  let cant=parseFloat(document.getElementById('pdiNuevoCant').value);
+  if(!isFinite(cant)||cant<=0){ toast('Ingresa una cantidad válida',true); return; }
+  if(prod.vender_por_peso) cant=cant/1000;   // gramos → kg
+  const p=await pedidoEditableFresco(id);
+  if(!p) return;
+  const precio=Number(prod.precio)||0;
+  const {data,error}=await supa.from('pedido_items').insert({
+    pedido_id:id,producto_id:prod.id,producto_nombre:prod.nombre,cantidad:cant,precio_unitario:precio,subtotal:precio*cant
+  }).select('id');
+  if(error||!data||!data.length){ console.error(error); toast('No se pudo agregar el producto'+(error?': '+error.message:''),true); return; }
+  await recalcularTotalPedido(p,`agregado ${prod.nombre} ${fmtCantidadPedido(cant,!!prod.vender_por_peso)}`);
+}
+async function quitarItemPedido(itemId){
+  const id=PEDIDO_DET.id;
+  const it=PEDIDO_DET.items.find(x=>x.id===itemId);
+  if(!it) return;
+  if(pesosSinGuardar()){ toast('Primero guarda los pesos que cambiaste',true); return; }
+  if(!confirm(`¿Quitar "${it.producto_nombre||'este producto'}" del pedido?`)) return;
+  const p=await pedidoEditableFresco(id);
+  if(!p) return;
+  const {data,error}=await supa.from('pedido_items').delete().eq('id',itemId).eq('pedido_id',id).select('id');
+  if(error||!data||!data.length){ console.error(error); toast('No se pudo quitar el producto'+(error?': '+error.message:''),true); return; }
+  await recalcularTotalPedido(p,`quitado ${it.producto_nombre||'producto'} ${fmtCantidadPedido(it.cantidad,pedidoItemPorPeso(it))}`);
+}
+// Recalcula pedidos.total desde sus items (ya escritos) y lo guarda AL FINAL.
+// Mismo invariante que guardarPesosPedido(): si el total cambia y había link de
+// Mercado Pago, el link se borra en el MISMO update (cobraría el monto viejo).
+async function recalcularTotalPedido(p,accion){
+  const id=p.id;
+  const {data:items,error}=await supa.from('pedido_items').select('subtotal').eq('pedido_id',id);
+  if(error){
+    console.error(error);
+    toast('El producto se actualizó, pero no se pudo recalcular el total: '+error.message+'. Revisa el pedido antes de cobrar.',true);
+    abrirPedidoDetalle(id); return;
+  }
+  const nuevoTotal=(items||[]).reduce((s,it)=>s+(Number(it.subtotal)||0),0);
+  const patch={total:nuevoTotal};
+  // total_original = lo que pidió el cliente: se fija solo en el primer cambio
+  if(p.total_original==null) patch.total_original=Number(p.total);
+  const totalCambio=Math.abs(nuevoTotal-Number(p.total))>=0.5;
+  const linkInvalidado=totalCambio&&!!p.mp_link;
+  if(linkInvalidado){ patch.mp_preference_id=null; patch.mp_link=null; }
+  const {data:up,error:upErr}=await supa.from('pedidos').update(patch).eq('id',id).select('id');
+  if(upErr||!up||!up.length){
+    console.error(upErr);
+    toast('El producto se actualizó, pero falló la actualización del total del pedido'+(upErr?': '+upErr.message:'')+'. Revisa el pedido antes de cobrar.',true);
+    abrirPedidoDetalle(id); return;
+  }
+  logAudit('Pedido editado','pedidos',`Pedido #${id}: ${accion}; total ${money(p.total)} → ${money(nuevoTotal)}${linkInvalidado?' (link de pago invalidado)':''}`);
+  toast(linkInvalidado?'Pedido actualizado — el link de pago quedó obsoleto, vuelve a generarlo con el nuevo monto':'Pedido actualizado');
+  await loadAll(); renderPedidos();
+  abrirPedidoDetalle(id);
+}
 
 // ══════════════════════════════════════════════════════════
 //  BOLETA + LINK DE PAGO por WhatsApp (acción combinada)
@@ -2123,7 +2461,7 @@ function whatsappConfigurado(){
 async function enviarBoletaYLinkPago(id){
   const token=CONFIG_CACHE.mercadopago_access_token;
   if(!token){ toast('Configura tu Access Token de Mercado Pago en Configuración primero',true); return; }
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   if(!(Number(p.total)>0)){ toast('El pedido no tiene monto que cobrar',true); return; }
   // Invariante anti-link-obsoleto: la boleta SIEMPRE se envía con una
@@ -2177,71 +2515,218 @@ async function eliminarPedido(id){
 // ══════════════════════════════════════════════════════════
 //  VENTAS
 // ══════════════════════════════════════════════════════════
-function renderVentas(){
-  const fecha=document.getElementById('filtroFechaVentas').value;
-  const rows=fecha?DB.ventas.filter(v=>(v.created_at||'').slice(0,10)===fecha):DB.ventas;
+// Vista por período (Hoy por defecto): las filas se piden al servidor según el
+// período elegido, NO se filtra DB.ventas (que trae solo las últimas 200).
+let VENTAS_VIEW={periodo:'hoy',fecha:'',rows:[],req:0};
+function ventaPorId(id){
+  return VENTAS_VIEW.rows.find(v=>v.id===id)||DB.ventas.find(v=>v.id===id)||null;
+}
+function setPeriodoVentas(periodo){
+  VENTAS_VIEW.periodo=periodo; VENTAS_VIEW.fecha='';
+  const inp=document.getElementById('filtroFechaVentas'); if(inp) inp.value='';
+  bulkClear('ventas');
+  renderVentas();
+}
+function setFechaVentas(fecha){
+  VENTAS_VIEW.fecha=fecha||'';
+  if(!fecha&&!VENTAS_VIEW.periodo) VENTAS_VIEW.periodo='hoy';
+  bulkClear('ventas');
+  renderVentas();
+}
+async function renderVentas(){
+  marcarChipsPeriodo('ventasPeriodoChips',VENTAS_VIEW.fecha?null:VENTAS_VIEW.periodo);
+  const req=++VENTAS_VIEW.req;
+  const rango=rangoPeriodo(VENTAS_VIEW.periodo,VENTAS_VIEW.fecha);
+  const esTodo=!VENTAS_VIEW.fecha&&VENTAS_VIEW.periodo==='todo';
+  let q=aplicarRango(supa.from('ventas').select('*'),'created_at',rango).order('created_at',{ascending:false});
+  if(esTodo) q=q.limit(LIMITE_TODO);
+  const {data,error}=await q;
+  if(req!==VENTAS_VIEW.req) return;   // llegó una respuesta más nueva (cambio de período)
+  if(error){ console.error(error); toast('Error cargando ventas: '+error.message,true); return; }
+  VENTAS_VIEW.rows=data||[];
+  pintarVentas(esTodo);
+}
+function pintarVentas(esTodo){
+  const rows=VENTAS_VIEW.rows;
+  const vigentes=rows.filter(v=>!v.anulada);
+  const nAnuladas=rows.length-vigentes.length;
+  const total=vigentes.reduce((s,v)=>s+Number(v.total||0),0);
+  document.getElementById('ventasResumen').innerHTML=
+    `<b class="num">${vigentes.length}</b> venta${vigentes.length===1?'':'s'} · total <b class="num">${money(total)}</b>`+
+    (nAnuladas?` · <span class="pr-anuladas">${nAnuladas} anulada${nAnuladas===1?'':'s'}</span>`:'')+
+    (esTodo?` <span class="pr-nota">(mostrando las últimas ${LIMITE_TODO})</span>`:'');
+  const puedeAnular=canDo('eliminarVentas');
+  const badgeAnulada='<span class="badge anulado">Anulada</span>';
   document.getElementById('ventasBody').innerHTML=rows.map(v=>`
-    <tr><td><input type="checkbox" class="bulk-chk" data-id="${v.id}" ${bulkChecked('ventas',v.id)?'checked':''} onchange="bulkToggle('ventas',${v.id},this.checked)"></td>
-    <td>${v.boleta_numero||v.id}</td><td>${v.cliente_nombre||'-'}</td><td class="num">${money(v.total)}</td>
-    <td style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` <span style="color:var(--muted);font-size:11px;">(${v.metodo_pago_detalle})</span>`:''}</td>
+    <tr class="${v.anulada?'venta-anulada':''}"><td><input type="checkbox" class="bulk-chk" data-id="${v.id}" ${v.anulada?'disabled title="Venta anulada"':(bulkChecked('ventas',v.id)?'checked':'')} onchange="bulkToggle('ventas',${v.id},this.checked)"></td>
+    <td>${v.boleta_numero||v.id}${v.anulada?` ${badgeAnulada}`:''}</td><td>${escapeHtml(v.cliente_nombre||'-')}</td><td class="num"><span class="${v.anulada?'tachado':''}">${money(v.total)}</span></td>
+    <td style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` <span style="color:var(--muted);font-size:11px;">(${escapeHtml(v.metodo_pago_detalle)})</span>`:''}</td>
     <td>${new Date(v.created_at).toLocaleString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="reimprimirVenta(${v.id})">🖨️ Boleta</button>
-      ${canDo('eliminarVentas')?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarVenta(${v.id})">Eliminar</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin ventas</td></tr>';
+      ${puedeAnular&&!v.anulada?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="anularVenta(${v.id})">Anular</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin ventas en este período</td></tr>';
 
   document.getElementById('ventasCards').innerHTML=rows.map(v=>`
-    <div class="lcard">
+    <div class="lcard${v.anulada?' venta-anulada':''}">
       <div class="lc-row">
-        <input type="checkbox" class="lc-chk bulk-chk" data-id="${v.id}" ${bulkChecked('ventas',v.id)?'checked':''} onchange="bulkToggle('ventas',${v.id},this.checked)">
+        <input type="checkbox" class="lc-chk bulk-chk" data-id="${v.id}" ${v.anulada?'disabled title="Venta anulada"':(bulkChecked('ventas',v.id)?'checked':'')} onchange="bulkToggle('ventas',${v.id},this.checked)">
         <div class="lc-main">
-          <div class="lc-top"><div class="lc-title">Boleta ${v.boleta_numero||v.id}</div><div class="lc-fig">${money(v.total)}</div></div>
-          <div class="lc-meta">${v.cliente_nombre||'-'}<br>${new Date(v.created_at).toLocaleString('es-CL')}</div>
-          <div class="lc-badges"><span class="badge" style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` (${v.metodo_pago_detalle})`:''}</span></div>
+          <div class="lc-top"><div class="lc-title">Boleta ${v.boleta_numero||v.id}</div><div class="lc-fig"><span class="${v.anulada?'tachado':''}">${money(v.total)}</span></div></div>
+          <div class="lc-meta">${escapeHtml(v.cliente_nombre||'-')}<br>${new Date(v.created_at).toLocaleString('es-CL')}</div>
+          <div class="lc-badges">${v.anulada?badgeAnulada:''}<span class="badge" style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` (${escapeHtml(v.metodo_pago_detalle)})`:''}</span></div>
         </div>
         <div class="lc-actions">
-          <button class="lc-more" onclick="sheetAccionesVenta(${v.id})"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
+          <button class="lc-more" onclick="sheetAccionesVenta(${v.id})" aria-label="Acciones"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
         </div>
       </div>
-    </div>`).join('')||'<p class="empty">Sin ventas</p>';
+    </div>`).join('')||'<p class="empty">Sin ventas en este período</p>';
+  // las selecciones de filas que ya no están (o que quedaron anuladas) se descartan
+  const seleccionables=new Set(rows.filter(v=>!v.anulada).map(v=>v.id));
+  [...BULK.ventas].forEach(id=>{ if(!seleccionables.has(id)) BULK.ventas.delete(id); });
   bulkSyncBar('ventas');
 }
 function sheetAccionesVenta(id){
-  const v=DB.ventas.find(x=>x.id===id);
-  openSheet(`Boleta ${v?.boleta_numero||id}`,`
+  const v=ventaPorId(id);
+  openSheet(`Boleta ${v?.boleta_numero||id}${v?.anulada?' (anulada)':''}`,`
     <button type="button" class="sheet-item" onclick="reimprimirVenta(${id});closeSheet()">
       <svg class="ic" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       <span>Ver / imprimir boleta</span></button>
-    ${canDo('eliminarVentas')?`<button type="button" class="sheet-item danger" onclick="eliminarVenta(${id});closeSheet()">
-      <svg class="ic" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-      <span>Eliminar</span></button>`:''}`);
+    ${canDo('eliminarVentas')&&v&&!v.anulada?`<div class="sheet-sep"></div><button type="button" class="sheet-item danger" onclick="closeSheet();anularVenta(${id})">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+      <span>Anular venta</span></button>`:''}`);
 }
 async function reimprimirVenta(id){
-  const venta=DB.ventas.find(v=>v.id===id);
+  // se lee fresca: si la anularon desde otra caja, la boleta debe salir "ANULADA"
+  const {data:fresca}=await supa.from('ventas').select('*').eq('id',id).limit(1);
+  const venta=(fresca&&fresca[0])||ventaPorId(id);
   if(!venta){ toast('Venta no encontrada',true); return; }
   const {data:items,error}=await supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',id);
   if(error){ toast('Error al obtener el detalle de la venta: '+error.message,true); return; }
   abrirReciboImprimir(venta,items||[]);
 }
-async function eliminarVenta(id){
-  if(!canDo('eliminarVentas')){ toast('No tienes permiso para eliminar ventas',true); return; }
-  if(!confirm('¿Eliminar esta venta? No se puede deshacer.')) return;
-  await supa.from('venta_items').delete().eq('venta_id',id);
-  await supa.from('ventas').delete().eq('id',id);
-  logAudit('Venta eliminada','ventas',`Venta #${id}`);
-  toast('Venta eliminada'); await loadAll(); renderVentas();
+
+// ══════════════════════════════════════════════════════════
+//  ANULAR VENTAS — reemplaza a "Eliminar". La venta queda en la base
+//  marcada anulada=true (se excluye de todos los totales) y el stock
+//  vendido se devuelve con un movimiento 'entrada' origen 'anulacion'.
+//  Antes se borraban venta + items SIN devolver el stock.
+// ══════════════════════════════════════════════════════════
+function anularVenta(id){ abrirModalAnulacion([id]); }
+function bulkAnularVentas(){ abrirModalAnulacion([...BULK.ventas]); }
+function abrirModalAnulacion(ids){
+  if(!canDo('eliminarVentas')){ toast('No tienes permiso para anular ventas',true); return; }
+  const vigentes=ids.filter(id=>!ventaPorId(id)?.anulada);
+  if(!vigentes.length){ toast('Las ventas seleccionadas ya están anuladas',true); return; }
+  const una=vigentes.length===1;
+  const v=una?ventaPorId(vigentes[0]):null;
+  const total=vigentes.reduce((s,id)=>s+Number(ventaPorId(id)?.total||0),0);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${una?`Anular boleta ${escapeHtml(v?.boleta_numero||vigentes[0])}`:`Anular ${vigentes.length} ventas`}</h3>
+    <div style="font-size:13px;color:var(--text2);line-height:1.55;">
+      ${una?`Venta por <b class="num">${money(total)}</b> a ${escapeHtml(v?.cliente_nombre||'-')}.`:`Total de las ventas seleccionadas: <b class="num">${money(total)}</b>.`}
+      La venta queda registrada como <b>anulada</b>, sale de todos los totales y el stock de sus productos se devuelve al inventario.
+      ${ids.length>vigentes.length?`<br><span style="color:var(--muted);">${ids.length-vigentes.length} ya estaba${ids.length-vigentes.length===1?'':'n'} anulada${ids.length-vigentes.length===1?'':'s'} y se omite${ids.length-vigentes.length===1?'':'n'}.</span>`:''}
+    </div>
+    <label>Motivo de la anulación</label>
+    <textarea id="anMotivo" rows="3" maxlength="300" placeholder="Ej: error de cobro, cliente devolvió el producto…"></textarea>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Opcional, pero ayuda a entender la auditoría después.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn danger" id="btnConfirmarAnulacion" onclick="confirmarAnulacion([${vigentes.join(',')}])">${una?'Anular venta':`Anular ${vigentes.length} ventas`}</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  setTimeout(()=>document.getElementById('anMotivo')?.focus(),50);
 }
-async function bulkEliminarVentas(){
-  if(!canDo('eliminarVentas')){ toast('No tienes permiso para eliminar ventas',true); return; }
-  const ids=[...BULK.ventas];
-  if(!ids.length) return;
-  if(!confirm(`¿Eliminar ${ids.length} venta${ids.length===1?'':'s'} seleccionada${ids.length===1?'':'s'}? No se puede deshacer.`)) return;
+async function confirmarAnulacion(ids){
+  if(!canDo('eliminarVentas')){ toast('No tienes permiso para anular ventas',true); return; }
+  const motivo=sanitize(document.getElementById('anMotivo')?.value||'').slice(0,300);
+  const btn=document.getElementById('btnConfirmarAnulacion');
+  if(btn){ btn.disabled=true; btn.textContent='Anulando…'; }
+  let ok=0,omitidas=0;
+  const fallidas=[];
   for(const id of ids){
-    await supa.from('venta_items').delete().eq('venta_id',id);
-    await supa.from('ventas').delete().eq('id',id);
+    const r=await anularVentaCore(id,motivo);
+    if(r.ok) ok++;
+    else if(r.omitida) omitidas++;
+    else fallidas.push(r);
   }
-  logAudit('Eliminación masiva','ventas',`${ids.length} venta(s): ${ids.join(', ')}`);
-  toast(`${ids.length} venta(s) eliminada(s)`);
-  bulkClear('ventas'); await loadAll(); renderVentas();
+  closeModal();
+  if(fallidas.length){
+    toast(`${fallidas[0].msg}${fallidas.length>1?` (+${fallidas.length-1} error(es) más, ver consola)`:''}`,true);
+  }else if(ok){
+    toast(ok===1?'Venta anulada — stock devuelto':`${ok} ventas anuladas — stock devuelto`);
+  }else if(omitidas){
+    toast('La venta ya estaba anulada',true);
+  }
+  bulkClear('ventas');
+  await loadAll();
+  if(currentPage==='ventas') renderVentas();
+  if(currentPage==='dashboard') renderDashboard();
+}
+// Anula UNA venta. Orden de escritura pensado para que una falla a mitad de
+// camino se note y se pueda reintentar sin duplicar: primero se devuelve el
+// stock (cada producto con su movimiento de kardex), luego se libera el pedido
+// de origen y la marca anulada=true va AL FINAL. Si algo falla, la venta sigue
+// vigente y al reintentar se saltan los productos que ya tienen su movimiento
+// de anulación registrado.
+async function anularVentaCore(id,motivo){
+  const fail=(msg,err)=>{ console.error('Anulación venta #'+id+':',msg,err||''); return {ok:false,msg}; };
+  const {data:vs,error:vErr}=await supa.from('ventas').select('id,boleta_numero,total,anulada').eq('id',id).limit(1);
+  if(vErr) return fail('Error al leer la venta: '+vErr.message,vErr);
+  const venta=(vs||[])[0];
+  if(!venta) return fail(`La venta #${id} ya no existe`);
+  if(venta.anulada) return {ok:false,omitida:true};
+  const boleta=venta.boleta_numero||venta.id;
+
+  const [itR,movR]=await Promise.all([
+    supa.from('venta_items').select('id,producto_id,producto_nombre,cantidad').eq('venta_id',id).order('id'),
+    supa.from('stock_movimientos').select('producto_id,cantidad').eq('origen','anulacion').eq('referencia_id',id),
+  ]);
+  if(itR.error) return fail(`Boleta ${boleta}: error al leer el detalle: ${itR.error.message}`,itR.error);
+  if(movR.error) return fail(`Boleta ${boleta}: error al leer el kardex: ${movR.error.message}`,movR.error);
+  // devoluciones ya hechas en un intento anterior que falló a mitad de camino
+  const yaDevuelto=[...(movR.data||[])];
+
+  for(const it of (itR.data||[])){
+    if(!it.producto_id) continue;   // producto borrado: no hay stock que devolver
+    const cantidad=Number(it.cantidad)||0;
+    if(!(cantidad>0)) continue;
+    const prev=yaDevuelto.findIndex(m=>Number(m.producto_id)===Number(it.producto_id)&&Math.abs(Number(m.cantidad)-cantidad)<1e-9);
+    if(prev>=0){ yaDevuelto.splice(prev,1); continue; }
+    // stock leído FRESCO de la base (no de DB.productos) para no pisar ventas
+    // que otra caja haya hecho mientras tanto
+    const {data:ps,error:pErr}=await supa.from('productos').select('id,stock').eq('id',it.producto_id).limit(1);
+    if(pErr) return fail(`Boleta ${boleta}: error al leer el stock de "${it.producto_nombre}": ${pErr.message}. La venta NO quedó anulada — reintenta.`,pErr);
+    const prod=(ps||[])[0];
+    if(!prod) continue;
+    const nuevoStock=Number(prod.stock||0)+cantidad;
+    const {data:up,error:upErr}=await supa.from('productos').update({stock:nuevoStock}).eq('id',prod.id).select('id');
+    if(upErr||!up||!up.length) return fail(`Boleta ${boleta}: no se pudo devolver el stock de "${it.producto_nombre}"${upErr?': '+upErr.message:''}. La venta NO quedó anulada — reintenta.`,upErr);
+    const {error:movErr}=await supa.from('stock_movimientos').insert({
+      producto_id:prod.id,tipo:'entrada',cantidad,motivo:`Anulación venta #${boleta}`,
+      origen:'anulacion',referencia_id:id,registrado_por:SESSION.usuario
+    });
+    if(movErr) return fail(`Boleta ${boleta}: se devolvió el stock de "${it.producto_nombre}" pero falló el registro del movimiento: ${movErr.message}. Revisa ese stock antes de reintentar.`,movErr);
+  }
+
+  // Si la venta vino de un pedido, se libera: su stock acaba de volver, así
+  // que se puede volver a facturar más adelante.
+  let pedidoTxt='';
+  const {data:peds,error:pedErr}=await supa.from('pedidos').select('id').eq('venta_id',id);
+  if(pedErr) return fail(`Boleta ${boleta}: stock devuelto, pero no se pudo revisar el pedido de origen: ${pedErr.message}. La venta NO quedó anulada — reintenta.`,pedErr);
+  if(peds&&peds.length){
+    const {error:libErr}=await supa.from('pedidos').update({venta_id:null}).eq('venta_id',id).select('id');
+    if(libErr) return fail(`Boleta ${boleta}: stock devuelto, pero no se pudo liberar el pedido #${peds[0].id}: ${libErr.message}. La venta NO quedó anulada — reintenta.`,libErr);
+    pedidoTxt=` — pedido${peds.length>1?'s':''} #${peds.map(p=>p.id).join(', #')} liberado${peds.length>1?'s':''} para volver a facturar`;
+  }
+
+  const {data:marc,error:mErr}=await supa.from('ventas').update({
+    anulada:true,anulada_at:new Date().toISOString(),anulada_por:SESSION.usuario,motivo_anulacion:motivo||null
+  }).eq('id',id).eq('anulada',false).select('id');
+  if(mErr) return fail(`Boleta ${boleta}: stock devuelto, pero no se pudo marcar la venta como anulada: ${mErr.message}. Reintenta (el stock no se devolverá dos veces).`,mErr);
+  if(!marc||!marc.length) return {ok:false,omitida:true};   // otra caja la anuló en paralelo
+  logAudit('Venta anulada','ventas',`Boleta ${boleta} — ${money(venta.total)}${motivo?` — motivo: ${motivo}`:' — sin motivo'}${pedidoTxt}`);
+  return {ok:true};
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2816,7 +3301,7 @@ function mensajePedidoEstado(p,estado){
 async function generarLinkPago(id){
   const token=CONFIG_CACHE.mercadopago_access_token;
   if(!token){ toast('Configura tu Access Token de Mercado Pago en Configuración primero',true); return; }
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   if(p.mp_link){ mostrarLinkPago(p); return; }
   await regenerarLinkPago(id,token,p);
@@ -2842,7 +3327,7 @@ async function regenerarLinkPago(id,token,p){
     await supa.from('pedidos').update({mp_preference_id:data.id,mp_link:data.init_point}).eq('id',id);
     logAudit('Link de pago generado','pedidos',`Pedido #${id}`);
     await loadAll();
-    const pedidoActualizado=DB.pedidos.find(x=>x.id===id)||{...p,mp_link:data.init_point};
+    const pedidoActualizado=pedidoPorId(id)||{...p,mp_link:data.init_point};
     mostrarLinkPago(pedidoActualizado);
     renderPedidos();
   }catch(e){ toast('Error al generar el link de pago: '+e.message,true); }
@@ -2869,7 +3354,7 @@ async function copiarLinkPago(){
   catch(e){ toast('No se pudo copiar automáticamente — selecciona y copia manualmente',true); }
 }
 async function enviarLinkPagoWhatsApp(id){
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!p) return;
   if(!p.cliente_tel){ toast('Este pedido no tiene teléfono registrado',true); return; }
   await enviarWhatsApp(p.cliente_tel,`Hola ${p.cliente_nombre||''}! Aquí tienes el link de pago de tu pedido #${p.id} en Punto Queso: ${p.mp_link}`);
@@ -2877,7 +3362,7 @@ async function enviarLinkPagoWhatsApp(id){
 }
 async function regenerarLinkPagoDesdeModal(id){
   const token=CONFIG_CACHE.mercadopago_access_token;
-  const p=DB.pedidos.find(x=>x.id===id);
+  const p=pedidoPorId(id);
   if(!token||!p) return;
   await regenerarLinkPago(id,token,p);
 }
@@ -2898,7 +3383,7 @@ async function renderAuditoria(){
 //  USUARIOS Y PERMISOS (admin-only)
 // ══════════════════════════════════════════════════════════
 const PERM_KEYS=[
-  ['verCostos','Ver costos'],['editarInventario','Editar inventario'],['eliminarVentas','Eliminar ventas'],
+  ['verCostos','Ver costos'],['editarInventario','Editar inventario'],['eliminarVentas','Anular ventas'],
   ['verReportes','Ver reportes'],['verGastos','Ver gastos'],['gestionarUsuarios','Gestionar usuarios']
 ];
 // ══════════════════════════════════════════════════════════
@@ -3307,7 +3792,7 @@ async function generarReporteRango(){
   if(!desde||!hasta){ toast('Selecciona ambas fechas',true); return; }
   const hastaFin=hasta+'T23:59:59';
   const [ventasR,gastosR]=await Promise.all([
-    supa.from('ventas').select('*').gte('created_at',desde+'T00:00:00').lte('created_at',hastaFin),
+    supa.from('ventas').select('*').eq('anulada',false).gte('created_at',desde+'T00:00:00').lte('created_at',hastaFin),
     supa.from('gastos').select('*').gte('fecha',desde).lte('fecha',hasta),
   ]);
   REP_VENTAS=ventasR.data||[]; REP_GASTOS=gastosR.data||[];
@@ -3356,7 +3841,7 @@ async function calcularCierreCaja(){
   const fecha=document.getElementById('cierreFecha').value;
   if(!fecha){ return; }
   const [ventasR,gastosR,cierreR]=await Promise.all([
-    supa.from('ventas').select('*').gte('created_at',fecha+'T00:00:00').lte('created_at',fecha+'T23:59:59'),
+    supa.from('ventas').select('*').eq('anulada',false).gte('created_at',fecha+'T00:00:00').lte('created_at',fecha+'T23:59:59'),
     supa.from('gastos').select('*').eq('fecha',fecha),
     supa.from('cierres_caja').select('*').eq('fecha',fecha).limit(1),
   ]);

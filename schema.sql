@@ -75,6 +75,13 @@ create table if not exists ventas (
   created_at timestamptz default now()
 );
 alter table ventas add column if not exists metodo_pago_detalle text;
+-- anulación (migraciones/002_anular_ventas.sql): las ventas no se borran, se anulan.
+-- El panel devuelve el stock y todos los totales excluyen anulada = true.
+alter table ventas add column if not exists anulada boolean not null default false;
+alter table ventas add column if not exists anulada_at timestamptz;
+alter table ventas add column if not exists anulada_por text;
+alter table ventas add column if not exists motivo_anulacion text;
+create index if not exists ventas_created_at_idx on ventas (created_at);
 create sequence if not exists boleta_seq start 1;
 alter table ventas alter column boleta_numero set default nextval('boleta_seq');
 
