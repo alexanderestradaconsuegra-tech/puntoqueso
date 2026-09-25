@@ -1134,9 +1134,13 @@ async function enviarConfirmacionesPedidosNuevos(){
   try{
     const pendientes=DB.pedidos.filter(p=>p.estado==='pendiente'&&!p.confirmacion_enviada&&p.cliente_tel);
     for(const p of pendientes){
-      await enviarWhatsApp(p.cliente_tel,`¡Hola ${p.cliente_nombre||''}! Recibimos tu pedido #${p.id} en ${nombreNegocio()} 🧀 Te avisamos apenas esté listo.`);
-      await supa.from('pedidos').update({confirmacion_enviada:true}).eq('id',p.id);
+      // Primero se marca y SOLO si eso funcionó se manda: si la marca fallara
+      // (p.ej. falta la columna), mandar igual repetía el mensaje cada 45s.
+      const {data,error}=await supa.from('pedidos').update({confirmacion_enviada:true})
+        .eq('id',p.id).eq('confirmacion_enviada',false).select('id');
       p.confirmacion_enviada=true;
+      if(error||!data||!data.length){ if(error) console.error('No se pudo marcar la confirmación del pedido #'+p.id,error); continue; }
+      await enviarWhatsApp(p.cliente_tel,`¡Hola ${p.cliente_nombre||''}! Recibimos tu pedido #${p.id} en ${nombreNegocio()} 🧀 Te avisamos apenas esté listo.`);
     }
   }catch(e){ console.error('Error en enviarConfirmacionesPedidosNuevos:',e); }
 }
