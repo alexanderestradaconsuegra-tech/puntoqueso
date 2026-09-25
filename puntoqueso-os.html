@@ -2677,7 +2677,7 @@ async function guardarConfig(){
     openai_api_key:document.getElementById('cfgOpenaiKey').value,
   };
   for(const [clave,valor] of Object.entries(claves)){
-    const {error}=await supa.from('config').upsert({clave,valor:JSON.stringify(valor)},{onConflict:'clave'});
+    const {error}=await supa.from('config').upsert({clave,valor},{onConflict:'clave'});
     if(error){ toast('Error al guardar "'+clave+'": '+error.message,true); console.error('guardarConfig',clave,error); return; }
     CONFIG_CACHE[clave]=valor;
   }
