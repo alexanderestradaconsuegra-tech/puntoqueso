@@ -26,7 +26,9 @@ paso(){ echo; echo "── $* ──"; }
 bajar(){ curl -fsSL "$RAW/$1" -o "$2"; }
 
 paso "1/7 Descargando archivos del commit $REF"
+bajar schema.sql                          "$TMP/schema.sql"
 bajar migraciones/001_auth_jwt.sql        "$TMP/001_auth_jwt.sql"
+bajar migraciones/002_anular_ventas.sql   "$TMP/002_anular_ventas.sql"
 bajar puntoqueso-os.html                  "$TMP/admin.html"
 bajar catalogo.html                       "$TMP/catalogo.html"
 bajar scripts/gastos_recurrentes_cron.py  "$TMP/cron.py"
@@ -50,9 +52,11 @@ PG_DB="$(docker exec "$PG_CONT" printenv POSTGRES_DB)"
 DB_URI="$(docker inspect "$PGRST_CONT" --format '{{range .Config.Env}}{{println .}}{{end}}' | { grep '^PGRST_DB_URI=' || true; } | head -1 | cut -d= -f2-)"
 [ -n "$DB_URI" ] || { echo "❌ No pude leer la conexión actual de PostgREST"; exit 1; }
 
-paso "3/7 Migración de base de datos (una sola transacción)"
+paso "3/7 Base de datos: columnas nuevas, seguridad y anulaciones"
+docker exec -i "$PG_CONT" psql -U "$PG_USER" -d "$PG_DB" -q -v ON_ERROR_STOP=1 < "$TMP/schema.sql"
 docker exec -i "$PG_CONT" psql -U "$PG_USER" -d "$PG_DB" -q -v ON_ERROR_STOP=1 \
   -v "jwt_secret=$JWT_SECRET" < "$TMP/001_auth_jwt.sql"
+docker exec -i "$PG_CONT" psql -U "$PG_USER" -d "$PG_DB" -q -v ON_ERROR_STOP=1 < "$TMP/002_anular_ventas.sql"
 echo "ok"
 
 paso "4/7 Reiniciando PostgREST con el secreto de firma"
