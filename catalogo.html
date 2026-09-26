@@ -131,6 +131,12 @@ button{cursor:pointer;}
 .slide.s-yellow{background:var(--yellow);color:var(--ink);}
 .slide.s-ink{background:var(--ink);color:#fff;}
 .slide.s-orange{background:var(--orange);color:var(--ink);}
+/* banner con foto: el lado izquierdo de la foto es negro, ahí va el texto */
+.slide.s-photo{background:#0b0a09 var(--foto) right top/auto 58% no-repeat;color:#fff;align-items:end;min-height:500px;padding-top:230px;}
+.slide.s-photo::before{content:'';position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(11,10,9,0) 30%,rgba(11,10,9,.85) 58%,#0b0a09 70%);}
+.s-photo .slide-tag{background:var(--yellow);color:var(--ink);}
+.slide.s-photo h1 em,.slide.s-photo h2 em{color:var(--yellow);text-shadow:none;}
+.s-photo .slide-cta{background:var(--yellow);color:var(--ink);}
 .slide-copy{position:relative;z-index:2;max-width:520px;}
 .slide-tag{display:inline-block;font-family:var(--disp);font-size:15px;padding:6px 14px;border-radius:10px;background:var(--ink);color:var(--yellow);margin-bottom:14px;transform:rotate(-2deg);}
 .s-ink .slide-tag{background:var(--yellow);color:var(--ink);}
@@ -360,6 +366,8 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
   .slide-art{position:absolute;margin:0;right:30px;top:50%;transform:translateY(-50%);width:380px;height:380px;}
   .tiles.n2,.tiles.n4{grid-template-columns:repeat(2,1fr);}
   .car-btn{display:flex;}
+  .slide.s-photo{background-size:cover;background-position:right center;align-items:center;min-height:440px;padding-top:48px;}
+  .slide.s-photo::before{background:linear-gradient(90deg,rgba(11,10,9,.9) 0%,rgba(11,10,9,.6) 38%,rgba(11,10,9,0) 60%);}
   .car-dots{left:0;justify-content:center;}
   .strip a{display:inline-flex;}
   .promo-row{grid-auto-flow:row;grid-template-columns:repeat(3,1fr);overflow:visible;}
@@ -692,7 +700,7 @@ const DOMINIO_VE=/quesosvenezolanos\.cl$/i.test(location.hostname);
 const ES_VE=c=>/venezolan|campolac/i.test(c||'');
 
 const SLIDES = DOMINIO_VE ? [
-  {tema:'s-yellow',tag:'Marca Campolac',titulo:'Queso venezolano <em>de verdad</em>',
+  {tema:'s-photo',foto:'hero-quesos',tag:'Marca Campolac',titulo:'Queso venezolano <em>de verdad</em>',
    texto:'El sabor de Venezuela hecho en Chile: queso de mano, guayanés, llanero, palmita y trenza, elaborados de forma artesanal.',
    cta:'Pedir ahora',accion:'menu',pic:'ve'},
   {tema:'s-ink',tag:'Hecho a mano',titulo:'Para tus arepas, <em>el de siempre</em>',
@@ -719,6 +727,7 @@ if(!DOMINIO_VE){
   document.getElementById('linkCanonical').remove();
 }
 if(DOMINIO_VE){
+  { const l=document.createElement('link'); l.rel='preload'; l.as='image'; l.href='hero-quesos.webp'; document.head.appendChild(l); }
   document.getElementById('pageDesc').setAttribute('content','Quesos venezolanos artesanales marca Campolac: queso de mano, guayanés, llanero, palmita y trenza. Pide online con entrega en Chile.');
   document.getElementById('hdrName').innerHTML='Quesos <span>Venezolanos</span>';
   document.getElementById('hdrSub').textContent='Marca Campolac · por Punto Queso';
@@ -826,7 +835,8 @@ function renderCarrusel(){
   document.getElementById('carTrack').innerHTML=SLIDES.map((s,i)=>{
     const src=imgParaSlide(s.pic);
     const H=i===0?'h1':'h2';
-    return `<div class="slide ${s.tema}" role="group" aria-roledescription="diapositiva" aria-label="${i+1} de ${SLIDES.length}">
+    const estilo=s.foto?` style="--foto:url('${s.foto}.webp')"`:'';
+    return `<div class="slide ${s.tema}"${estilo} role="group" aria-roledescription="diapositiva" aria-label="${i+1} de ${SLIDES.length}">
       <div class="slide-copy">
         <span class="slide-tag">${esc(s.tag)}</span>
         <${H}>${s.titulo}</${H}>
@@ -834,10 +844,10 @@ function renderCarrusel(){
         <button class="slide-cta" onclick="accionSlide('${s.accion}')">${esc(s.cta)}
           <svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
       </div>
-      <div class="slide-art" aria-hidden="true">
+      ${s.foto?'':`<div class="slide-art" aria-hidden="true">
         ${splashSvg(fills[i%3],i*13+5)}
         <div class="pic">${src?`<img src="${src}" alt="">`:`<img class="logo-fill" src="logo.png" alt="">`}</div>
-      </div>
+      </div>`}
     </div>`;
   }).join('');
   document.getElementById('carDots').innerHTML=SLIDES.map((_,i)=>`<button aria-label="Ir a la diapositiva ${i+1}" onclick="irSlide(${i})"></button>`).join('');
@@ -849,9 +859,9 @@ function irSlide(i){
   document.getElementById('carTrack').style.transform=`translateX(-${SLIDE*100}%)`;
   document.querySelectorAll('#carDots button').forEach((b,k)=>b.classList.toggle('on',k===SLIDE));
   const tema=SLIDES[SLIDE].tema;
-  document.getElementById('carDots').style.setProperty('--dot',tema==='s-ink'?'#FFD100':'#141210');
-  document.querySelectorAll('#carDots button.on').forEach(b=>b.style.background=tema==='s-ink'?'#FFD100':'#141210');
-  document.querySelectorAll('#carDots button:not(.on)').forEach(b=>b.style.background=tema==='s-ink'?'rgba(255,255,255,.35)':'rgba(20,18,16,.3)');
+  document.getElementById('carDots').style.setProperty('--dot',(tema==='s-ink'||tema==='s-photo')?'#FFD100':'#141210');
+  document.querySelectorAll('#carDots button.on').forEach(b=>b.style.background=(tema==='s-ink'||tema==='s-photo')?'#FFD100':'#141210');
+  document.querySelectorAll('#carDots button:not(.on)').forEach(b=>b.style.background=(tema==='s-ink'||tema==='s-photo')?'rgba(255,255,255,.35)':'rgba(20,18,16,.3)');
 }
 function moverSlide(d){ irSlide(SLIDE+d); iniciarAutoSlide(); }
 function iniciarAutoSlide(){
