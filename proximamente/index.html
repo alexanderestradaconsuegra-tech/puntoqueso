@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es-CL">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Quesos Venezolanos en Santiago — Campolac | Punto Queso</title>
+<meta name="description" content="Quesos venezolanos artesanales Campolac: queso de mano, llanero, guayanés, palmita y trenza. Nuestra tienda online está en preparación; mientras tanto pide por WhatsApp. Punto Queso, Arturo Prat 2045, Santiago.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<link rel="canonical" href="https://quesosvenezolanos.cl/">
+<meta name="theme-color" content="#0b0a09">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_CL">
+<meta property="og:title" content="Quesos Venezolanos Campolac — muy pronto online">
+<meta property="og:description" content="Queso de mano, llanero, guayanés, palmita y trenza. Mientras tanto, pide por WhatsApp.">
+<meta property="og:url" content="https://quesosvenezolanos.cl/">
+<meta property="og:image" content="https://quesosvenezolanos.cl/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preload" as="image" href="hero-quesos.webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":["Store","LocalBusiness"],"name":"Punto Queso","alternateName":["Quesos Venezolanos Campolac","Campolac"],"description":"Quesería y fiambrería en Santiago. Productores de quesos venezolanos artesanales marca Campolac.","url":"https://quesosvenezolanos.cl/","logo":"https://quesosvenezolanos.cl/logo.png","image":"https://quesosvenezolanos.cl/og-image.jpg","telephone":"+56939045793","address":{"@type":"PostalAddress","streetAddress":"Arturo Prat 2045","addressLocality":"Santiago","addressRegion":"Región Metropolitana","addressCountry":"CL"},"areaServed":["Santiago","San Joaquín","San Miguel","Ñuñoa","Providencia"]}
+</script>
+<style>
+/* Página "en preparación" — una sola pantalla: la foto de queso de mano y
+   arepa, el logo y dos salidas reales (WhatsApp y el catálogo que ya funciona). */
+:root{
+  --yellow:#FFD100; --ink:#0b0a09; --white:#fff; --soft:rgba(255,255,255,.74);
+  --disp:'Lilita One','Arial Rounded MT Bold','Trebuchet MS',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--ink);color:var(--white);}
+body{font-family:'Plus Jakarta Sans',-apple-system,'Segoe UI',sans-serif;min-height:100dvh;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:3px;border-radius:10px;}
+.ic{width:20px;height:20px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+.stage{position:relative;min-height:100dvh;display:flex;flex-direction:column;
+  background:var(--ink) url('hero-quesos.webp') right top/auto 52vh no-repeat;}
+.stage::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(11,10,9,.1) 0%,rgba(11,10,9,.35) 28%,rgba(11,10,9,.94) 50%,var(--ink) 58%);}
+.top,.main,.foot{position:relative;z-index:1;width:100%;max-width:1180px;margin:0 auto;padding:0 22px;}
+
+.top{display:flex;align-items:center;gap:12px;padding-top:calc(18px + env(safe-area-inset-top));}
+.top img{width:52px;height:52px;border-radius:14px;box-shadow:4px 4px 0 var(--yellow);}
+.brand{font-family:var(--disp);font-size:22px;line-height:1;}
+.brand span{color:var(--yellow);}
+.brand-sub{font-size:12px;font-weight:700;color:var(--soft);margin-top:4px;}
+.top .brand,.top .brand-sub{text-shadow:0 1px 8px rgba(0,0,0,.8);}
+
+.main{flex:1;display:flex;flex-direction:column;justify-content:flex-end;padding-top:24vh;padding-bottom:28px;}
+.tag{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:var(--yellow);color:var(--ink);
+  font-family:var(--disp);font-size:16px;padding:7px 14px;border-radius:12px;transform:rotate(-2deg);margin-bottom:16px;}
+.tag i{width:9px;height:9px;border-radius:99px;background:var(--ink);animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{50%{opacity:.25;transform:scale(.7);}}
+h1{font-family:var(--disp);font-weight:400;font-size:clamp(40px,10.5vw,88px);line-height:.98;letter-spacing:.005em;text-wrap:balance;max-width:12ch;}
+h1 em{font-style:normal;color:var(--yellow);}
+.lead{font-size:16px;line-height:1.6;color:var(--soft);max-width:44ch;margin-top:16px;}
+.lead b{color:var(--white);}
+
+/* barra de "cocción": indica que falta poco, sin inventar una fecha */
+.cook{margin-top:22px;max-width:420px;}
+.cook-bar{height:12px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;border:1.5px solid rgba(255,255,255,.18);}
+.cook-bar span{display:block;height:100%;width:78%;border-radius:99px;
+  background:repeating-linear-gradient(-45deg,var(--yellow) 0 12px,#FFE35C 12px 24px);background-size:34px 34px;animation:stripes 1.1s linear infinite;}
+@keyframes stripes{to{background-position:34px 0;}}
+.cook-lbl{display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;color:var(--soft);margin-top:8px;}
+
+.ctas{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;height:54px;padding:0 24px;border-radius:99px;
+  font-weight:800;font-size:15px;text-decoration:none;transition:transform .12s,background .15s;}
+.btn:active{transform:scale(.97);}
+.btn.primary{background:var(--yellow);color:var(--ink);box-shadow:0 6px 0 rgba(255,209,0,.25);}
+.btn.primary:hover{background:#FFE35C;}
+.btn.ghost{background:rgba(255,255,255,.08);color:var(--white);border:1.5px solid rgba(255,255,255,.28);}
+.btn.ghost:hover{background:rgba(255,255,255,.14);}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px;}
+.chips span{font-size:12.5px;font-weight:800;padding:7px 12px;border-radius:99px;background:rgba(255,209,0,.12);color:var(--yellow);border:1px solid rgba(255,209,0,.3);}
+
+.foot{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:space-between;
+  padding-top:18px;padding-bottom:calc(22px + env(safe-area-inset-bottom));border-top:1px solid rgba(255,255,255,.1);font-size:13px;color:var(--soft);}
+.foot a{color:var(--white);text-decoration:none;font-weight:700;display:inline-flex;align-items:center;gap:6px;}
+.foot a:hover{color:var(--yellow);}
+
+@media(min-width:760px){
+  .stage{background-size:auto 100%;background-position:right center;}
+  .stage::before{background:linear-gradient(90deg,var(--ink) 0%,rgba(11,10,9,.92) 34%,rgba(11,10,9,.35) 58%,rgba(11,10,9,.05) 80%);}
+  .main{justify-content:center;padding-top:40px;padding-bottom:40px;}
+  .lead{font-size:18px;}
+  h1{font-size:clamp(48px,5.6vw,76px);}
+}
+@media(prefers-reduced-motion:reduce){.tag i,.cook-bar span{animation:none;}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <header class="top">
+    <img src="logo.png" alt="Punto Queso" width="52" height="52">
+    <div>
+      <div class="brand">Quesos <span>Venezolanos</span></div>
+      <div class="brand-sub">Marca Campolac · por Punto Queso</div>
+    </div>
+  </header>
+
+  <main class="main">
+    <span class="tag"><i></i>Página en preparación</span>
+    <h1>Estamos cocinando algo <em>bien venezolano</em></h1>
+    <p class="lead">Muy pronto vas a poder pedir aquí <b>queso de mano, llanero, guayanés, palmita y trenza</b> Campolac, hechos de forma artesanal en Chile. Mientras tanto, pídenos por WhatsApp o en nuestro catálogo actual.</p>
+
+    <div class="cook" aria-label="Avance de la nueva web">
+      <div class="cook-bar"><span></span></div>
+      <div class="cook-lbl"><span>Dándole los últimos toques</span><span>Casi listo</span></div>
+    </div>
+
+    <div class="ctas">
+      <a class="btn primary" href="https://wa.me/56939045793?text=Hola!%20Quiero%20pedir%20quesos%20venezolanos%20Campolac" target="_blank" rel="noopener">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>
+        Pedir por WhatsApp
+      </a>
+      <a class="btn ghost" href="https://pedidos.autix.pro">
+        Ver catálogo actual
+        <svg class="ic" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+
+    <div class="chips" aria-label="Comunas con delivery">
+      <span>Santiago</span><span>Ñuñoa</span><span>Providencia</span><span>San Miguel</span><span>San Joaquín</span><span>Regiones: coordinamos</span>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <a href="https://www.google.com/maps/search/?api=1&query=Punto+Queso+Arturo+Prat+2045+Santiago" target="_blank" rel="noopener">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      Punto Queso · Arturo Prat 2045, Santiago
+    </a>
+    <span>© Campolac · Quesos venezolanos por Punto Queso</span>
+  </footer>
+</div>
+</body>
+</html>
