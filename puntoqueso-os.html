@@ -493,7 +493,7 @@ tr:last-child td{border-bottom:none;}
 
     <!-- TERMINAL DE VENTAS -->
     <div class="view" id="view-terminal">
-      <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo</div></div>
+      <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo · <span style="opacity:.6">v28-09b</span></div><div id="scanDebug" style="font-size:12px;font-family:monospace;color:var(--muted);margin-top:4px;"></div></div>
         <input id="posBuscar" placeholder="Buscar producto..." oninput="renderPosProductos(this.value)" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
       </div>
       <div class="pos-grid">
@@ -1524,7 +1524,9 @@ function candidatosCodigoBalanza(code){
   if(code.startsWith('2')) cands.push({plu:code.slice(1,6),peso:code.slice(6,11)});
   return cands;
 }
+function scanDebug(txt){ const el=document.getElementById('scanDebug'); if(el) el.textContent=txt; }
 function processBarcodeInput(code){
+  scanDebug(`Último código leído: "${code}" (${code.length} dígitos)`);
   if(code.length===13){
     for(const {plu,peso} of candidatosCodigoBalanza(code)){
       const weightGrams=parseInt(peso,10);
@@ -1533,12 +1535,14 @@ function processBarcodeInput(code){
       let p=PRODUCTOS_CACHE.find(x=>x.sku===plu);
       if(!p) p=PRODUCTOS_CACHE.find(x=>x.sku&&x.sku.slice(-plu.length)===plu);
       if(!p) continue;
+      scanDebug(`Último código: "${code}" → producto "${p.nombre}" (SKU ${p.sku}), peso ${weightKg} kg, precio ${p.precio}, por peso: ${p.vender_por_peso?'sí':'NO'}`);
       if(p.vender_por_peso){ agregarPesoAlCarrito(p,weightKg,weightGrams>=1000?`${weightKg.toFixed(3)}kg`:`${weightGrams}g`); return; }
       agregarAlCarrito(p.id); return;
     }
   }
   const p=PRODUCTOS_CACHE.find(x=>x.sku===code||x.codigo_barras===code);
   if(!p){ toast(`Código "${code}" no encontrado`,true); return; }
+  scanDebug(`Último código: "${code}" (${code.length} dígitos) → coincidencia directa con "${p.nombre}", precio ${p.precio}, por peso: ${p.vender_por_peso?'sí':'NO'}`);
   if(p.vender_por_peso) openWeightPicker(p.id);
   else agregarAlCarrito(p.id);
 }
