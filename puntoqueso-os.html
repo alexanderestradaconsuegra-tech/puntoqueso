@@ -335,6 +335,24 @@ tr:last-child td{border-bottom:none;}
 .pay-methods{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
 .pay-methods button{padding:10px 4px;border:1.5px solid var(--border);background:#fff;border-radius:var(--r-sm);font-weight:700;font-size:12.5px;cursor:pointer;color:var(--text2);}
 .pay-methods button.active{background:var(--brand);border-color:var(--brand);color:var(--brand-text);}
+.caja-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;}
+.caja-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:99px;font-size:12.5px;font-weight:700;}
+.caja-chip.abierta{background:#e6f4ea;color:var(--ok);}
+.caja-chip.cerrada{background:#fdecea;color:var(--danger);}
+.caja-chip .dot{width:8px;height:8px;border-radius:99px;background:currentColor;}
+.denom-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin:8px 0 4px;}
+.denom-row{display:flex;align-items:center;gap:8px;}
+.denom-row span{flex:0 0 74px;font-size:13px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;}
+.denom-row input{flex:1;min-width:0;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;}
+.caja-total{display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;border-top:2px solid var(--border);margin-top:10px;font-weight:800;}
+.caja-total .num{font-size:22px;}
+.caja-resultado{text-align:center;padding:16px;border-radius:var(--r);margin-bottom:12px;}
+.caja-resultado.cuadra{background:#e6f4ea;color:var(--ok);}
+.caja-resultado.falta{background:#fdecea;color:var(--danger);}
+.caja-resultado.sobra{background:#fff4d6;color:var(--warn);}
+.caja-resultado .big{font-size:26px;font-weight:900;margin-top:4px;}
+.caja-linea{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px dashed var(--border);}
+.caja-linea b{font-variant-numeric:tabular-nums;}
 .mixto-box{margin-top:10px;padding:10px;background:var(--mint);border-radius:var(--r-sm);border:1px solid var(--border2);}
 .mixto-box label{font-size:12px;font-weight:600;margin:6px 0 4px;display:block;}
 .mixto-box input{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;}
@@ -494,6 +512,7 @@ tr:last-child td{border-bottom:none;}
     <!-- TERMINAL DE VENTAS -->
     <div class="view" id="view-terminal">
       <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo</div></div>
+        <div id="cajaBar" class="caja-bar"></div>
         <input id="posBuscar" placeholder="Buscar producto..." oninput="renderPosProductos(this.value)" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
       </div>
       <div class="pos-grid">
@@ -658,11 +677,9 @@ tr:last-child td{border-bottom:none;}
         <div id="repResultado"></div>
       </div>
       <div class="card" style="padding:18px;">
-        <h3 style="margin-bottom:12px;">Cierre de caja diario</h3>
-        <div class="toolbar">
-          <label style="margin:0;font-size:12.5px;font-weight:600;">Día <input type="date" id="cierreFecha" onchange="calcularCierreCaja()"></label>
-        </div>
-        <div id="cierreResultado"></div>
+        <h3 style="margin-bottom:4px;">Cierres de caja</h3>
+        <div class="sub-xs" style="margin-bottom:12px;">Efectivo contado por el cajero y lo que debe verse en el banco por transferencias y tarjeta. Marca "Verificado" cuando lo compares con tu banco o la máquina de tarjetas.</div>
+        <div id="cierresHistorial"></div>
       </div>
     </div>
 
@@ -1118,7 +1135,7 @@ function nav(view){
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+view));
   document.querySelector('.sidebar').classList.remove('open');
   if(view==='dashboard') renderDashboard();
-  if(view==='terminal') renderPosProductos();
+  if(view==='terminal'){ renderPosProductos(); verificarCajaTerminal(); }
   if(view==='pedidos') renderPedidos();
   if(view==='ventas') renderVentas();
   if(view==='productos') renderProductos();
@@ -1127,7 +1144,7 @@ function nav(view){
   if(view==='config'){ cargarConfigForm(); }
   if(view==='auditoria') renderAuditoria();
   if(view==='proveedores') renderProveedores();
-  if(view==='contabilidad'){ /* se genera bajo demanda al elegir fechas */ }
+  if(view==='contabilidad'){ renderHistorialCierres(); }
   if(view==='usuarios') renderUsuariosPage();
 }
 
@@ -1671,22 +1688,27 @@ function calcMixed(){
 
 async function cobrar(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
+  if(!(await cajaAbiertaParaVender())) return;
   const clienteId=document.getElementById('posCliente').value||null;
   const cliente=clienteId?DB.clientes.find(c=>c.id==clienteId):null;
   const metodo=METODO_PAGO;
   const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
 
   let metodoDetalle=null;
+  // cuánto de esta venta entra al cajón en billetes (lo usa el cierre de caja)
+  let montoEfectivo=metodo==='efectivo'?total:0, montoOtro=metodo==='efectivo'?0:total;
   if(metodo==='mixto'){
     const ef=Number(document.getElementById('mixtoEfectivo').value)||0;
     const otro=Number(document.getElementById('mixtoOtro').value)||0;
     if(Math.abs(total-(ef+otro))>=0.5){ toast('El split del pago mixto no cuadra con el total',true); return; }
     metodoDetalle=`Efectivo: ${ef}, Transferencia/Tarjeta: ${otro}`;
+    montoEfectivo=ef; montoOtro=otro;
   }
 
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
-    total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario
+    total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,monto_efectivo:montoEfectivo,monto_otro:montoOtro,
+    estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario
   }).select();
   if(error){ toast('Error al cobrar: '+error.message,true); return; }
   const venta=ventaIns[0];
@@ -2182,6 +2204,7 @@ async function confirmarFacturarPedido(id){
   if(itErr){ toast('Error al leer el detalle del pedido: '+itErr.message,true); console.error(itErr); return; }
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,
+    monto_efectivo:metodo==='efectivo'?Number(p.total)||0:0,monto_otro:metodo==='efectivo'?0:Number(p.total)||0,
     estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario
   }).select();
   if(error){ toast('Error: '+error.message,true); console.error(error); return; }
@@ -3956,57 +3979,372 @@ async function exportarReporteExcel(){
   XLSX.writeFile(wb,`puntoqueso-reporte-${desde}_a_${hasta}.xlsx`);
   logAudit('Exportación de reporte','contabilidad',`${desde} a ${hasta}`);
 }
-async function calcularCierreCaja(){
-  const fecha=document.getElementById('cierreFecha').value;
-  if(!fecha){ return; }
-  const [ventasR,gastosR,cierreR]=await Promise.all([
-    supa.from('ventas').select('*').eq('anulada',false).gte('created_at',fecha+'T00:00:00').lte('created_at',fecha+'T23:59:59'),
-    supa.from('gastos').select('*').eq('fecha',fecha),
-    supa.from('cierres_caja').select('*').eq('fecha',fecha).limit(1),
-  ]);
-  const ventasDia=ventasR.data||[];
-  const gastosDia=gastosR.data||[];
-  const cierreExistente=(cierreR.data||[])[0]||null;
-  // mixto: el split efectivo/otro se guarda como texto libre en metodo_pago_detalle
-  // (ej: "Efectivo: 5000, Transferencia/Tarjeta: 3000") — parsear ese formato es
-  // frágil, así que se muestra el total 'mixto' como un solo bloque, sin desglosar.
-  const porMetodo={efectivo:0,transferencia:0,tarjeta:0,mixto:0};
-  ventasDia.forEach(v=>{ const m=v.metodo_pago||'efectivo'; porMetodo[m]=(porMetodo[m]||0)+Number(v.total||0); });
-  const totalVendido=ventasDia.reduce((s,v)=>s+Number(v.total||0),0);
-  const totalGastos=gastosDia.reduce((s,g)=>s+Number(g.monto||0),0);
-  const esperado=totalVendido-totalGastos;
-  document.getElementById('cierreResultado').innerHTML=`
-    <div style="margin-top:14px;">
-      ${Object.entries(porMetodo).map(([m,v])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span style="text-transform:capitalize;">${m}</span><b class="num">${money(v)}</b></div>`).join('')}
-      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1px solid var(--border);margin-top:4px;"><span>Total vendido</span><b class="num">${money(totalVendido)}</b></div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span>Total gastos del día</span><b class="num">- ${money(totalGastos)}</b></div>
-      <div class="cart-total" style="border-top:2px solid var(--border);"><span>Esperado en caja</span><b class="num">${money(esperado)}</b></div>
-      <label>Monto contado</label>
-      <input type="number" id="cierreContado" step="1" value="${cierreExistente?.total_contado??''}" oninput="actualizarDiferenciaCierre(${esperado})">
-      <div id="cierreDiferencia" style="margin-top:8px;font-weight:700;"></div>
-      <button class="btn" style="margin-top:12px;" onclick="guardarCierreCaja('${fecha}',${esperado})">Guardar cierre</button>
+// ══════════════════════════════════════════════════════════
+//  CAJA DIARIA — abrir con fondo, retiros/ingresos, cierre a ciegas
+//  Una caja por día. Durante el día solo importa el EFECTIVO del
+//  cajón: transferencias y tarjeta no pasan por él y se verifican
+//  contra el banco desde Contabilidad (historial de cierres).
+//  Conteo ciego: el cajero escribe lo que cuenta sin ver el esperado.
+// ══════════════════════════════════════════════════════════
+let CAJA_HOY=null;
+const DENOMINACIONES=[20000,10000,5000,2000,1000,500,100,50,10];
+
+async function cargarCajaHoy(){
+  const {data,error}=await supa.from('cierres_caja').select('*').eq('fecha',fechaLocalISO(new Date())).limit(1);
+  if(error){ console.error(error); return CAJA_HOY; }
+  CAJA_HOY=(data||[])[0]||null;
+  // fila vieja (del cierre anterior a este módulo) sin apertura registrada: no cuenta como caja abierta
+  if(CAJA_HOY&&!CAJA_HOY.abierta_at) CAJA_HOY=null;
+  return CAJA_HOY;
+}
+function renderCajaBar(){
+  const bar=document.getElementById('cajaBar');
+  if(!bar) return;
+  if(!CAJA_HOY){
+    bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Caja sin abrir</span>
+      <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalAperturaCaja()">Abrir caja</button>`;
+    return;
+  }
+  if(CAJA_HOY.estado==='cerrada'){
+    bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Caja de hoy cerrada</span>
+      <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="imprimirReporteCierre(${CAJA_HOY.id})">Ver reporte</button>
+      ${SESSION?.rol==='admin'?`<button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="reabrirCaja()">Reabrir</button>`:''}`;
+    return;
+  }
+  bar.innerHTML=`<span class="caja-chip abierta"><span class="dot"></span>Caja abierta · fondo ${money(CAJA_HOY.fondo_inicial)}</span>
+    <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalMovimientoCaja()">Retiro / ingreso</button>
+    <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalCierreCaja()">Cerrar caja</button>`;
+}
+async function verificarCajaTerminal(){
+  await cargarCajaHoy();
+  renderCajaBar();
+  if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
+}
+async function cajaAbiertaParaVender(){
+  await cargarCajaHoy(); renderCajaBar();
+  if(CAJA_HOY&&CAJA_HOY.estado==='abierta') return true;
+  if(!CAJA_HOY){ toast('Primero abre la caja del día',true); abrirModalAperturaCaja(); }
+  else toast('La caja de hoy ya se cerró: no se pueden registrar más ventas',true);
+  return false;
+}
+
+async function abrirModalAperturaCaja(){
+  // sugiere el efectivo que quedó contado en el último cierre
+  const {data:ult}=await supa.from('cierres_caja').select('fecha,total_contado').eq('estado','cerrada').order('fecha',{ascending:false}).limit(1);
+  const u=(ult||[])[0];
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Abrir caja</h3>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Cuenta el efectivo con que parte el cajón (el sencillo para dar vuelto) y escríbelo.</div>
+    <label>Efectivo inicial</label>
+    <input type="number" id="cajaFondo" min="0" step="10" inputmode="numeric" placeholder="Ej: 30000">
+    ${u?`<div class="sub-xs" style="margin-top:4px;">En el último cierre (${escapeHtml(u.fecha)}) se contaron ${money(u.total_contado)}.</div>`:''}
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Ahora no</button>
+      <button class="btn" id="btnAbrirCaja" onclick="confirmarAperturaCaja()">Abrir caja</button>
     </div>`;
-  if(cierreExistente?.total_contado!=null) actualizarDiferenciaCierre(esperado);
+  document.getElementById('modalBg').style.display='flex';
+  setTimeout(()=>document.getElementById('cajaFondo')?.focus(),50);
 }
-function actualizarDiferenciaCierre(esperado){
-  const contado=Number(document.getElementById('cierreContado').value)||0;
-  const diff=contado-esperado;
-  const el=document.getElementById('cierreDiferencia');
-  el.textContent=`Diferencia: ${money(diff)}`;
-  el.style.color=diff===0?'var(--ok)':(diff<0?'var(--danger)':'var(--ok)');
+async function confirmarAperturaCaja(){
+  const v=document.getElementById('cajaFondo').value;
+  if(v===''||Number(v)<0){ toast('Escribe el efectivo inicial (puede ser 0)',true); return; }
+  const fondo=Number(v)||0;
+  const btn=document.getElementById('btnAbrirCaja'); btn.disabled=true;
+  const fecha=fechaLocalISO(new Date());
+  const row={fecha,estado:'abierta',abierta_at:new Date().toISOString(),abierta_por:SESSION.usuario,fondo_inicial:fondo,
+    cerrada_at:null,cerrada_por:null,total_esperado:0,total_contado:null,diferencia:null};
+  const {data:existe}=await supa.from('cierres_caja').select('id,abierta_at').eq('fecha',fecha).limit(1);
+  let res;
+  if(existe&&existe.length){
+    if(existe[0].abierta_at){ btn.disabled=false; toast('La caja de hoy ya fue abierta',true); closeModal(); await verificarCajaTerminal(); return; }
+    res=await supa.from('cierres_caja').update(row).eq('id',existe[0].id).select('id');   // fila vieja sin apertura
+  }else res=await supa.from('cierres_caja').insert(row).select('id');
+  btn.disabled=false;
+  if(res.error){ toast('No se pudo abrir la caja: '+res.error.message,true); return; }
+  logAudit('Caja abierta','caja',`${fecha} — fondo ${money(fondo)}`);
+  closeModal(); toast(`Caja abierta con ${money(fondo)}`);
+  await cargarCajaHoy(); renderCajaBar();
 }
-async function guardarCierreCaja(fecha,esperado){
-  const contado=Number(document.getElementById('cierreContado').value);
-  if(isNaN(contado)){ toast('Ingresa el monto contado',true); return; }
-  const diferencia=contado-esperado;
-  const {data:existe}=await supa.from('cierres_caja').select('id').eq('fecha',fecha).limit(1);
-  const row={fecha,total_esperado:esperado,total_contado:contado,diferencia,registrado_por:SESSION.usuario};
-  const {error}=(existe&&existe.length)
-    ? await supa.from('cierres_caja').update(row).eq('id',existe[0].id)
-    : await supa.from('cierres_caja').insert(row);
+
+function abrirModalMovimientoCaja(){
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Retiro o ingreso de efectivo</h3>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Registra toda plata que sale o entra al cajón y no es una venta, para que el cierre cuadre.</div>
+    <label>Tipo</label>
+    <select id="movTipo" onchange="document.getElementById('movGastoBox').style.display=this.value==='retiro'?'block':'none'">
+      <option value="retiro">Retiro (sale plata: pagar algo, depositar)</option>
+      <option value="ingreso">Ingreso (entra plata: sencillo que trae el dueño)</option>
+    </select>
+    <label>Monto</label><input type="number" id="movMonto" min="1" step="10" inputmode="numeric">
+    <label>Motivo</label><input id="movMotivo" maxlength="120" placeholder="Ej: pago proveedor pan, depósito banco">
+    <div id="movGastoBox">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+        <input type="checkbox" id="movEsGasto" style="width:16px;height:16px;" checked> Es un gasto del negocio (se registra también en Gastos)
+      </label>
+      <select id="movGastoCat" style="margin-top:6px;"><option value="mercaderia">Mercadería</option><option value="servicios">Servicios</option><option value="personal">Personal</option><option value="otros" selected>Otros</option></select>
+      <div class="sub-xs" style="margin-top:4px;">Desmarca si es un depósito al banco o un retiro del dueño (no es gasto).</div>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnMovCaja" onclick="guardarMovimientoCaja()">Registrar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarMovimientoCaja(){
+  await cargarCajaHoy();
+  if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'){ toast('La caja no está abierta',true); closeModal(); renderCajaBar(); return; }
+  const tipo=document.getElementById('movTipo').value;
+  const monto=Number(document.getElementById('movMonto').value);
+  const motivo=sanitize(document.getElementById('movMotivo').value);
+  if(!(monto>0)){ toast('Escribe el monto',true); return; }
+  if(!motivo){ toast('Escribe el motivo',true); return; }
+  const btn=document.getElementById('btnMovCaja'); btn.disabled=true;
+  let gasto_id=null;
+  if(tipo==='retiro'&&document.getElementById('movEsGasto').checked){
+    const {data:g,error:gErr}=await supa.from('gastos').insert({fecha:CAJA_HOY.fecha,descripcion:motivo,categoria:document.getElementById('movGastoCat').value,monto,notas:'Pagado en efectivo desde la caja'}).select('id');
+    if(gErr){ btn.disabled=false; toast('No se pudo registrar el gasto: '+gErr.message,true); return; }
+    gasto_id=g?.[0]?.id||null;
+  }
+  const {error}=await supa.from('caja_movimientos').insert({cierre_id:CAJA_HOY.id,tipo,monto,motivo,gasto_id,registrado_por:SESSION.usuario}).select('id');
+  btn.disabled=false;
+  if(error){ toast('No se pudo registrar: '+error.message,true); return; }
+  logAudit(tipo==='retiro'?'Retiro de caja':'Ingreso a caja','caja',`${money(monto)} — ${motivo}`);
+  closeModal(); toast(`${tipo==='retiro'?'Retiro':'Ingreso'} de ${money(monto)} registrado`);
+}
+
+function abrirModalCierreCaja(){
+  const fila=d=>`<div class="denom-row"><span>${money(d)}</span><input type="number" min="0" step="1" inputmode="numeric" data-d="${d}" placeholder="0" oninput="sumarConteoCaja()"></div>`;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Cerrar caja</h3>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:4px;">Cuenta el efectivo del cajón y escribe <b>cuántos</b> billetes y monedas hay de cada uno. Después verás si cuadra.</div>
+    <div class="sub-xs" style="font-weight:700;margin-top:10px;">Billetes</div>
+    <div class="denom-grid">${DENOMINACIONES.filter(d=>d>=1000).map(fila).join('')}</div>
+    <div class="sub-xs" style="font-weight:700;margin-top:8px;">Monedas</div>
+    <div class="denom-grid">${DENOMINACIONES.filter(d=>d<1000).map(fila).join('')}</div>
+    <div class="caja-total"><span>Total contado</span><span class="num" id="conteoTotal">$0</span></div>
+    <label>Notas (opcional)</label>
+    <textarea id="cierreNotas" rows="2" maxlength="300" placeholder="Algo que el dueño deba saber"></textarea>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnCerrarCaja" onclick="confirmarCierreCaja()">Cerrar caja</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function leerConteoCaja(){
+  const conteo={}; let total=0;
+  document.querySelectorAll('.denom-row input').forEach(inp=>{
+    const n=Math.max(0,Math.floor(Number(inp.value)||0)); const d=Number(inp.dataset.d);
+    if(n){ conteo[d]=n; total+=n*d; }
+  });
+  return {conteo,total};
+}
+function sumarConteoCaja(){ document.getElementById('conteoTotal').textContent=money(leerConteoCaja().total); }
+
+// Totales de la caja: ventas desde la apertura (sin anuladas) y movimientos.
+async function calcularTotalesCaja(caja,hasta){
+  let q=supa.from('ventas').select('total,metodo_pago,monto_efectivo,monto_otro').eq('anulada',false).gte('created_at',caja.abierta_at);
+  if(hasta) q=q.lte('created_at',hasta);
+  const [vR,mR]=await Promise.all([q,supa.from('caja_movimientos').select('*').eq('cierre_id',caja.id).order('created_at')]);
+  if(vR.error) throw vR.error;
+  if(mR.error) throw mR.error;
+  const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_otro_mixto:0,ventas_cantidad:0,retiros:0,ingresos:0,total_vendido:0};
+  (vR.data||[]).forEach(v=>{
+    const total=Number(v.total)||0, m=v.metodo_pago||'efectivo';
+    t.ventas_cantidad++; t.total_vendido+=total;
+    if(m==='transferencia') t.ventas_transferencia+=total;
+    else if(m==='tarjeta') t.ventas_tarjeta+=total;
+    else if(m==='mixto'){ t.ventas_efectivo+=Number(v.monto_efectivo)||0; t.ventas_otro_mixto+=Number(v.monto_otro)||0; }
+    else t.ventas_efectivo+=v.monto_efectivo!=null?Number(v.monto_efectivo):total;
+  });
+  const movs=mR.data||[];
+  movs.forEach(m=>{ if(m.tipo==='retiro') t.retiros+=Number(m.monto)||0; else t.ingresos+=Number(m.monto)||0; });
+  t.esperado=Number(caja.fondo_inicial||0)+t.ventas_efectivo+t.ingresos-t.retiros;
+  t.movimientos=movs;
+  return t;
+}
+
+async function confirmarCierreCaja(){
+  const {conteo,total:contado}=leerConteoCaja();
+  if(!contado&&!confirm('El total contado es $0. ¿Cerrar la caja igual?')) return;
+  await cargarCajaHoy();
+  if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'){ toast('La caja no está abierta',true); closeModal(); renderCajaBar(); return; }
+  const btn=document.getElementById('btnCerrarCaja'); btn.disabled=true; btn.textContent='Cerrando…';
+  const ahora=new Date().toISOString();
+  let t;
+  try{ t=await calcularTotalesCaja(CAJA_HOY,ahora); }
+  catch(e){ btn.disabled=false; btn.textContent='Cerrar caja'; toast('No se pudieron calcular las ventas: '+e.message,true); return; }
+  const diferencia=contado-t.esperado;
+  const row={
+    estado:'cerrada',cerrada_at:ahora,cerrada_por:SESSION.usuario,
+    ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,
+    ventas_otro_mixto:t.ventas_otro_mixto,ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
+    conteo,total_esperado:t.esperado,total_contado:contado,diferencia,notas:sanitize(document.getElementById('cierreNotas').value)||null,
+  };
+  // .eq('estado','abierta'): si otra caja la cerró mientras tanto, no se pisa
+  const {data,error}=await supa.from('cierres_caja').update(row).eq('id',CAJA_HOY.id).eq('estado','abierta').select('id');
+  if(error||!data||!data.length){ btn.disabled=false; btn.textContent='Cerrar caja'; toast('No se pudo cerrar la caja'+(error?': '+error.message:' (¿ya estaba cerrada?)'),true); await verificarCajaTerminal(); return; }
+  logAudit('Caja cerrada','caja',`${CAJA_HOY.fecha} — esperado ${money(t.esperado)}, contado ${money(contado)}, diferencia ${money(diferencia)}`);
+  const cierre={...CAJA_HOY,...row};
+  mostrarResultadoCierre(cierre,t);
+  enviarReporteCierreWhatsApp(cierre,t);
+  await cargarCajaHoy(); renderCajaBar();
+}
+function estadoDiferencia(d){
+  d=Math.round(Number(d)||0);
+  if(d===0) return {clase:'cuadra',txt:'Cuadra',det:'El efectivo coincide exacto'};
+  return d<0?{clase:'falta',txt:`Falta ${money(-d)}`,det:'Hay menos efectivo del que debería'}:{clase:'sobra',txt:`Sobra ${money(d)}`,det:'Hay más efectivo del que debería'};
+}
+function mostrarResultadoCierre(c,t){
+  const e=estadoDiferencia(c.diferencia);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Caja cerrada</h3>
+    <div class="caja-resultado ${e.clase}"><div>${e.det}</div><div class="big">${e.txt}</div></div>
+    <div class="caja-linea"><span>Efectivo inicial</span><b>${money(c.fondo_inicial)}</b></div>
+    <div class="caja-linea"><span>+ Ventas en efectivo</span><b>${money(t.ventas_efectivo)}</b></div>
+    ${t.ingresos?`<div class="caja-linea"><span>+ Ingresos</span><b>${money(t.ingresos)}</b></div>`:''}
+    ${t.retiros?`<div class="caja-linea"><span>− Retiros</span><b>${money(t.retiros)}</b></div>`:''}
+    <div class="caja-linea"><span><b>Debía haber</b></span><b>${money(c.total_esperado)}</b></div>
+    <div class="caja-linea"><span><b>Contado</b></span><b>${money(c.total_contado)}</b></div>
+    <div class="sub-xs" style="margin-top:10px;">El reporte se envió al WhatsApp del negocio. Imprímelo y entrégalo junto con el efectivo.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Listo</button>
+      <button class="btn" onclick="imprimirReporteCierre(${c.id})">Imprimir reporte</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function reabrirCaja(){
+  if(SESSION?.rol!=='admin') return;
+  if(!CAJA_HOY||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
+  const {error}=await supa.from('cierres_caja').update({estado:'abierta',cerrada_at:null,cerrada_por:null,total_contado:null,diferencia:null,conteo:null}).eq('id',CAJA_HOY.id);
+  if(error){ toast('No se pudo reabrir: '+error.message,true); return; }
+  logAudit('Caja reabierta','caja',CAJA_HOY.fecha);
+  toast('Caja reabierta'); await cargarCajaHoy(); renderCajaBar();
+}
+
+// ── reporte (WhatsApp + impresión térmica) ──
+function textoReporteCierre(c,t){
+  const e=estadoDiferencia(c.diferencia);
+  const hora=ts=>ts?new Date(ts).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'-';
+  const l=[
+    `*Cierre de caja ${nombreNegocio()}*`,
+    `${c.fecha} · abrió ${c.abierta_por||'-'} ${hora(c.abierta_at)} · cerró ${c.cerrada_por||'-'} ${hora(c.cerrada_at)}`,
+    ``,
+    `*${e.clase==='cuadra'?'✅':'⚠️'} ${e.txt}*`,
+    `Debía haber: ${money(c.total_esperado)}`,
+    `Contado: ${money(c.total_contado)}`,
+    ``,
+    `Efectivo inicial: ${money(c.fondo_inicial)}`,
+    `Ventas en efectivo: ${money(t.ventas_efectivo)}`,
+  ];
+  if(t.ingresos) l.push(`Ingresos: ${money(t.ingresos)}`);
+  if(t.retiros) l.push(`Retiros: ${money(t.retiros)}`);
+  (t.movimientos||[]).forEach(m=>l.push(`  · ${m.tipo==='retiro'?'−':'+'}${money(m.monto)} ${m.motivo}`));
+  l.push('',`*A verificar en banco*`,`Transferencias: ${money(t.ventas_transferencia)}`,`Tarjeta: ${money(t.ventas_tarjeta)}`);
+  if(t.ventas_otro_mixto) l.push(`Mixto (parte no efectivo): ${money(t.ventas_otro_mixto)}`);
+  l.push('',`Ventas del día: ${t.ventas_cantidad} · total ${money(t.total_vendido)}`);
+  if(c.notas) l.push(`Notas: ${c.notas}`);
+  return l.join('\n');
+}
+async function enviarReporteCierreWhatsApp(c,t){
+  const tel=(CONFIG_CACHE?.negocio_telefono||'').trim();
+  if(!tel){ console.warn('Sin teléfono del negocio en Configuración: no se envía el cierre por WhatsApp'); return; }
+  await enviarWhatsApp(tel,textoReporteCierre(c,t));
+}
+async function imprimirReporteCierre(id){
+  const {data,error}=await supa.from('cierres_caja').select('*').eq('id',id).limit(1);
+  const c=(data||[])[0];
+  if(error||!c){ toast('No se encontró el cierre',true); return; }
+  let t;
+  try{ t=await calcularTotalesCaja(c,c.cerrada_at||new Date().toISOString()); }catch(e){ toast('Error: '+e.message,true); return; }
+  // los montos guardados al cerrar mandan (las ventas anuladas después no cambian el reporte)
+  ['ventas_efectivo','ventas_transferencia','ventas_tarjeta','ventas_otro_mixto','ventas_cantidad','retiros','ingresos'].forEach(k=>{ if(c[k]!=null) t[k]=Number(c[k]); });
+  const e=estadoDiferencia(c.diferencia);
+  const fila=(a,b,strong)=>`<tr${strong?' class="st"':''}><td>${a}</td><td class="n">${b}</td></tr>`;
+  const conteo=c.conteo?Object.entries(c.conteo).sort((a,b)=>b[0]-a[0]).map(([d,n])=>fila(`${n} × ${money(d)}`,money(d*n))).join(''):'';
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cierre de caja ${escapeHtml(c.fecha)}</title>
+<style>
+  @page{size:auto;margin:0;}
+  *{box-sizing:border-box;margin:0;padding:0;color:#000;}
+  body{font-family:Arial,Helvetica,sans-serif;padding:3mm 2mm;font-size:13px;font-weight:700;}
+  h1{font-size:18px;text-align:center;font-weight:900;}
+  .c{text-align:center;} .sub{font-size:12px;text-align:center;margin-top:2px;}
+  .res{border:3px solid #000;text-align:center;padding:6px;margin:8px 0;font-size:20px;font-weight:900;}
+  table{width:100%;border-collapse:collapse;} td{padding:2px 0;vertical-align:top;} td.n{text-align:right;white-space:nowrap;}
+  tr.st td{font-weight:900;font-size:14px;border-top:2px solid #000;padding-top:4px;}
+  .sec{font-weight:900;margin:8px 0 2px;border-bottom:2px dashed #000;}
+  .firma{margin-top:24px;border-top:2px solid #000;text-align:center;padding-top:3px;font-size:12px;}
+</style></head><body>
+  <h1>${escapeHtml(nombreNegocio())}</h1>
+  <div class="sub">CIERRE DE CAJA · ${escapeHtml(c.fecha)}</div>
+  <div class="sub">Abrió: ${escapeHtml(c.abierta_por||'-')} ${c.abierta_at?new Date(c.abierta_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</div>
+  <div class="sub">Cerró: ${escapeHtml(c.cerrada_por||'-')} ${c.cerrada_at?new Date(c.cerrada_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</div>
+  <div class="res">${e.txt.toUpperCase()}</div>
+  <div class="sec">EFECTIVO EN CAJA</div>
+  <table>
+    ${fila('Efectivo inicial',money(c.fondo_inicial))}
+    ${fila('+ Ventas efectivo',money(t.ventas_efectivo))}
+    ${t.ingresos?fila('+ Ingresos',money(t.ingresos)):''}
+    ${t.retiros?fila('− Retiros',money(t.retiros)):''}
+    ${fila('Debía haber',money(c.total_esperado),true)}
+    ${fila('Contado',money(c.total_contado),true)}
+    ${fila('Diferencia',money(c.diferencia),true)}
+  </table>
+  ${(t.movimientos||[]).length?`<div class="sec">RETIROS / INGRESOS</div><table>${t.movimientos.map(m=>fila(`${m.tipo==='retiro'?'−':'+'} ${escapeHtml(m.motivo)}`,money(m.monto))).join('')}</table>`:''}
+  ${conteo?`<div class="sec">CONTEO</div><table>${conteo}</table>`:''}
+  <div class="sec">A VERIFICAR EN BANCO</div>
+  <table>
+    ${fila('Transferencias',money(t.ventas_transferencia))}
+    ${fila('Tarjeta',money(t.ventas_tarjeta))}
+    ${t.ventas_otro_mixto?fila('Mixto (no efectivo)',money(t.ventas_otro_mixto)):''}
+  </table>
+  <div class="sec">VENTAS DEL DÍA</div>
+  <table>${fila('Cantidad',t.ventas_cantidad)}${fila('Total vendido',money(t.total_vendido),true)}</table>
+  ${c.notas?`<div class="sec">NOTAS</div><div>${escapeHtml(c.notas)}</div>`:''}
+  <div class="firma">Firma cajero</div>
+  <div class="firma">Firma recibe</div>
+</body></html>`;
+  const win=window.open('','_blank','width=420,height=680');
+  if(!win){ toast('El navegador bloqueó la ventana de impresión — permite pop-ups para este sitio',true); return; }
+  win.document.open(); win.document.write(html); win.document.close();
+  win.onload=()=>{ setTimeout(()=>{ win.focus(); win.print(); },300); };
+}
+
+// ── historial para el dueño (Contabilidad) ──
+async function renderHistorialCierres(){
+  const cont=document.getElementById('cierresHistorial');
+  if(!cont) return;
+  const {data,error}=await supa.from('cierres_caja').select('*').order('fecha',{ascending:false}).limit(60);
+  if(error){ cont.innerHTML=`<div class="empty">Error: ${escapeHtml(error.message)}</div>`; return; }
+  const rows=(data||[]).filter(c=>c.abierta_at);
+  if(!rows.length){ cont.innerHTML='<div class="empty">Todavía no hay cierres. La caja se abre desde la Terminal de ventas.</div>'; return; }
+  const admin=SESSION?.rol==='admin';
+  cont.innerHTML=`<div class="table-scroll"><table>
+    <thead><tr><th>Día</th><th>Cajero</th><th class="num">Debía haber</th><th class="num">Contado</th><th class="num">Diferencia</th><th class="num">Transferencias</th><th class="num">Tarjeta</th><th>Banco</th><th></th></tr></thead>
+    <tbody>${rows.map(c=>{
+      const abierta=c.estado==='abierta';
+      const e=estadoDiferencia(c.diferencia);
+      const color=abierta?'var(--muted)':(e.clase==='cuadra'?'var(--ok)':e.clase==='falta'?'var(--danger)':'var(--warn)');
+      const banco=Number(c.ventas_transferencia||0)+Number(c.ventas_tarjeta||0)+Number(c.ventas_otro_mixto||0);
+      return `<tr>
+        <td>${escapeHtml(c.fecha)}${abierta?' <span class="badge">Abierta</span>':''}</td>
+        <td style="font-size:12px;">${escapeHtml(c.abierta_por||'-')}${c.cerrada_por&&c.cerrada_por!==c.abierta_por?` / ${escapeHtml(c.cerrada_por)}`:''}</td>
+        <td class="num">${abierta?'—':money(c.total_esperado)}</td>
+        <td class="num">${abierta?'—':money(c.total_contado)}</td>
+        <td class="num" style="font-weight:800;color:${color};">${abierta?'—':e.txt}</td>
+        <td class="num">${abierta?'—':money(c.ventas_transferencia)}</td>
+        <td class="num">${abierta?'—':money(Number(c.ventas_tarjeta||0)+Number(c.ventas_otro_mixto||0))}</td>
+        <td>${abierta||!banco?'—':(c.banco_verificado?`<span class="badge pagado" title="${escapeHtml((c.banco_verificado_por||'')+' '+(c.banco_notas||''))}">Verificado</span>`:(admin?`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="verificarBancoCierre(${c.id})">Marcar verificado</button>`:'<span class="badge por-cobrar">Pendiente</span>'))}</td>
+        <td>${abierta?'':`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="imprimirReporteCierre(${c.id})">Reporte</button>`}</td>
+      </tr>`;}).join('')}</tbody></table></div>`;
+}
+async function verificarBancoCierre(id){
+  if(SESSION?.rol!=='admin') return;
+  const notas=prompt('¿Coincide con lo que entró al banco y a la máquina de tarjetas? Nota opcional (ej: "ok", "faltan $2.000 de una transferencia"):','ok');
+  if(notas===null) return;
+  const {error}=await supa.from('cierres_caja').update({banco_verificado:true,banco_verificado_por:SESSION.usuario,banco_verificado_at:new Date().toISOString(),banco_notas:sanitize(notas)||null}).eq('id',id);
   if(error){ toast('Error: '+error.message,true); return; }
-  logAudit('Cierre de caja registrado','contabilidad',`${fecha} — esperado ${money(esperado)}, contado ${money(contado)}`);
-  toast('Cierre de caja guardado');
+  logAudit('Cierre verificado con banco','caja',`Cierre #${id}${notas?' — '+notas:''}`);
+  toast('Marcado como verificado'); renderHistorialCierres();
 }
 
 // ══════════════════════════════════════════════════════════
