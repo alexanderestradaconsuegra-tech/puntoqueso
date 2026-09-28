@@ -1512,21 +1512,29 @@ function initBarcodeListener(){
     }
   });
 }
+// Código de balanza de 13 dígitos con el peso incrustado. Se prueban dos
+// formatos (distintas balanzas lo arman distinto) y se usa el primero que
+// calce con un producto real y dé un peso creíble (<30kg):
+//  A) confirmado en la balanza china "GTC" de la tienda: 7 dígitos de
+//     código de producto + 5 de peso en gramos + 1 de control.
+//  B) formato clásico de otras balanzas: 1 dígito de prefijo '2' + 5 de
+//     código + 5 de peso + 1 de control.
+function candidatosCodigoBalanza(code){
+  const cands=[{plu:code.slice(0,7),peso:code.slice(7,12)}];
+  if(code.startsWith('2')) cands.push({plu:code.slice(1,6),peso:code.slice(6,11)});
+  return cands;
+}
 function processBarcodeInput(code){
-  // código de balanza: EAN-13 que empieza con '2' → 2 PPPPP WWWWW C
-  if(code.length===13&&code.startsWith('2')){
-    const productCode=code.slice(1,6);
-    const weightGrams=parseInt(code.slice(6,11));
-    const weightKg=weightGrams/1000;
-    if(weightKg>0){
-      let p=PRODUCTOS_CACHE.find(x=>x.sku===productCode);
-      if(!p) p=PRODUCTOS_CACHE.find(x=>x.sku&&x.sku.slice(-5)===productCode);
-      if(!p) p=PRODUCTOS_CACHE.find(x=>x.vender_por_peso&&x.sku&&x.sku.includes(productCode));
-      if(p&&p.vender_por_peso){
-        agregarPesoAlCarrito(p,weightKg,weightGrams>=1000?`${weightKg.toFixed(3)}kg`:`${weightGrams}g`);
-        return;
-      }else if(p){ agregarAlCarrito(p.id); return; }
-      else{ toast(`Código balanza: ${productCode} (${weightGrams}g) — producto no encontrado`,true); return; }
+  if(code.length===13){
+    for(const {plu,peso} of candidatosCodigoBalanza(code)){
+      const weightGrams=parseInt(peso,10);
+      const weightKg=weightGrams/1000;
+      if(!(weightKg>0)||weightKg>30) continue;   // peso poco creíble: no es este formato
+      let p=PRODUCTOS_CACHE.find(x=>x.sku===plu);
+      if(!p) p=PRODUCTOS_CACHE.find(x=>x.sku&&x.sku.slice(-plu.length)===plu);
+      if(!p) continue;
+      if(p.vender_por_peso){ agregarPesoAlCarrito(p,weightKg,weightGrams>=1000?`${weightKg.toFixed(3)}kg`:`${weightGrams}g`); return; }
+      agregarAlCarrito(p.id); return;
     }
   }
   const p=PRODUCTOS_CACHE.find(x=>x.sku===code||x.codigo_barras===code);
