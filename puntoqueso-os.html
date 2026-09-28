@@ -4136,7 +4136,12 @@ async function importarProductosExcel(file){
     if(!row.precio) conPrecioCero++;
     let existente=null;
     if(sku) existente=(await supa.from('productos').select('id').eq('sku',sku).limit(1)).data?.[0];
-    const {error}=existente?await supa.from('productos').update(row).eq('id',existente.id):await supa.from('productos').insert(row);
+    // Reimportar el mismo Excel no debe pisar una categoría que ya
+    // corregiste a mano en el panel: en un producto que ya existe se
+    // actualiza precio/stock/por-peso pero la categoría se deja como está;
+    // solo un producto nuevo (que no existía) recibe la categoría del Excel.
+    const rowUpdate={...row}; delete rowUpdate.categoria;
+    const {error}=existente?await supa.from('productos').update(rowUpdate).eq('id',existente.id):await supa.from('productos').insert(row);
     if(error) fail++; else ok++;
   }
   const camposUsados=Object.keys(mapa).map(c=>`${c}←"${mapa[c]}"`).join(', ');
