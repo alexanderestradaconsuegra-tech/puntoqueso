@@ -743,9 +743,13 @@ tr:last-child td{border-bottom:none;}
         <h3 style="margin-bottom:12px;">Excel</h3>
         <button class="btn secondary" style="width:100%;justify-content:center;" onclick="exportarExcel()">Exportar Excel (ventas, productos, clientes, gastos)</button>
         <label style="display:block;font-size:12.5px;font-weight:600;margin:16px 0 6px;">Importar productos desde Excel</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:8px;">
+          <input type="checkbox" id="importActualizarCategoria" style="width:16px;height:16px;">
+          También actualizar la categoría de los productos que ya existen
+        </label>
         <input type="file" id="importProductosFile" accept=".xlsx,.xls" onchange="importarProductosExcel(this.files[0])">
         <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5;">
-          Reconoce encabezados en español (Nombre, Categoría, Unidad, Precio, Costo, Stock, Stock mínimo, Código/SKU) sin importar mayúsculas ni tildes. Si un producto ya existe con el mismo código, se actualiza en vez de duplicarse.
+          Lee directo el Excel de tu sistema anterior (Código, Producto, P. Costo, P. Venta, P. Mayoreo, Departamento, Existencia, Inv. Mínimo, Tipo de Venta) y también encabezados como Nombre, Precio, Costo, Stock. GRANEL queda "por peso". Si un producto ya existe con el mismo código, se actualiza en vez de duplicarse; su categoría solo cambia si marcas la casilla de arriba.
         </div>
       </div>
     </div>
@@ -1519,23 +1523,34 @@ function initBarcodeListener(){
 //     código de producto + 5 de peso en gramos + 1 de control.
 //  B) formato clásico de otras balanzas: 1 dígito de prefijo '2' + 5 de
 //     código + 5 de peso + 1 de control.
+//  C) el de la balanza de la tienda visto de otra forma: prefijo '23' +
+//     código de 5 dígitos con ceros a la izquierda (00002 = el Código 2 del
+//     sistema anterior) + peso + control. Así el mismo Código que trae la
+//     lista de productos sirve directo para la balanza.
 function candidatosCodigoBalanza(code){
   const cands=[{plu:code.slice(0,7),peso:code.slice(7,12)}];
+  if(code.startsWith('2')) cands.push({plu:code.slice(2,7),peso:code.slice(7,12),numerico:true});
   if(code.startsWith('2')) cands.push({plu:code.slice(1,6),peso:code.slice(6,11)});
   return cands;
+}
+// Compara "00002" con "2": mismo número aunque cambien los ceros de adelante.
+function mismoCodigoNumerico(sku,plu){
+  const a=String(sku||'').trim();
+  return /^\d{1,5}$/.test(a)&&parseInt(a,10)===parseInt(plu,10);
 }
 function scanDebug(txt){ const el=document.getElementById('scanDebug'); if(el) el.textContent=txt; }
 function processBarcodeInput(code){
   scanDebug(`Último código leído: "${code}" (${code.length} dígitos)`);
   if(code.length===13){
-    for(const {plu,peso} of candidatosCodigoBalanza(code)){
+    for(const {plu,peso,numerico} of candidatosCodigoBalanza(code)){
       const weightGrams=parseInt(peso,10);
       const weightKg=weightGrams/1000;
       if(!(weightKg>0)||weightKg>30) continue;   // peso poco creíble: no es este formato
       // Si hay varios productos con el mismo código (duplicados de una
       // importación), se prefiere el que tiene precio cargado.
       let coincide=PRODUCTOS_CACHE.filter(x=>x.sku===plu);
-      if(!coincide.length) coincide=PRODUCTOS_CACHE.filter(x=>x.sku&&x.sku.slice(-plu.length)===plu);
+      if(!coincide.length&&numerico) coincide=PRODUCTOS_CACHE.filter(x=>mismoCodigoNumerico(x.sku,plu));
+      if(!coincide.length&&!numerico) coincide=PRODUCTOS_CACHE.filter(x=>x.sku&&x.sku.slice(-plu.length)===plu);
       if(!coincide.length) continue;
       const p=coincide.find(x=>Number(x.precio)>0&&x.vender_por_peso)||coincide.find(x=>Number(x.precio)>0)||coincide[0];
       if(coincide.length>1) toast(`Hay ${coincide.length} productos con el código ${plu}: revisa duplicados en Productos`,true);
@@ -4055,12 +4070,14 @@ async function exportarExcel(){
 // contra esta lista de alias, en vez de exigir el nombre exacto de la BD.
 const IMPORT_ALIAS={
   nombre:['nombre','producto','nombreproducto','descripcion','descripción','articulo','artículo'],
-  categoria:['categoria','categoría','rubro','familia','grupo'],
+  categoria:['categoria','categoría','rubro','familia','grupo','departamento','depto'],
   unidad:['unidad','unidadmedida','um'],
-  precio:['precio','preciodeventa','precioventa','precio venta','valor','pvp','precio1'],
-  costo:['costo','preciocosto','preciodecosto','costounitario'],
+  precio:['precio','preciodeventa','precioventa','precio venta','valor','pvp','precio1','pventa','pvta'],
+  costo:['costo','preciocosto','preciodecosto','costounitario','pcosto'],
+  precio_mayor:['preciomayor','preciomayorista','preciomayoreo','pmayoreo','pmayor','mayorista','mayoreo'],
+  tipo_venta:['tipodeventa','tipoventa','ventapor','porpeso','vendeporpeso'],
   stock:['stock','existencia','existencias','cantidad','stockactual'],
-  stock_minimo:['stockminimo','stockmínimo','minimo','mínimo'],
+  stock_minimo:['stockminimo','stockmínimo','minimo','mínimo','invminimo','inventariominimo','existenciaminima'],
   sku:['sku','codigo','código','codigobarras','códigobarras','codigobalanza','códigobalanza','codigoplu','códigoplu','plu','barcode','codigointerno','códigointerno'],
 };
 function normEncabezado(s){
@@ -4091,14 +4108,42 @@ function parseNumeroImport(v){
 // vender_por_peso no siempre viene como columna propia: si no hay una
 // explícita, se infiere de la unidad (kg/gramos → por peso; unidad/pieza → no).
 function inferirVenderPorPeso(r,mapa,unidad){
-  const alias=['ventaporpeso','vendeporpeso','porpeso','vendaportpeso','tipoventa','esporpeso'];
-  for(const encabezado of Object.keys(r)){
-    if(alias.includes(normEncabezado(encabezado))){
-      const v=normEncabezado(r[encabezado]);
-      return v==='si'||v==='true'||v==='1'||v==='x'||v==='peso';
-    }
+  if(mapa.tipo_venta){
+    const v=normEncabezado(r[mapa.tipo_venta]);
+    return ['si','true','1','x','peso','granel','kg','kilo','pesable'].includes(v);
   }
   return /^(kg|kilo|kilos|gr|g|gramos)$/i.test((unidad||'').trim());
+}
+// Existencias y mínimos del sistema anterior vienen con punto decimal
+// ("1.135" = 1,135 kg): a diferencia de los precios, aquí el punto NO es
+// separador de miles.
+function parseCantidadImport(v){
+  if(v==null||v==='') return 0;
+  if(typeof v==='number') return v;
+  const n=parseFloat(String(v).trim().replace(/[^\d.,-]/g,'').replace(',','.'));
+  return isFinite(n)?n:0;
+}
+// Lleva cada producto a una de las 7 categorías del sistema, usando el
+// nombre primero (el 'Departamento' del sistema anterior mezclaba quesos
+// con golosinas bajo LACTEOS) y el departamento como respaldo.
+function categoriaSugerida(nombre,depto){
+  const n=' '+String(nombre||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')+' ';
+  const d=normEncabezado(depto);
+  const tiene=(...ps)=>ps.some(x=>n.includes(x));
+  // El nombre manda: el 'Departamento' del sistema anterior metía quesos,
+  // golosinas y abarrotes juntos bajo LACTEOS.
+  if(tiene('nugget','hamburguesa','congelad','crocante','chicken finger','tequeno','empanada')) return 'Congelados';
+  if(tiene('jamon ','jamon.',' jamon')&&!tiene('jamonada','mortadela')) return 'Jamones';
+  if(tiene('queso','quesillo','ricota','ricotta','mozarella','mozzarella','gouda','gauda','chanco','mantecoso','parmesano','requeson','cuajada',
+           'cabra','camenbert','camembert','grana ','gruyere','provoleta','reggianito','quattrocento','philadelphia','feta','azul ','brie','edam','colonia')) return 'Quesos';
+  if(tiene('salame','salami','chorizo','salchicha','longaniza','mortadela','jamonada','tocin','pate ','butifarra','prieta','peperoni','pepperoni',
+           'arrollado','diablito','diazblito','chuleta','huesito','carre','despunte','pechuga','lomito','fiambre')) return 'Embutidos';
+  if(tiene('agua ','bebida','jugo','nectar','coca','pepsi','sprite','fanta','malta','maltin','cerveza','score','energ','gatorade','redbull','soda','nestea',' te ','zuko','ione','lata')) return 'Bebidas';
+  if(tiene('choco','galleta','flips','platanito','gomita','dulce','caramelo','chicle','chupet','alfajor','oblea','mani ','papas','papita','snack','cheeto','dorito',
+           'ramitas','susy','bocadillo','bombon','bonobon','golosina','toddy','cocosette','pirulin','bubbaloo','snickers','sparkies','gelatina','manjar')) return 'Golosinas';
+  const exacta=CATEGORIAS_PRODUCTO.find(c=>normEncabezado(c)===d);
+  if(exacta) return exacta;
+  return 'Otros';
 }
 // Arma, una sola vez por archivo, el mapa "encabezado real de la fila" →
 // "campo interno" usando la lista de alias de arriba.
@@ -4132,17 +4177,25 @@ async function importarProductosExcel(file){
   const sinNombre=[];
   for(let i=0;i<rows.length;i++){
     const r=rows[i];
-    const nombre=sanitize(val(r,'nombre'));
+    let nombre=sanitize(val(r,'nombre'));
+    // Algunas filas del sistema anterior traen el nombre en la columna Código
+    // (ej: 'ARROZ MARLEN'): si no hay nombre y el código no es un número, se usa ese.
+    if(!nombre){ const c=sanitize(val(r,'sku')); if(c&&/[a-z]/i.test(c)) nombre=c.charAt(0)+c.slice(1).toLowerCase(); }
     if(!nombre){ fail++; if(sinNombre.length<5) sinNombre.push(i+2); continue; }
     const sku=val(r,'sku')?String(val(r,'sku')).trim():null;
-    const unidad=sanitize(val(r,'unidad'))||'kg';
+    const porPeso=inferirVenderPorPeso(r,mapa,sanitize(val(r,'unidad')));
+    const unidad=sanitize(val(r,'unidad'))||(mapa.tipo_venta?(porPeso?'kg':'unid'):'kg');
+    const catExcel=sanitize(val(r,'categoria'));
     const row={
-      nombre,categoria:sanitize(val(r,'categoria'))||'otros',unidad,
-      precio:parseNumeroImport(val(r,'precio')),stock:parseNumeroImport(val(r,'stock')),
-      stock_minimo:parseNumeroImport(val(r,'stock_minimo')),sku,
-      vender_por_peso:inferirVenderPorPeso(r,mapa,unidad),
+      nombre,
+      categoria:categoriaSugerida(nombre,catExcel),
+      unidad,
+      precio:parseNumeroImport(val(r,'precio')),stock:parseCantidadImport(val(r,'stock')),
+      stock_minimo:parseCantidadImport(val(r,'stock_minimo')),sku,
+      vender_por_peso:porPeso,
     };
     if(mapa.costo) row.costo=parseNumeroImport(val(r,'costo'));
+    if(mapa.precio_mayor){ const pm=parseNumeroImport(val(r,'precio_mayor')); row.precio_mayor=pm>0?pm:null; }
     if(!row.precio) conPrecioCero++;
     let existente=null;
     if(sku) existente=(await supa.from('productos').select('id').eq('sku',sku).limit(1)).data?.[0];
@@ -4150,7 +4203,8 @@ async function importarProductosExcel(file){
     // corregiste a mano en el panel: en un producto que ya existe se
     // actualiza precio/stock/por-peso pero la categoría se deja como está;
     // solo un producto nuevo (que no existía) recibe la categoría del Excel.
-    const rowUpdate={...row}; delete rowUpdate.categoria;
+    const rowUpdate={...row};
+    if(!document.getElementById('importActualizarCategoria')?.checked) delete rowUpdate.categoria;
     const {error}=existente?await supa.from('productos').update(rowUpdate).eq('id',existente.id):await supa.from('productos').insert(row);
     if(error) fail++; else ok++;
   }
