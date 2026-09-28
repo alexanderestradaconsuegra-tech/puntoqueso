@@ -2730,9 +2730,19 @@ async function anularVentaCore(id,motivo){
 // ══════════════════════════════════════════════════════════
 //  PRODUCTOS
 // ══════════════════════════════════════════════════════════
-// Categorías reales de tus productos (Quesos venezolanos, Embutidos,
-// Bebidas, Congelados, Golosinas... lo que sea que hayas cargado), en vez
-// de una lista fija: así separan solas apenas les pones una categoría.
+// Categorías fijas del negocio, en el orden que se muestran en el
+// selector. Si un producto trae otra (ej. importada de otro sistema con
+// un nombre distinto), esa categoría real se agrega igual como opción
+// extra en opcionesCategoriaProducto(), para no perderla ni resetearla.
+const CATEGORIAS_PRODUCTO=['Quesos','Jamones','Embutidos','Congelados','Bebidas','Golosinas','Otros'];
+function opcionesCategoriaProducto(actual){
+  actual=(actual||'').trim();
+  const lista=[...CATEGORIAS_PRODUCTO];
+  if(actual&&!lista.some(c=>c.toLowerCase()===actual.toLowerCase())) lista.push(actual);
+  return lista.map(c=>`<option value="${escapeHtml(c)}" ${c===actual||(!actual&&c==='Otros')?'selected':''}>${escapeHtml(c)}</option>`).join('');
+}
+// Categorías reales de tus productos, para los chips de filtro de la lista
+// (ahí sí interesa ver exactamente lo que hay cargado, no solo las fijas).
 function categoriasExistentes(){
   return [...new Set(DB.productos.map(p=>(p.categoria||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
 }
@@ -2869,9 +2879,7 @@ function openProductoModal(id){
     <h3>${id?'Editar':'Nuevo'} producto</h3>
     <label>Nombre</label><input id="prNombre" value="${p.nombre||''}">
     <label>Categoría</label>
-    <input id="prCategoria" list="prCategoriaOpciones" value="${escapeHtml(p.categoria||'')}" placeholder="Ej: Quesos venezolanos, Embutidos, Bebidas, Congelados, Golosinas...">
-    <datalist id="prCategoriaOpciones">${categoriasExistentes().map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
-    <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 8px;">Escribe la que quieras: así separas quesos, fiambres, embutidos, bebidas, golosinas, congelados, etc. en el catálogo.</div>
+    <select id="prCategoria">${opcionesCategoriaProducto(p.categoria)}</select>
     <label>Unidad</label>
     <select id="prUnidad">
       <option value="kg" ${(!p.unidad||p.unidad==='kg')?'selected':''}>Kilos</option>
