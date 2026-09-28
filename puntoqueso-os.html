@@ -4056,6 +4056,40 @@ const IMPORT_ALIAS={
 function normEncabezado(s){
   return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
 }
+// Números que vienen con formato de precio chileno ("$9.900", "9.900",
+// "9,900") en vez de un número plano: Number("$9.900") da NaN → 0, y por
+// eso una importación entera podía quedar con todos los precios en $0.
+// Se limpia el símbolo de moneda y espacios, y el separador de miles/decimal
+// se interpreta por la cantidad de dígitos que deja después:
+//   - 3 dígitos después del último separador → separador de miles (9.900 → 9900)
+//   - 1-2 dígitos después → separador decimal (9,90 → 9.90 ; 9.5 → 9.5)
+function parseNumeroImport(v){
+  if(v==null||v==='') return 0;
+  if(typeof v==='number') return v;
+  let s=String(v).trim().replace(/[^\d.,-]/g,'');
+  if(!s) return 0;
+  const ultimaComa=s.lastIndexOf(','), ultimoPunto=s.lastIndexOf('.');
+  const sep=Math.max(ultimaComa,ultimoPunto);
+  if(sep>-1){
+    const decimales=s.length-sep-1;
+    if(decimales===3||decimales===0){ s=s.replace(/[.,]/g,''); }          // separador de miles
+    else{ s=s.slice(0,sep).replace(/[.,]/g,'')+'.'+s.slice(sep+1); }       // separador decimal
+  }
+  const n=parseFloat(s);
+  return isFinite(n)?n:0;
+}
+// vender_por_peso no siempre viene como columna propia: si no hay una
+// explícita, se infiere de la unidad (kg/gramos → por peso; unidad/pieza → no).
+function inferirVenderPorPeso(r,mapa,unidad){
+  const alias=['ventaporpeso','vendeporpeso','porpeso','vendaportpeso','tipoventa','esporpeso'];
+  for(const encabezado of Object.keys(r)){
+    if(alias.includes(normEncabezado(encabezado))){
+      const v=normEncabezado(r[encabezado]);
+      return v==='si'||v==='true'||v==='1'||v==='x'||v==='peso';
+    }
+  }
+  return /^(kg|kilo|kilos|gr|g|gramos)$/i.test((unidad||'').trim());
+}
 // Arma, una sola vez por archivo, el mapa "encabezado real de la fila" →
 // "campo interno" usando la lista de alias de arriba.
 function mapaColumnasImport(primeraFila){
@@ -4084,28 +4118,32 @@ async function importarProductosExcel(file){
     return;
   }
   const val=(r,campo)=>mapa[campo]!=null?r[mapa[campo]]:undefined;
-  let ok=0,fail=0;
+  let ok=0,fail=0,conPrecioCero=0;
   const sinNombre=[];
   for(let i=0;i<rows.length;i++){
     const r=rows[i];
     const nombre=sanitize(val(r,'nombre'));
     if(!nombre){ fail++; if(sinNombre.length<5) sinNombre.push(i+2); continue; }
     const sku=val(r,'sku')?String(val(r,'sku')).trim():null;
+    const unidad=sanitize(val(r,'unidad'))||'kg';
     const row={
-      nombre,categoria:sanitize(val(r,'categoria'))||'otros',unidad:sanitize(val(r,'unidad'))||'kg',
-      precio:Number(val(r,'precio'))||0,stock:Number(val(r,'stock'))||0,
-      stock_minimo:Number(val(r,'stock_minimo'))||0,sku,
+      nombre,categoria:sanitize(val(r,'categoria'))||'otros',unidad,
+      precio:parseNumeroImport(val(r,'precio')),stock:parseNumeroImport(val(r,'stock')),
+      stock_minimo:parseNumeroImport(val(r,'stock_minimo')),sku,
+      vender_por_peso:inferirVenderPorPeso(r,mapa,unidad),
     };
-    if(mapa.costo) row.costo=Number(val(r,'costo'))||0;
+    if(mapa.costo) row.costo=parseNumeroImport(val(r,'costo'));
+    if(!row.precio) conPrecioCero++;
     let existente=null;
     if(sku) existente=(await supa.from('productos').select('id').eq('sku',sku).limit(1)).data?.[0];
     const {error}=existente?await supa.from('productos').update(row).eq('id',existente.id):await supa.from('productos').insert(row);
     if(error) fail++; else ok++;
   }
   const camposUsados=Object.keys(mapa).map(c=>`${c}←"${mapa[c]}"`).join(', ');
-  logAudit('Importación de productos','productos',`${ok} ok, ${fail} con error — columnas: ${camposUsados}`);
+  logAudit('Importación de productos','productos',`${ok} ok, ${fail} con error — columnas: ${camposUsados}${conPrecioCero?` — ${conPrecioCero} con precio $0`:''}`);
   let msg=`Importación completa: ${ok} productos, ${fail} con error`;
   if(sinNombre.length) msg+=` (sin nombre en fila${sinNombre.length>1?'s':''} ${sinNombre.join(', ')}${fail>sinNombre.length?'…':''})`;
+  if(conPrecioCero) msg+=` — ⚠️ ${conPrecioCero} quedaron con precio $0, revisa la columna de precio`;
   toast(msg,fail>0&&ok===0);
   document.getElementById('importProductosFile').value='';
   await loadAll(); renderProductos();
