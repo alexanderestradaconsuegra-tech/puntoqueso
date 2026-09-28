@@ -746,6 +746,9 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="width:100%;justify-content:center;" onclick="exportarExcel()">Exportar Excel (ventas, productos, clientes, gastos)</button>
         <label style="display:block;font-size:12.5px;font-weight:600;margin:16px 0 6px;">Importar productos desde Excel</label>
         <input type="file" id="importProductosFile" accept=".xlsx,.xls" onchange="importarProductosExcel(this.files[0])">
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5;">
+          Reconoce encabezados en español (Nombre, Categoría, Unidad, Precio, Costo, Stock, Stock mínimo, Código/SKU) sin importar mayúsculas ni tildes. Si un producto ya existe con el mismo código, se actualiza en vez de duplicarse.
+        </div>
       </div>
     </div>
 
@@ -3967,6 +3970,35 @@ async function exportarExcel(){
   XLSX.writeFile(wb,`puntoqueso-export-${fecha}.xlsx`);
   logAudit('Exportación a Excel','config','');
 }
+// Encabezados aceptados por columna: cada Excel de otro sistema trae sus
+// propios nombres ("Nombre producto", "Precio Venta", "Código Balanza"...).
+// Se normaliza (minúsculas, sin tildes, sin espacios extra) y se compara
+// contra esta lista de alias, en vez de exigir el nombre exacto de la BD.
+const IMPORT_ALIAS={
+  nombre:['nombre','producto','nombreproducto','descripcion','descripción','articulo','artículo'],
+  categoria:['categoria','categoría','rubro','familia','grupo'],
+  unidad:['unidad','unidadmedida','um'],
+  precio:['precio','preciodeventa','precioventa','precio venta','valor','pvp','precio1'],
+  costo:['costo','preciocosto','preciodecosto','costounitario'],
+  stock:['stock','existencia','existencias','cantidad','stockactual'],
+  stock_minimo:['stockminimo','stockmínimo','minimo','mínimo'],
+  sku:['sku','codigo','código','codigobarras','códigobarras','codigobalanza','códigobalanza','codigoplu','códigoplu','plu','barcode','codigointerno','códigointerno'],
+};
+function normEncabezado(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+}
+// Arma, una sola vez por archivo, el mapa "encabezado real de la fila" →
+// "campo interno" usando la lista de alias de arriba.
+function mapaColumnasImport(primeraFila){
+  const mapa={};
+  for(const encabezado of Object.keys(primeraFila||{})){
+    const norm=normEncabezado(encabezado);
+    for(const campo in IMPORT_ALIAS){
+      if(IMPORT_ALIAS[campo].some(alias=>normEncabezado(alias)===norm)){ mapa[campo]=encabezado; break; }
+    }
+  }
+  return mapa;
+}
 async function importarProductosExcel(file){
   if(!file) return;
   if(!canDo('editarInventario')){ toast('No tienes permiso para importar productos',true); return; }
@@ -3974,23 +4006,38 @@ async function importarProductosExcel(file){
   const buf=await file.arrayBuffer();
   const wb=XLSX.read(buf,{type:'array'});
   const sheet=wb.Sheets[wb.SheetNames[0]];
-  const rows=XLSX.utils.sheet_to_json(sheet);
+  const rows=XLSX.utils.sheet_to_json(sheet,{defval:''});
+  if(!rows.length){ toast('El Excel no tiene filas con datos',true); return; }
+  const mapa=mapaColumnasImport(rows[0]);
+  if(!mapa.nombre){
+    toast('No encontré una columna de nombre del producto. Encabezados vistos: '+Object.keys(rows[0]).join(', '),true);
+    document.getElementById('importProductosFile').value='';
+    return;
+  }
+  const val=(r,campo)=>mapa[campo]!=null?r[mapa[campo]]:undefined;
   let ok=0,fail=0;
-  for(const r of rows){
-    const nombre=sanitize(r.nombre);
-    if(!nombre){ fail++; continue; }
-    const sku=r.sku?String(r.sku).trim():null;
+  const sinNombre=[];
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    const nombre=sanitize(val(r,'nombre'));
+    if(!nombre){ fail++; if(sinNombre.length<5) sinNombre.push(i+2); continue; }
+    const sku=val(r,'sku')?String(val(r,'sku')).trim():null;
     const row={
-      nombre,categoria:r.categoria||'otros',unidad:r.unidad||'kg',
-      precio:Number(r.precio)||0,stock:Number(r.stock)||0,stock_minimo:Number(r.stock_minimo)||0,sku
+      nombre,categoria:sanitize(val(r,'categoria'))||'otros',unidad:sanitize(val(r,'unidad'))||'kg',
+      precio:Number(val(r,'precio'))||0,stock:Number(val(r,'stock'))||0,
+      stock_minimo:Number(val(r,'stock_minimo'))||0,sku,
     };
+    if(mapa.costo) row.costo=Number(val(r,'costo'))||0;
     let existente=null;
     if(sku) existente=(await supa.from('productos').select('id').eq('sku',sku).limit(1)).data?.[0];
     const {error}=existente?await supa.from('productos').update(row).eq('id',existente.id):await supa.from('productos').insert(row);
     if(error) fail++; else ok++;
   }
-  logAudit('Importación de productos','productos',`${ok} ok, ${fail} con error`);
-  toast(`Importación completa: ${ok} productos, ${fail} con error`,fail>0&&ok===0);
+  const camposUsados=Object.keys(mapa).map(c=>`${c}←"${mapa[c]}"`).join(', ');
+  logAudit('Importación de productos','productos',`${ok} ok, ${fail} con error — columnas: ${camposUsados}`);
+  let msg=`Importación completa: ${ok} productos, ${fail} con error`;
+  if(sinNombre.length) msg+=` (sin nombre en fila${sinNombre.length>1?'s':''} ${sinNombre.join(', ')}${fail>sinNombre.length?'…':''})`;
+  toast(msg,fail>0&&ok===0);
   document.getElementById('importProductosFile').value='';
   await loadAll(); renderProductos();
 }
