@@ -493,7 +493,7 @@ tr:last-child td{border-bottom:none;}
 
     <!-- TERMINAL DE VENTAS -->
     <div class="view" id="view-terminal">
-      <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo · <span style="opacity:.6">v28-09b</span></div><div id="scanDebug" style="font-size:12px;font-family:monospace;color:var(--muted);margin-top:4px;"></div></div>
+      <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo · <span style="opacity:.6">v28-09c</span></div><div id="scanDebug" style="font-size:12px;font-family:monospace;color:var(--muted);margin-top:4px;"></div></div>
         <input id="posBuscar" placeholder="Buscar producto..." oninput="renderPosProductos(this.value)" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
       </div>
       <div class="pos-grid">
@@ -1532,12 +1532,18 @@ function processBarcodeInput(code){
       const weightGrams=parseInt(peso,10);
       const weightKg=weightGrams/1000;
       if(!(weightKg>0)||weightKg>30) continue;   // peso poco creíble: no es este formato
-      let p=PRODUCTOS_CACHE.find(x=>x.sku===plu);
-      if(!p) p=PRODUCTOS_CACHE.find(x=>x.sku&&x.sku.slice(-plu.length)===plu);
-      if(!p) continue;
+      // Si hay varios productos con el mismo código (duplicados de una
+      // importación), se prefiere el que tiene precio cargado.
+      let coincide=PRODUCTOS_CACHE.filter(x=>x.sku===plu);
+      if(!coincide.length) coincide=PRODUCTOS_CACHE.filter(x=>x.sku&&x.sku.slice(-plu.length)===plu);
+      if(!coincide.length) continue;
+      const p=coincide.find(x=>Number(x.precio)>0&&x.vender_por_peso)||coincide.find(x=>Number(x.precio)>0)||coincide[0];
+      if(coincide.length>1) toast(`Hay ${coincide.length} productos con el código ${plu}: revisa duplicados en Productos`,true);
       scanDebug(`Último código: "${code}" → producto "${p.nombre}" (SKU ${p.sku}), peso ${weightKg} kg, precio ${p.precio}, por peso: ${p.vender_por_peso?'sí':'NO'}`);
-      if(p.vender_por_peso){ agregarPesoAlCarrito(p,weightKg,weightGrams>=1000?`${weightKg.toFixed(3)}kg`:`${weightGrams}g`); return; }
-      agregarAlCarrito(p.id); return;
+      // Un código de balanza siempre trae peso: se agrega por peso aunque el
+      // producto no tenga marcada la casilla "se vende por peso".
+      if(!(Number(p.precio)>0)) toast(`"${p.nombre}" no tiene precio: edítalo en Productos`,true);
+      agregarPesoAlCarrito(p,weightKg,weightGrams>=1000?`${weightKg.toFixed(3)}kg`:`${weightGrams}g`); return;
     }
   }
   const p=PRODUCTOS_CACHE.find(x=>x.sku===code||x.codigo_barras===code);
