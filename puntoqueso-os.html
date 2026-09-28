@@ -578,7 +578,10 @@ tr:last-child td{border-bottom:none;}
     <!-- PRODUCTOS -->
     <div class="view" id="view-productos">
       <div class="topbar"><div><h2>Productos</h2><div class="sub">Catálogo de la tienda</div></div>
-        <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" id="btnListaCompra" onclick="exportarListaCompra()">🛒 Lista de compra<span id="btnListaCompraN" class="badge" style="margin-left:6px;"></span></button>
+          <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button>
+        </div></div>
       <div class="toolbar">
         <input id="prodBuscar" placeholder="Buscar..." oninput="renderProductos(this.value)">
         <div class="cat-chips" id="prodCatChips"></div>
@@ -2781,8 +2784,50 @@ async function guardarCostoInline(id,valor){
   logAudit('Costo actualizado','productos',`${p?.nombre||'#'+id} — ${money(costo)}`);
   renderProductos(document.getElementById('prodBuscar')?.value||'');
 }
+// Productos en o bajo su stock mínimo — misma regla que el KPI "Stock bajo"
+// del Dashboard. Solo cuenta si tienen un mínimo configurado (>0) o si ya
+// están en cero: un stock_minimo=0 sin configurar no debería listarse por
+// stock=0.01, pero sí si literalmente no queda nada.
+function productosStockBajo(){
+  return DB.productos
+    .filter(p=>p.activo!==false)
+    .filter(p=>{ const min=Number(p.stock_minimo)||0; const st=Number(p.stock)||0; return min>0?st<=min:st<=0; })
+    .sort((a,b)=>(Number(a.stock)-Number(a.stock_minimo||0))-(Number(b.stock)-Number(b.stock_minimo||0)));
+}
+function actualizarBadgeListaCompra(){
+  const n=productosStockBajo().length;
+  const badge=document.getElementById('btnListaCompraN');
+  if(badge) badge.textContent=n?` (${n})`:'';
+}
+async function exportarListaCompra(){
+  const bajos=productosStockBajo();
+  if(!bajos.length){ toast('No hay productos bajo su stock mínimo ahora mismo'); return; }
+  if(typeof XLSX==='undefined'){ toast('No se pudo cargar la librería de Excel',true); return; }
+  const verC=canDo('verCostos');
+  const filas=bajos.map(p=>{
+    const faltante=Math.max(0,Number(p.stock_minimo||0)-Number(p.stock||0));
+    const fila={
+      'Producto':p.nombre,'Categoría':p.categoria||'',
+      'Stock actual':Number(p.stock)||0,'Stock mínimo':Number(p.stock_minimo)||0,
+      'Comprar al menos':faltante>0?faltante:(Number(p.stock)<=0?'Reponer':0),
+      'Unidad':p.unidad||'','Código / SKU':p.sku||'',
+    };
+    if(verC) fila['Costo unitario']=Number(p.costo)||0;
+    return fila;
+  });
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.json_to_sheet(filas);
+  ws['!cols']=[{wch:28},{wch:16},{wch:12},{wch:12},{wch:16},{wch:8},{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws,'Lista de compra');
+  const fecha=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,`puntoqueso-lista-de-compra-${fecha}.xlsx`);
+  logAudit('Descarga de lista de compra','productos',`${bajos.length} producto${bajos.length===1?'':'s'} bajo stock mínimo`);
+  toast(`Lista de compra descargada: ${bajos.length} producto${bajos.length===1?'':'s'}`);
+}
+
 function renderProductos(filter=''){
   renderCatChipsProductos();
+  actualizarBadgeListaCompra();
   const btnNuevo=document.getElementById('btnNuevoProducto');
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
   // Las columnas de costo/margen solo existen si el usuario puede ver costos:
