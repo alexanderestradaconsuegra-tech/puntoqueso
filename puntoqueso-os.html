@@ -1825,11 +1825,33 @@ function generarReciboHTML(venta,items){
   .r-footer .r-gracias{font-size:13px;font-weight:700;margin-bottom:6px;}
   .r-footer .r-redes{font-size:11px;color:var(--ink2);line-height:1.6;}
   .r-footer .r-ts{font-size:9px;color:#aaa;margin-top:14px;}
+  /* Impresora térmica: solo imprime negro. Cualquier gris lo simula con
+     puntos (se ve borroso), y las letras finas o chicas se pierden. Al
+     imprimir todo va en negro puro, más grande y grueso, con una fuente
+     del sistema (la de Google puede no alcanzar a cargar), y el ancho se
+     ajusta al papel (58 u 80 mm) en vez de forzar 80 mm y que el driver
+     la achique. */
   @media print{
+    @page{size:auto;margin:0;}
     html,body{background:#fff;}
-    body{padding:0;}
-    .recibo-print{box-shadow:none;max-width:80mm;width:80mm;padding:6mm 4mm 4mm;}
-    @page{margin:4mm;}
+    body{padding:0;display:block;}
+    *{color:#000 !important;-webkit-font-smoothing:none;font-smoothing:none;}
+    body,.recibo-print,.r-items td,.r-items td.it-nombre,.r-info .r-boleta,.r-total-row .val{font-family:Arial,Helvetica,sans-serif !important;}
+    .recibo-print{box-shadow:none;max-width:none;width:100%;padding:2mm 1.5mm;}
+    .r-header .r-logo{filter:grayscale(1) contrast(4) brightness(1.1);width:56px;height:56px;}
+    .r-header .r-accent{display:none;}
+    .r-header .r-nombre{font-size:20px;font-weight:900;}
+    .r-header .r-linea,.r-info,.r-footer .r-redes{font-size:13px;font-weight:700;line-height:1.45;}
+    table.r-items{font-size:13px;}
+    table.r-items thead th{font-size:11px;font-weight:900;border-bottom:2px solid #000;}
+    table.r-items td,table.r-items td.it-nombre{font-size:13px;font-weight:700;padding:3px 0;}
+    .r-div{border-top:2px dashed #000;margin:8px 0;}
+    .r-div.solid{border-top:3px solid #000;}
+    .r-total-row .lbl{font-size:15px;font-weight:900;}
+    .r-total-row .val{font-size:24px;font-weight:900;}
+    .r-footer .r-gracias{font-size:14px;font-weight:900;}
+    .r-footer .r-ts{font-size:11px;font-weight:700;}
+    .r-anulada,.r-anulada .r-anulada-det{font-weight:900;}
   }
 </style>
 </head>
