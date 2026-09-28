@@ -581,12 +581,7 @@ tr:last-child td{border-bottom:none;}
         <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button></div>
       <div class="toolbar">
         <input id="prodBuscar" placeholder="Buscar..." oninput="renderProductos(this.value)">
-        <div class="cat-chips" id="prodCatChips">
-          <button type="button" class="cat-chip active" data-cat="todos" onclick="filtrarCategoriaProductos('todos')">Todos</button>
-          <button type="button" class="cat-chip" data-cat="queso" onclick="filtrarCategoriaProductos('queso')">Queso</button>
-          <button type="button" class="cat-chip" data-cat="fiambre" onclick="filtrarCategoriaProductos('fiambre')">Fiambre</button>
-          <button type="button" class="cat-chip" data-cat="otros" onclick="filtrarCategoriaProductos('otros')">Otros</button>
-        </div>
+        <div class="cat-chips" id="prodCatChips"></div>
       </div>
       <div class="bulk-bar" id="bulkBarproductos">
         <span class="bulk-count" id="bulkCountproductos">0 seleccionados</span>
@@ -2735,6 +2730,20 @@ async function anularVentaCore(id,motivo){
 // ══════════════════════════════════════════════════════════
 //  PRODUCTOS
 // ══════════════════════════════════════════════════════════
+// Categorías reales de tus productos (Quesos venezolanos, Embutidos,
+// Bebidas, Congelados, Golosinas... lo que sea que hayas cargado), en vez
+// de una lista fija: así separan solas apenas les pones una categoría.
+function categoriasExistentes(){
+  return [...new Set(DB.productos.map(p=>(p.categoria||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+}
+function renderCatChipsProductos(){
+  const cont=document.getElementById('prodCatChips');
+  if(!cont) return;
+  const cats=categoriasExistentes();
+  cont.innerHTML='<button type="button" class="cat-chip" data-cat="todos" onclick="filtrarCategoriaProductos(\'todos\')">Todos</button>'+
+    cats.map(c=>`<button type="button" class="cat-chip" data-cat="${escapeHtml(c)}" onclick="filtrarCategoriaProductos(${JSON.stringify(c).replace(/"/g,'&quot;')})">${escapeHtml(c)}</button>`).join('');
+  cont.querySelectorAll('.cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.cat===PROD_CAT_FILTER));
+}
 function filtrarCategoriaProductos(cat){
   PROD_CAT_FILTER=cat;
   document.querySelectorAll('#prodCatChips .cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
@@ -2763,6 +2772,7 @@ async function guardarCostoInline(id,valor){
   renderProductos(document.getElementById('prodBuscar')?.value||'');
 }
 function renderProductos(filter=''){
+  renderCatChipsProductos();
   const btnNuevo=document.getElementById('btnNuevoProducto');
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
   // Las columnas de costo/margen solo existen si el usuario puede ver costos:
@@ -2859,11 +2869,9 @@ function openProductoModal(id){
     <h3>${id?'Editar':'Nuevo'} producto</h3>
     <label>Nombre</label><input id="prNombre" value="${p.nombre||''}">
     <label>Categoría</label>
-    <select id="prCategoria">
-      <option value="queso" ${p.categoria==='queso'?'selected':''}>Queso</option>
-      <option value="fiambre" ${p.categoria==='fiambre'?'selected':''}>Fiambre</option>
-      <option value="otros" ${(!p.categoria||p.categoria==='otros')?'selected':''}>Otros</option>
-    </select>
+    <input id="prCategoria" list="prCategoriaOpciones" value="${escapeHtml(p.categoria||'')}" placeholder="Ej: Quesos venezolanos, Embutidos, Bebidas, Congelados, Golosinas...">
+    <datalist id="prCategoriaOpciones">${categoriasExistentes().map(c=>`<option value="${escapeHtml(c)}">`).join('')}</datalist>
+    <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 8px;">Escribe la que quieras: así separas quesos, fiambres, embutidos, bebidas, golosinas, congelados, etc. en el catálogo.</div>
     <label>Unidad</label>
     <select id="prUnidad">
       <option value="kg" ${(!p.unidad||p.unidad==='kg')?'selected':''}>Kilos</option>
