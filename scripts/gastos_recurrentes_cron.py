@@ -102,6 +102,7 @@ def main():
                 "descripcion": "(Recurrente) " + (r.get("descripcion") or ""),
                 "categoria": r.get("categoria") or "otros",
                 "monto": r.get("monto"),
+                "cuenta": r.get("cuenta") or "bancoestado",
                 "notas": f"Generado automáticamente (cron VPS) desde gasto recurrente #{r['id']}",
             })
         except Exception as e:

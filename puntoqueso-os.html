@@ -335,6 +335,13 @@ tr:last-child td{border-bottom:none;}
 .pay-methods{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
 .pay-methods button{padding:10px 4px;border:1.5px solid var(--border);background:#fff;border-radius:var(--r-sm);font-weight:700;font-size:12.5px;cursor:pointer;color:var(--text2);}
 .pay-methods button.active{background:var(--brand);border-color:var(--brand);color:var(--brand-text);}
+.cuentas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+.cuenta-card{padding:16px;cursor:pointer;border:2px solid transparent;}
+.cuenta-card.sel{border-color:var(--brand);}
+.cuenta-card.total{cursor:default;background:var(--mint);}
+.cuenta-nombre{font-weight:800;font-size:14px;}
+.cuenta-saldo{font-size:26px;font-weight:900;margin:6px 0 2px;}
+.cuenta-conc{font-size:12px;margin-top:8px;color:var(--text2);}
 .caja-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;}
 .caja-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:99px;font-size:12.5px;font-weight:700;}
 .caja-chip.abierta{background:#e6f4ea;color:var(--ok);}
@@ -460,6 +467,10 @@ tr:last-child td{border-bottom:none;}
       <svg class="ic" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></svg>
       Contabilidad
     </div>
+    <div class="nav-item" data-view="cuentas" id="navCuentas" style="display:none;" onclick="nav('cuentas')">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20M16 15h2"/><path d="M6 6V4h12v2"/></svg>
+      Cuentas
+    </div>
     <div class="nav-item" data-view="usuarios" id="navUsuarios" style="display:none;" onclick="nav('usuarios')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Usuarios
@@ -532,7 +543,8 @@ tr:last-child td{border-bottom:none;}
           </div>
           <div class="mixto-box" id="mixtoBox" style="display:none;">
             <label>Efectivo</label><input type="number" id="mixtoEfectivo" min="0" step="1" oninput="calcMixed()">
-            <label>Transferencia / Tarjeta</label><input type="number" id="mixtoOtro" min="0" step="1" oninput="calcMixed()">
+            <label>Transferencia <span style="font-weight:500;color:var(--muted);">(Mercado Pago)</span></label><input type="number" id="mixtoTransf" min="0" step="1" oninput="calcMixed()">
+            <label>Tarjeta <span style="font-weight:500;color:var(--muted);">(BancoEstado)</span></label><input type="number" id="mixtoTarjeta" min="0" step="1" oninput="calcMixed()">
             <div class="mixto-diff" id="mixtoDiff"></div>
           </div>
           <button class="btn" id="btnCobrar" style="width:100%;justify-content:center;margin-top:14px;" onclick="cobrar()">Cobrar</button>
@@ -680,6 +692,23 @@ tr:last-child td{border-bottom:none;}
         <h3 style="margin-bottom:4px;">Cierres de caja</h3>
         <div class="sub-xs" style="margin-bottom:12px;">Efectivo contado por el cajero y lo que debe verse en el banco por transferencias y tarjeta. Marca "Verificado" cuando lo compares con tu banco o la máquina de tarjetas.</div>
         <div id="cierresHistorial"></div>
+      </div>
+    </div>
+
+    <!-- CUENTAS -->
+    <div class="view" id="view-cuentas">
+      <div class="topbar"><div><h2>Cuentas</h2><div class="sub">Cuánto debería haber en Efectivo, BancoEstado y Mercado Pago, y conciliación con el saldo real</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="abrirModalMovimientoCuenta('traspaso')">Traspaso</button>
+          <button class="btn secondary" onclick="abrirModalMovimientoCuenta('ingreso')">+ Ingreso</button>
+          <button class="btn secondary" onclick="abrirModalMovimientoCuenta('egreso')">− Salida</button>
+          <button class="btn secondary" onclick="abrirModalSaldosIniciales()">Saldos iniciales</button>
+        </div></div>
+      <div id="cuentasAviso"></div>
+      <div class="cuentas-grid" id="cuentasCards"></div>
+      <div class="card" style="padding:18px;margin-top:16px;">
+        <h3 id="cuentaMovsTitulo" style="margin-bottom:10px;">Movimientos</h3>
+        <div id="cuentaMovs"></div>
       </div>
     </div>
 
@@ -1145,6 +1174,7 @@ function nav(view){
   if(view==='auditoria') renderAuditoria();
   if(view==='proveedores') renderProveedores();
   if(view==='contabilidad'){ renderHistorialCierres(); }
+  if(view==='cuentas'){ renderCuentas(); }
   if(view==='usuarios') renderUsuariosPage();
 }
 
@@ -1203,7 +1233,7 @@ async function generarGastosRecurrentesPendientes(){
       if(!due) continue;
       const descripcion='(Recurrente) '+r.descripcion;
       const {error:insErr}=await supa.from('gastos').insert({
-        fecha:hoyISO,descripcion,categoria:r.categoria,monto:r.monto,
+        fecha:hoyISO,descripcion,categoria:r.categoria,monto:r.monto,cuenta:r.cuenta||'bancoestado',
         notas:'Generado automáticamente desde gasto recurrente #'+r.id
       });
       if(insErr){ console.error('Error generando gasto recurrente #'+r.id,insErr); continue; }
@@ -1244,6 +1274,7 @@ async function iniciarApp(){
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
+  document.getElementById('navCuentas').style.display=canDo('verReportes')?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -1678,14 +1709,29 @@ function setMetodoPago(m){
 }
 function calcMixed(){
   const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
-  const ef=Number(document.getElementById('mixtoEfectivo').value)||0;
-  const otro=Number(document.getElementById('mixtoOtro').value)||0;
-  const diff=total-(ef+otro);
+  const {efectivo:ef,transferencia:tr,tarjeta:tj}=leerMixto();
+  const diff=total-(ef+tr+tj);
   const diffEl=document.getElementById('mixtoDiff');
   if(Math.abs(diff)<0.5){ diffEl.textContent='Cuadra ✓'; diffEl.className='mixto-diff ok'; document.getElementById('btnCobrar').disabled=false; }
   else{ diffEl.textContent=(diff>0?'Falta ':'Sobra ')+money(Math.abs(diff)); diffEl.className='mixto-diff bad'; document.getElementById('btnCobrar').disabled=true; }
 }
 
+function leerMixto(){
+  const v=id=>Math.max(0,Number(document.getElementById(id)?.value)||0);
+  return {efectivo:v('mixtoEfectivo'),transferencia:v('mixtoTransf'),tarjeta:v('mixtoTarjeta')};
+}
+// Cuánto de una venta fue por cada medio de pago: define a qué cuenta llegó
+// (efectivo → caja, transferencia y link MP → Mercado Pago, tarjeta → BancoEstado).
+function montosPorMedio(metodo,total,mixto){
+  const m={monto_efectivo:0,monto_transferencia:0,monto_tarjeta:0,monto_mercadopago:0};
+  if(metodo==='mixto'&&mixto){ m.monto_efectivo=mixto.efectivo; m.monto_transferencia=mixto.transferencia; m.monto_tarjeta=mixto.tarjeta; }
+  else if(metodo==='transferencia') m.monto_transferencia=total;
+  else if(metodo==='tarjeta') m.monto_tarjeta=total;
+  else if(metodo==='mercadopago') m.monto_mercadopago=total;
+  else m.monto_efectivo=total;
+  m.monto_otro=total-m.monto_efectivo;
+  return m;
+}
 async function cobrar(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
   if(!(await cajaAbiertaParaVender())) return;
@@ -1694,20 +1740,17 @@ async function cobrar(){
   const metodo=METODO_PAGO;
   const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
 
-  let metodoDetalle=null;
-  // cuánto de esta venta entra al cajón en billetes (lo usa el cierre de caja)
-  let montoEfectivo=metodo==='efectivo'?total:0, montoOtro=metodo==='efectivo'?0:total;
+  let metodoDetalle=null, mixto=null;
   if(metodo==='mixto'){
-    const ef=Number(document.getElementById('mixtoEfectivo').value)||0;
-    const otro=Number(document.getElementById('mixtoOtro').value)||0;
-    if(Math.abs(total-(ef+otro))>=0.5){ toast('El split del pago mixto no cuadra con el total',true); return; }
-    metodoDetalle=`Efectivo: ${ef}, Transferencia/Tarjeta: ${otro}`;
-    montoEfectivo=ef; montoOtro=otro;
+    mixto=leerMixto();
+    if(Math.abs(total-(mixto.efectivo+mixto.transferencia+mixto.tarjeta))>=0.5){ toast('El pago mixto no cuadra con el total',true); return; }
+    metodoDetalle=`Efectivo: ${mixto.efectivo}, Transferencia: ${mixto.transferencia}, Tarjeta: ${mixto.tarjeta}`;
   }
+  const montos=montosPorMedio(metodo,total,mixto);
 
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
-    total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,monto_efectivo:montoEfectivo,monto_otro:montoOtro,
+    total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
     estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario
   }).select();
   if(error){ toast('Error al cobrar: '+error.message,true); return; }
@@ -1736,8 +1779,7 @@ async function cobrar(){
   if(btnImp) btnImp.style.display='flex';
   vaciarCarrito();
   setMetodoPago('efectivo');
-  document.getElementById('mixtoEfectivo').value='';
-  document.getElementById('mixtoOtro').value='';
+  ['mixtoEfectivo','mixtoTransf','mixtoTarjeta'].forEach(id=>document.getElementById(id).value='');
   await loadAll();
   renderPosProductos();
 }
@@ -2177,9 +2219,10 @@ function facturarPedido(id){
   // El método de pago real ya no se asume 'efectivo': si se pagó por el link de
   // Mercado Pago se propone 'tarjeta'. El empleado confirma o cambia — de esto
   // dependen Contabilidad y el cierre de caja, que agrupan por metodo_pago.
-  const sugerido=(p.mp_link&&p.estado_pago==='pagado')?'tarjeta':'efectivo';
-  const opts=['efectivo','transferencia','tarjeta','mixto']
-    .map(m=>`<option value="${m}" ${m===sugerido?'selected':''}>${m.charAt(0).toUpperCase()+m.slice(1)}</option>`).join('');
+  const sugerido=(p.mp_link&&p.estado_pago==='pagado')?'mercadopago':'efectivo';
+  const etiquetas={efectivo:'Efectivo',transferencia:'Transferencia (Mercado Pago)',tarjeta:'Tarjeta (BancoEstado)',mercadopago:'Link de pago Mercado Pago'};
+  const opts=Object.keys(etiquetas)
+    .map(m=>`<option value="${m}" ${m===sugerido?'selected':''}>${etiquetas[m]}</option>`).join('');
   document.getElementById('modalContent').innerHTML=`
     <h3>Facturar pedido #${p.id}</h3>
     <div style="font-size:13px;color:var(--text2);">Se creará una venta por <b>${money(p.total)}</b> a nombre de ${escapeHtml(p.cliente_nombre||'-')} y se descontará el stock.</div>
@@ -2204,7 +2247,7 @@ async function confirmarFacturarPedido(id){
   if(itErr){ toast('Error al leer el detalle del pedido: '+itErr.message,true); console.error(itErr); return; }
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,
-    monto_efectivo:metodo==='efectivo'?Number(p.total)||0:0,monto_otro:metodo==='efectivo'?0:Number(p.total)||0,
+    ...montosPorMedio(metodo,Number(p.total)||0,null),
     estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario
   }).select();
   if(error){ toast('Error: '+error.message,true); console.error(error); return; }
@@ -3178,8 +3221,12 @@ async function bulkEliminarClientes(){
 function renderGastos(){
   document.getElementById('gastosBody').innerHTML=DB.gastos.map(g=>`
     <tr><td>${new Date(g.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td>${g.descripcion}</td>
-    <td style="text-transform:capitalize;">${g.categoria}</td><td class="num">${money(g.monto)}</td>
+    <td style="text-transform:capitalize;">${g.categoria}${g.cuenta?`<div class="sub-xs" style="text-transform:none;">${CUENTAS_PAGO[g.cuenta]||g.cuenta}</div>`:''}</td><td class="num">${money(g.monto)}</td>
     <td><button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarGasto(${g.id})">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin gastos</td></tr>';
+}
+const CUENTAS_PAGO={efectivo:'Efectivo (caja)',bancoestado:'BancoEstado',mercadopago:'Mercado Pago'};
+function selectCuentaPago(id,actual){
+  return `<select id="${id}">${Object.entries(CUENTAS_PAGO).map(([k,v])=>`<option value="${k}" ${k===(actual||'bancoestado')?'selected':''}>${v}</option>`).join('')}</select>`;
 }
 function openGastoModal(){
   const hoy=new Date().toISOString().slice(0,10);
@@ -3190,6 +3237,8 @@ function openGastoModal(){
     <label>Categoría</label>
     <select id="gaCategoria"><option value="servicios">Servicios</option><option value="mercaderia">Mercadería</option><option value="arriendo">Arriendo</option><option value="personal">Personal</option><option value="iva">IVA</option><option value="contador">Contador</option><option value="otros">Otros</option></select>
     <label>Monto</label><input id="gaMonto" type="number" step="1">
+    <label>Pagado desde</label>${selectCuentaPago('gaCuenta','bancoestado')}
+    <div class="sub-xs" style="margin-top:4px;">Si lo pagaste con plata de la caja durante el día, mejor regístralo en la Terminal con "Retiro / ingreso": así también cuadra el cierre.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="guardarGasto()">Guardar</button>
@@ -3200,7 +3249,7 @@ async function guardarGasto(){
   const descripcion=sanitize(document.getElementById('gaDescripcion').value);
   const monto=Number(document.getElementById('gaMonto').value);
   if(!descripcion||!monto){ toast('Completa descripción y monto',true); return; }
-  const {error}=await supa.from('gastos').insert({fecha:document.getElementById('gaFecha').value,descripcion,categoria:document.getElementById('gaCategoria').value,monto});
+  const {error}=await supa.from('gastos').insert({fecha:document.getElementById('gaFecha').value,descripcion,categoria:document.getElementById('gaCategoria').value,monto,cuenta:document.getElementById('gaCuenta').value});
   if(error){ toast('Error: '+error.message,true); return; }
   toast('Gasto guardado'); closeModal(); await loadAll(); renderGastos();
 }
@@ -3254,6 +3303,7 @@ function openGastoRecurrenteModal(id){
       <option value="otros" ${(!r||r?.categoria==='otros')?'selected':''}>Otros</option>
     </select>
     <label>Monto</label><input id="grMonto" type="number" step="1" value="${r?.monto||''}">
+    <label>Se paga desde</label>${selectCuentaPago('grCuenta',r?.cuenta||'bancoestado')}
     <label>Frecuencia</label>
     <select id="grFrecuencia" onchange="onGrFrecuenciaChange()">
       <option value="mensual" ${(!r||r?.frecuencia==='mensual')?'selected':''}>Mensual</option>
@@ -3296,6 +3346,7 @@ async function guardarGastoRecurrente(id){
     descripcion,
     categoria:document.getElementById('grCategoria').value,
     monto,
+    cuenta:document.getElementById('grCuenta').value,
     frecuencia,
     dia_mes:frecuencia==='semanal'?null:Number(document.getElementById('grDiaMes').value)||1,
     dia_semana:frecuencia==='semanal'?Number(document.getElementById('grDiaSemana').value):null,
@@ -3722,6 +3773,7 @@ function openFacturaCompraModal(){
       <button type="button" class="active" data-ep="pendiente" onclick="fcSetEstadoPago('pendiente')">Pendiente</button>
       <button type="button" data-ep="pagada" onclick="fcSetEstadoPago('pagada')">Pagada</button>
     </div>
+    <div id="fcCuentaWrap" style="display:none;"><label>Pagada desde</label>${selectCuentaPago('fcCuenta','bancoestado')}</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="guardarFacturaCompra()">Guardar factura</button>
@@ -3735,6 +3787,7 @@ function openFacturaCompraModal(){
 let FC_ESTADO_PAGO='pendiente';
 function fcSetEstadoPago(v){
   FC_ESTADO_PAGO=v;
+  const w=document.getElementById('fcCuentaWrap'); if(w) w.style.display=v==='pagada'?'block':'none';
   document.querySelectorAll('#modalContent .pay-methods button').forEach(b=>b.classList.toggle('active',b.dataset.ep===v));
 }
 function fcAgregarItem(){
@@ -3885,28 +3938,41 @@ async function guardarFacturaCompra(){
       await supa.from('stock_movimientos').insert({producto_id:item.producto_id,tipo:'entrada',cantidad:item.cantidad,motivo:`Factura de compra #${numero||factura.id}`,origen:'compra',referencia_id:factura.id,registrado_por:SESSION.usuario});
     }
   }
-  if(FC_ESTADO_PAGO==='pagada') await generarGastoDesdeFactura(factura,proveedor,numero,fecha,total);
+  if(FC_ESTADO_PAGO==='pagada') await generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,document.getElementById('fcCuenta')?.value);
   logAudit('Factura de compra registrada','proveedores',`${proveedor.nombre} — Factura ${numero||'-'} — ${money(total)}`);
   toast('Factura de compra guardada'); closeModal(); await loadAll(); renderProveedores(); renderProductos();
 }
 // Al pagar una factura de proveedor se registra sola como gasto (categoría
 // "mercadería") — así no hace falta cargarla dos veces. facturas_compra.gasto_id
 // evita crear el gasto más de una vez si se marca pagada repetidamente.
-async function generarGastoDesdeFactura(factura,proveedor,numero,fecha,total){
+async function generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,cuenta){
   if(factura.gasto_id) return;
   const {data:gs,error}=await supa.from('gastos').insert({
     fecha:fecha||new Date().toISOString().slice(0,10),
     descripcion:`Factura de compra ${numero?'#'+numero:'#'+factura.id} — ${proveedor?.nombre||factura.proveedor_nombre||''}`,
-    categoria:'mercaderia',monto:total,notas:`Generado automáticamente al pagar la factura de compra #${factura.id}`
+    categoria:'mercaderia',monto:total,cuenta:cuenta||'bancoestado',notas:`Generado automáticamente al pagar la factura de compra #${factura.id}`
   }).select();
   if(error){ console.error('generarGastoDesdeFactura',error); toast('La factura se guardó, pero no se pudo crear el gasto automático: '+error.message,true); return; }
   await supa.from('facturas_compra').update({gasto_id:gs[0].id}).eq('id',factura.id);
 }
-async function marcarFacturaPagada(id){
+function marcarFacturaPagada(id){
+  const f=DB.facturasCompra.find(x=>x.id===id);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Marcar factura pagada</h3>
+    <div style="font-size:13px;color:var(--text2);">${escapeHtml(f?.proveedor_nombre||'')} — ${money(f?.total)}</div>
+    <label>Pagada desde</label>${selectCuentaPago('mfCuenta','bancoestado')}
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarFacturaPagada(${id})">Marcar pagada</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function confirmarFacturaPagada(id){
+  const cuenta=document.getElementById('mfCuenta').value; closeModal();
   const f=DB.facturasCompra.find(x=>x.id===id);
   const {error}=await supa.from('facturas_compra').update({estado_pago:'pagada'}).eq('id',id);
   if(error){ toast('Error: '+error.message,true); return; }
-  if(f) await generarGastoDesdeFactura(f,{nombre:f.proveedor_nombre},f.numero_factura,f.fecha,f.total);
+  if(f) await generarGastoDesdeFactura(f,{nombre:f.proveedor_nombre},f.numero_factura,f.fecha,f.total,cuenta);
   logAudit('Factura de compra marcada pagada','proveedores',`Factura #${id}`);
   toast('Factura marcada como pagada'); await loadAll(); renderProveedores(); renderGastos();
 }
@@ -4079,10 +4145,14 @@ function abrirModalMovimientoCaja(){
     <label>Motivo</label><input id="movMotivo" maxlength="120" placeholder="Ej: pago proveedor pan, depósito banco">
     <div id="movGastoBox">
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
-        <input type="checkbox" id="movEsGasto" style="width:16px;height:16px;" checked> Es un gasto del negocio (se registra también en Gastos)
+        <input type="checkbox" id="movEsGasto" style="width:16px;height:16px;" checked onchange="document.getElementById('movDestinoBox').style.display=this.checked?'none':'block';document.getElementById('movGastoCat').style.display=this.checked?'':'none'"> Es un gasto del negocio (se registra también en Gastos)
       </label>
       <select id="movGastoCat" style="margin-top:6px;"><option value="mercaderia">Mercadería</option><option value="servicios">Servicios</option><option value="personal">Personal</option><option value="otros" selected>Otros</option></select>
       <div class="sub-xs" style="margin-top:4px;">Desmarca si es un depósito al banco o un retiro del dueño (no es gasto).</div>
+      <div id="movDestinoBox" style="display:none;">
+        <label>¿A dónde fue la plata?</label>
+        <select id="movDestino"><option value="bancoestado">Depósito en BancoEstado</option><option value="mercadopago">Depósito en Mercado Pago</option><option value="dueno">Retiro del dueño</option></select>
+      </div>
     </div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -4101,11 +4171,12 @@ async function guardarMovimientoCaja(){
   const btn=document.getElementById('btnMovCaja'); btn.disabled=true;
   let gasto_id=null;
   if(tipo==='retiro'&&document.getElementById('movEsGasto').checked){
-    const {data:g,error:gErr}=await supa.from('gastos').insert({fecha:CAJA_HOY.fecha,descripcion:motivo,categoria:document.getElementById('movGastoCat').value,monto,notas:'Pagado en efectivo desde la caja'}).select('id');
+    const {data:g,error:gErr}=await supa.from('gastos').insert({fecha:CAJA_HOY.fecha,descripcion:motivo,categoria:document.getElementById('movGastoCat').value,monto,cuenta:'efectivo',notas:'Pagado en efectivo desde la caja'}).select('id');
     if(gErr){ btn.disabled=false; toast('No se pudo registrar el gasto: '+gErr.message,true); return; }
     gasto_id=g?.[0]?.id||null;
   }
-  const {error}=await supa.from('caja_movimientos').insert({cierre_id:CAJA_HOY.id,tipo,monto,motivo,gasto_id,registrado_por:SESSION.usuario}).select('id');
+  const destino=tipo==='retiro'&&!gasto_id?document.getElementById('movDestino').value:(tipo==='ingreso'?'dueno':null);
+  const {error}=await supa.from('caja_movimientos').insert({cierre_id:CAJA_HOY.id,tipo,monto,motivo,gasto_id,destino,registrado_por:SESSION.usuario}).select('id');
   btn.disabled=false;
   if(error){ toast('No se pudo registrar: '+error.message,true); return; }
   logAudit(tipo==='retiro'?'Retiro de caja':'Ingreso a caja','caja',`${money(monto)} — ${motivo}`);
@@ -4142,19 +4213,22 @@ function sumarConteoCaja(){ document.getElementById('conteoTotal').textContent=m
 
 // Totales de la caja: ventas desde la apertura (sin anuladas) y movimientos.
 async function calcularTotalesCaja(caja,hasta){
-  let q=supa.from('ventas').select('total,metodo_pago,monto_efectivo,monto_otro').eq('anulada',false).gte('created_at',caja.abierta_at);
+  let q=supa.from('ventas').select('total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago').eq('anulada',false).gte('created_at',caja.abierta_at);
   if(hasta) q=q.lte('created_at',hasta);
   const [vR,mR]=await Promise.all([q,supa.from('caja_movimientos').select('*').eq('cierre_id',caja.id).order('created_at')]);
   if(vR.error) throw vR.error;
   if(mR.error) throw mR.error;
-  const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_otro_mixto:0,ventas_cantidad:0,retiros:0,ingresos:0,total_vendido:0};
+  const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_mercadopago:0,ventas_otro_mixto:0,ventas_cantidad:0,ventas_mixtas:0,retiros:0,ingresos:0,total_vendido:0};
   (vR.data||[]).forEach(v=>{
-    const total=Number(v.total)||0, m=v.metodo_pago||'efectivo';
+    if(v.estado_pago==='pendiente') return;   // pedido facturado sin pagar: la plata aún no entra
+    const total=Number(v.total)||0;
     t.ventas_cantidad++; t.total_vendido+=total;
-    if(m==='transferencia') t.ventas_transferencia+=total;
-    else if(m==='tarjeta') t.ventas_tarjeta+=total;
-    else if(m==='mixto'){ t.ventas_efectivo+=Number(v.monto_efectivo)||0; t.ventas_otro_mixto+=Number(v.monto_otro)||0; }
-    else t.ventas_efectivo+=v.monto_efectivo!=null?Number(v.monto_efectivo):total;
+    if(v.metodo_pago==='mixto') t.ventas_mixtas++;
+    // montos por medio (migración 004); ventas sin esos datos se reparten por método
+    const m=v.monto_transferencia!=null?{monto_efectivo:Number(v.monto_efectivo)||0,monto_transferencia:Number(v.monto_transferencia)||0,monto_tarjeta:Number(v.monto_tarjeta)||0,monto_mercadopago:Number(v.monto_mercadopago)||0}
+      :montosPorMedio(v.metodo_pago||'efectivo',total,v.metodo_pago==='mixto'?{efectivo:Number(v.monto_efectivo)||0,transferencia:Number(v.monto_otro)||0,tarjeta:0}:null);
+    t.ventas_efectivo+=m.monto_efectivo; t.ventas_transferencia+=m.monto_transferencia;
+    t.ventas_tarjeta+=m.monto_tarjeta; t.ventas_mercadopago+=m.monto_mercadopago;
   });
   const movs=mR.data||[];
   movs.forEach(m=>{ if(m.tipo==='retiro') t.retiros+=Number(m.monto)||0; else t.ingresos+=Number(m.monto)||0; });
@@ -4177,7 +4251,7 @@ async function confirmarCierreCaja(){
   const row={
     estado:'cerrada',cerrada_at:ahora,cerrada_por:SESSION.usuario,
     ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,
-    ventas_otro_mixto:t.ventas_otro_mixto,ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
+    ventas_otro_mixto:0,ventas_mercadopago:t.ventas_mercadopago,ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
     conteo,total_esperado:t.esperado,total_contado:contado,diferencia,notas:sanitize(document.getElementById('cierreNotas').value)||null,
   };
   // .eq('estado','abierta'): si otra caja la cerró mientras tanto, no se pisa
@@ -4194,6 +4268,16 @@ function estadoDiferencia(d){
   if(d===0) return {clase:'cuadra',txt:'Cuadra',det:'El efectivo coincide exacto'};
   return d<0?{clase:'falta',txt:`Falta ${money(-d)}`,det:'Hay menos efectivo del que debería'}:{clase:'sobra',txt:`Sobra ${money(d)}`,det:'Hay más efectivo del que debería'};
 }
+// Ventas del día por método de pago y a qué cuenta debería haber llegado.
+function ventasPorMetodo(t){
+  return [
+    {nombre:'Efectivo',cuenta:'Caja',monto:t.ventas_efectivo},
+    {nombre:'Transferencia',cuenta:'Mercado Pago',monto:t.ventas_transferencia},
+    {nombre:'Link Mercado Pago',cuenta:'Mercado Pago',monto:t.ventas_mercadopago||0},
+    {nombre:'Tarjeta',cuenta:'BancoEstado',monto:t.ventas_tarjeta},
+    ...(t.ventas_otro_mixto?[{nombre:'Mixto sin separar',cuenta:'Revisar',monto:t.ventas_otro_mixto}]:[]),
+  ].filter(x=>x.monto||['Efectivo','Transferencia','Tarjeta'].includes(x.nombre));
+}
 function mostrarResultadoCierre(c,t){
   const e=estadoDiferencia(c.diferencia);
   document.getElementById('modalContent').innerHTML=`
@@ -4205,6 +4289,9 @@ function mostrarResultadoCierre(c,t){
     ${t.retiros?`<div class="caja-linea"><span>− Retiros</span><b>${money(t.retiros)}</b></div>`:''}
     <div class="caja-linea"><span><b>Debía haber</b></span><b>${money(c.total_esperado)}</b></div>
     <div class="caja-linea"><span><b>Contado</b></span><b>${money(c.total_contado)}</b></div>
+    <div style="font-weight:800;font-size:13px;margin:14px 0 4px;">Ventas por método de pago</div>
+    ${ventasPorMetodo(t).map(x=>`<div class="caja-linea"><span>${x.nombre} <span class="sub-xs">→ ${x.cuenta}</span></span><b>${money(x.monto)}</b></div>`).join('')}
+    <div class="caja-linea"><span><b>Total vendido</b> <span class="sub-xs">(${t.ventas_cantidad} venta${t.ventas_cantidad===1?'':'s'}${t.ventas_mixtas?`, ${t.ventas_mixtas} mixta${t.ventas_mixtas===1?'':'s'} repartida${t.ventas_mixtas===1?'':'s'}`:''})</span></span><b>${money(t.total_vendido)}</b></div>
     <div class="sub-xs" style="margin-top:10px;">El reporte se envió al WhatsApp del negocio. Imprímelo y entrégalo junto con el efectivo.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Listo</button>
@@ -4239,9 +4326,10 @@ function textoReporteCierre(c,t){
   if(t.ingresos) l.push(`Ingresos: ${money(t.ingresos)}`);
   if(t.retiros) l.push(`Retiros: ${money(t.retiros)}`);
   (t.movimientos||[]).forEach(m=>l.push(`  · ${m.tipo==='retiro'?'−':'+'}${money(m.monto)} ${m.motivo}`));
-  l.push('',`*A verificar en banco*`,`Transferencias: ${money(t.ventas_transferencia)}`,`Tarjeta: ${money(t.ventas_tarjeta)}`);
-  if(t.ventas_otro_mixto) l.push(`Mixto (parte no efectivo): ${money(t.ventas_otro_mixto)}`);
-  l.push('',`Ventas del día: ${t.ventas_cantidad} · total ${money(t.total_vendido)}`);
+  l.push('',`*Ventas por método de pago*`);
+  ventasPorMetodo(t).forEach(x=>l.push(`${x.nombre} (${x.cuenta}): ${money(x.monto)}`));
+  l.push(`*Total vendido: ${money(t.total_vendido)}* · ${t.ventas_cantidad} ventas`);
+  l.push('',`*Debería entrar hoy*`,`Mercado Pago: ${money((t.ventas_transferencia||0)+(t.ventas_mercadopago||0))}`,`BancoEstado: ${money(t.ventas_tarjeta)}`);
   if(c.notas) l.push(`Notas: ${c.notas}`);
   return l.join('\n');
 }
@@ -4257,7 +4345,7 @@ async function imprimirReporteCierre(id){
   let t;
   try{ t=await calcularTotalesCaja(c,c.cerrada_at||new Date().toISOString()); }catch(e){ toast('Error: '+e.message,true); return; }
   // los montos guardados al cerrar mandan (las ventas anuladas después no cambian el reporte)
-  ['ventas_efectivo','ventas_transferencia','ventas_tarjeta','ventas_otro_mixto','ventas_cantidad','retiros','ingresos'].forEach(k=>{ if(c[k]!=null) t[k]=Number(c[k]); });
+  ['ventas_efectivo','ventas_transferencia','ventas_tarjeta','ventas_mercadopago','ventas_otro_mixto','ventas_cantidad','retiros','ingresos'].forEach(k=>{ if(c[k]!=null) t[k]=Number(c[k]); });
   const e=estadoDiferencia(c.diferencia);
   const fila=(a,b,strong)=>`<tr${strong?' class="st"':''}><td>${a}</td><td class="n">${b}</td></tr>`;
   const conteo=c.conteo?Object.entries(c.conteo).sort((a,b)=>b[0]-a[0]).map(([d,n])=>fila(`${n} × ${money(d)}`,money(d*n))).join(''):'';
@@ -4291,14 +4379,16 @@ async function imprimirReporteCierre(id){
   </table>
   ${(t.movimientos||[]).length?`<div class="sec">RETIROS / INGRESOS</div><table>${t.movimientos.map(m=>fila(`${m.tipo==='retiro'?'−':'+'} ${escapeHtml(m.motivo)}`,money(m.monto))).join('')}</table>`:''}
   ${conteo?`<div class="sec">CONTEO</div><table>${conteo}</table>`:''}
-  <div class="sec">A VERIFICAR EN BANCO</div>
+  <div class="sec">VENTAS POR MÉTODO DE PAGO</div>
   <table>
-    ${fila('Transferencias',money(t.ventas_transferencia))}
-    ${fila('Tarjeta',money(t.ventas_tarjeta))}
-    ${t.ventas_otro_mixto?fila('Mixto (no efectivo)',money(t.ventas_otro_mixto)):''}
+    ${ventasPorMetodo(t).map(x=>fila(`${x.nombre}<br><span style="font-size:11px;">→ ${x.cuenta}</span>`,money(x.monto))).join('')}
+    ${fila(`Total vendido (${t.ventas_cantidad})`,money(t.total_vendido),true)}
   </table>
-  <div class="sec">VENTAS DEL DÍA</div>
-  <table>${fila('Cantidad',t.ventas_cantidad)}${fila('Total vendido',money(t.total_vendido),true)}</table>
+  <div class="sec">DEBERÍA ENTRAR A</div>
+  <table>
+    ${fila('Mercado Pago',money((t.ventas_transferencia||0)+(t.ventas_mercadopago||0)))}
+    ${fila('BancoEstado',money(t.ventas_tarjeta))}
+  </table>
   ${c.notas?`<div class="sec">NOTAS</div><div>${escapeHtml(c.notas)}</div>`:''}
   <div class="firma">Firma cajero</div>
   <div class="firma">Firma recibe</div>
@@ -4319,19 +4409,19 @@ async function renderHistorialCierres(){
   if(!rows.length){ cont.innerHTML='<div class="empty">Todavía no hay cierres. La caja se abre desde la Terminal de ventas.</div>'; return; }
   const admin=SESSION?.rol==='admin';
   cont.innerHTML=`<div class="table-scroll"><table>
-    <thead><tr><th>Día</th><th>Cajero</th><th class="num">Debía haber</th><th class="num">Contado</th><th class="num">Diferencia</th><th class="num">Transferencias</th><th class="num">Tarjeta</th><th>Banco</th><th></th></tr></thead>
+    <thead><tr><th>Día</th><th>Cajero</th><th class="num">Debía haber</th><th class="num">Contado</th><th class="num">Diferencia</th><th class="num">→ Mercado Pago</th><th class="num">→ BancoEstado</th><th>Banco</th><th></th></tr></thead>
     <tbody>${rows.map(c=>{
       const abierta=c.estado==='abierta';
       const e=estadoDiferencia(c.diferencia);
       const color=abierta?'var(--muted)':(e.clase==='cuadra'?'var(--ok)':e.clase==='falta'?'var(--danger)':'var(--warn)');
-      const banco=Number(c.ventas_transferencia||0)+Number(c.ventas_tarjeta||0)+Number(c.ventas_otro_mixto||0);
+      const banco=Number(c.ventas_transferencia||0)+Number(c.ventas_tarjeta||0)+Number(c.ventas_mercadopago||0)+Number(c.ventas_otro_mixto||0);
       return `<tr>
         <td>${escapeHtml(c.fecha)}${abierta?' <span class="badge">Abierta</span>':''}</td>
         <td style="font-size:12px;">${escapeHtml(c.abierta_por||'-')}${c.cerrada_por&&c.cerrada_por!==c.abierta_por?` / ${escapeHtml(c.cerrada_por)}`:''}</td>
         <td class="num">${abierta?'—':money(c.total_esperado)}</td>
         <td class="num">${abierta?'—':money(c.total_contado)}</td>
         <td class="num" style="font-weight:800;color:${color};">${abierta?'—':e.txt}</td>
-        <td class="num">${abierta?'—':money(c.ventas_transferencia)}</td>
+        <td class="num">${abierta?'—':money(Number(c.ventas_transferencia||0)+Number(c.ventas_mercadopago||0))}</td>
         <td class="num">${abierta?'—':money(Number(c.ventas_tarjeta||0)+Number(c.ventas_otro_mixto||0))}</td>
         <td>${abierta||!banco?'—':(c.banco_verificado?`<span class="badge pagado" title="${escapeHtml((c.banco_verificado_por||'')+' '+(c.banco_notas||''))}">Verificado</span>`:(admin?`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="verificarBancoCierre(${c.id})">Marcar verificado</button>`:'<span class="badge por-cobrar">Pendiente</span>'))}</td>
         <td>${abierta?'':`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="imprimirReporteCierre(${c.id})">Reporte</button>`}</td>
@@ -4345,6 +4435,228 @@ async function verificarBancoCierre(id){
   if(error){ toast('Error: '+error.message,true); return; }
   logAudit('Cierre verificado con banco','caja',`Cierre #${id}${notas?' — '+notas:''}`);
   toast('Marcado como verificado'); renderHistorialCierres();
+}
+
+// ══════════════════════════════════════════════════════════
+//  CUENTAS — Efectivo, BancoEstado y Mercado Pago
+//  Saldo según sistema = saldo inicial (lo que había el día que se
+//  empezó a llevar) + lo que entró por ventas − gastos pagados desde
+//  esa cuenta ± traspasos, retiros de caja y ajustes. El dueño lo
+//  compara con el saldo real de la app del banco (conciliación).
+//  Dónde llega cada medio: efectivo → caja; transferencia y link de
+//  pago → Mercado Pago; tarjeta → BancoEstado.
+// ══════════════════════════════════════════════════════════
+let CUENTAS_VIEW={cuenta:'efectivo',data:null};
+const MEDIO_A_CUENTA={monto_efectivo:'efectivo',monto_transferencia:'mercadopago',monto_mercadopago:'mercadopago',monto_tarjeta:'bancoestado'};
+const NOMBRE_MEDIO={monto_efectivo:'Ventas en efectivo',monto_transferencia:'Ventas por transferencia',monto_mercadopago:'Ventas por link Mercado Pago',monto_tarjeta:'Ventas con tarjeta'};
+
+function inicioISO(fecha){ const [y,m,d]=fecha.split('-').map(Number); return new Date(y,m-1,d).toISOString(); }
+
+async function calcularCuentas(){
+  const {data:cuentas,error}=await supa.from('cuentas').select('*').order('orden');
+  if(error) throw error;
+  const conf=(cuentas||[]).filter(c=>c.fecha_inicio);
+  const res={cuentas:cuentas||[],movs:{},saldo:{},ultimaConc:{}};
+  (cuentas||[]).forEach(c=>{ res.movs[c.codigo]=[]; res.saldo[c.codigo]=Number(c.saldo_inicial)||0; });
+  const {data:concs}=await supa.from('conciliaciones').select('*').order('created_at',{ascending:false}).limit(60);
+  (concs||[]).forEach(k=>{ if(!res.ultimaConc[k.cuenta]) res.ultimaConc[k.cuenta]=k; });
+  if(!conf.length) return res;
+  const desde=conf.map(c=>c.fecha_inicio).sort()[0];
+  const [vR,gR,mR,cmR,ciR]=await Promise.all([
+    supa.from('ventas').select('created_at,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago').eq('anulada',false).gte('created_at',inicioISO(desde)).order('created_at'),
+    supa.from('gastos').select('id,fecha,descripcion,monto,cuenta').gte('fecha',desde).order('fecha'),
+    supa.from('cuenta_movimientos').select('*').gte('fecha',desde).order('fecha'),
+    supa.from('caja_movimientos').select('*').gte('created_at',inicioISO(desde)).order('created_at'),
+    supa.from('cierres_caja').select('fecha,diferencia,estado').eq('estado','cerrada').gte('fecha',desde),
+  ]);
+  for(const r of [vR,gR,mR,cmR,ciR]) if(r.error) throw r.error;
+  const inicio={}; conf.forEach(c=>inicio[c.codigo]=c.fecha_inicio);
+  const add=(cuenta,fecha,desc,monto,tipo)=>{
+    if(!inicio[cuenta]||fecha<inicio[cuenta]||!monto) return;
+    res.movs[cuenta].push({fecha,desc,monto,tipo});
+  };
+  // ventas: una línea por día y medio de pago (las pendientes de pago no han entrado)
+  const porDia={};
+  (vR.data||[]).forEach(v=>{
+    if(v.estado_pago==='pendiente') return;
+    const dia=diaDeTimestamp(v.created_at);
+    const m=v.monto_transferencia!=null?v:montosPorMedio(v.metodo_pago||'efectivo',Number(v.total)||0,v.metodo_pago==='mixto'?{efectivo:Number(v.monto_efectivo)||0,transferencia:Number(v.monto_otro)||0,tarjeta:0}:null);
+    Object.keys(MEDIO_A_CUENTA).forEach(k=>{ const n=Number(m[k])||0; if(n){ const key=dia+'|'+k; porDia[key]=(porDia[key]||0)+n; } });
+  });
+  Object.entries(porDia).forEach(([key,monto])=>{ const [dia,k]=key.split('|'); add(MEDIO_A_CUENTA[k],dia,NOMBRE_MEDIO[k],monto,'venta'); });
+  (gR.data||[]).forEach(g=>{ if(g.cuenta) add(g.cuenta,g.fecha,'Gasto: '+g.descripcion,-Number(g.monto),'gasto'); });
+  (mR.data||[]).forEach(m=>{
+    const n=Number(m.monto);
+    if(m.cuenta_origen) add(m.cuenta_origen,m.fecha,(m.tipo==='traspaso'?`Traspaso a ${CUENTAS_PAGO[m.cuenta_destino]||m.cuenta_destino}: `:'')+m.descripcion,-n,m.tipo);
+    if(m.cuenta_destino) add(m.cuenta_destino,m.fecha,(m.tipo==='traspaso'?`Traspaso desde ${CUENTAS_PAGO[m.cuenta_origen]||m.cuenta_origen}: `:'')+m.descripcion,n,m.tipo);
+  });
+  // caja: los retiros que son gasto ya están en gastos (cuenta efectivo)
+  (cmR.data||[]).forEach(m=>{
+    const dia=diaDeTimestamp(m.created_at), n=Number(m.monto);
+    if(m.tipo==='ingreso'){ add('efectivo',dia,'Ingreso a caja: '+m.motivo,n,'caja'); return; }
+    if(m.gasto_id) return;
+    const dest={bancoestado:'Depósito a BancoEstado',mercadopago:'Depósito a Mercado Pago',dueno:'Retiro del dueño'}[m.destino]||'Retiro de caja';
+    add('efectivo',dia,`${dest}: ${m.motivo}`,-n,'caja');
+    if(m.destino==='bancoestado'||m.destino==='mercadopago') add(m.destino,dia,'Depósito desde caja: '+m.motivo,n,'caja');
+  });
+  // lo que faltó o sobró al cerrar la caja también mueve el efectivo real
+  (ciR.data||[]).forEach(c=>{ const d=Number(c.diferencia)||0; if(d) add('efectivo',c.fecha,d<0?'Faltante en cierre de caja':'Sobrante en cierre de caja',d,'cierre'); });
+  Object.keys(res.movs).forEach(k=>{
+    res.movs[k].sort((a,b)=>a.fecha<b.fecha?-1:a.fecha>b.fecha?1:0);
+    let s=res.saldo[k]; res.movs[k].forEach(m=>{ s+=m.monto; m.saldo=s; }); res.saldo[k]=s;
+  });
+  return res;
+}
+
+async function renderCuentas(){
+  const cont=document.getElementById('cuentasCards');
+  cont.innerHTML='<div class="empty">Calculando…</div>';
+  let r;
+  try{ r=await calcularCuentas(); }catch(e){ console.error(e); cont.innerHTML=`<div class="empty">Error: ${escapeHtml(e.message)}</div>`; return; }
+  CUENTAS_VIEW.data=r;
+  const sinConfig=r.cuentas.some(c=>!c.fecha_inicio);
+  document.getElementById('cuentasAviso').innerHTML=sinConfig?`<div class="card" style="padding:14px 16px;margin-bottom:14px;border-color:var(--brand);background:var(--brand-light);">
+      <b>Para empezar:</b> escribe cuánto hay hoy en cada cuenta (mira la app de BancoEstado, la de Mercado Pago y cuenta el efectivo). Desde ese día el sistema lleva el saldo solo.
+      <div style="margin-top:10px;"><button class="btn" onclick="abrirModalSaldosIniciales()">Poner saldos iniciales</button></div></div>`:'';
+  const total=r.cuentas.filter(c=>c.fecha_inicio).reduce((s,c)=>s+r.saldo[c.codigo],0);
+  cont.innerHTML=r.cuentas.map(c=>{
+    const k=r.ultimaConc[c.codigo];
+    const d=k?Math.round(Number(k.diferencia)):0;
+    return `<div class="card cuenta-card ${CUENTAS_VIEW.cuenta===c.codigo?'sel':''}" onclick="verMovimientosCuenta('${c.codigo}')">
+      <div class="cuenta-nombre">${escapeHtml(c.nombre)}</div>
+      ${c.fecha_inicio?`<div class="cuenta-saldo num">${money(r.saldo[c.codigo])}</div>
+        <div class="sub-xs">Según el sistema · desde ${new Date(c.fecha_inicio+'T12:00:00').toLocaleDateString('es-CL')}</div>
+        <div class="cuenta-conc">${k?`Última conciliación ${new Date(k.fecha+'T12:00:00').toLocaleDateString('es-CL')}: <b style="color:${d===0?'var(--ok)':'var(--danger)'}">${d===0?'cuadró':(d<0?'faltaban ':'sobraban ')+money(Math.abs(d))}</b>${k.ajustado&&d!==0?' (ajustado)':''}`:'Sin conciliar todavía'}</div>
+        <button class="btn" style="margin-top:10px;padding:8px 12px;font-size:12.5px;" onclick="event.stopPropagation();abrirModalConciliar('${c.codigo}')">Conciliar</button>`
+      :`<div class="sub-xs" style="margin-top:8px;">Sin saldo inicial</div>`}
+    </div>`;
+  }).join('')+(r.cuentas.some(c=>c.fecha_inicio)?`<div class="card cuenta-card total"><div class="cuenta-nombre">Total</div><div class="cuenta-saldo num">${money(total)}</div><div class="sub-xs">Suma de las cuentas según el sistema</div></div>`:'');
+  verMovimientosCuenta(CUENTAS_VIEW.cuenta,true);
+}
+function verMovimientosCuenta(codigo,sinRecargar){
+  CUENTAS_VIEW.cuenta=codigo;
+  const r=CUENTAS_VIEW.data; if(!r) return;
+  if(!sinRecargar) document.querySelectorAll('.cuenta-card').forEach(el=>el.classList.toggle('sel',el.getAttribute('onclick')?.includes(`'${codigo}'`)));
+  const c=r.cuentas.find(x=>x.codigo===codigo);
+  const movs=(r.movs[codigo]||[]).slice(-150).reverse();
+  document.getElementById('cuentaMovsTitulo').textContent=`Movimientos · ${c?.nombre||''}`;
+  document.getElementById('cuentaMovs').innerHTML=!c?.fecha_inicio?'<div class="empty">Pon el saldo inicial de esta cuenta para ver sus movimientos.</div>':
+    `<div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Monto</th><th class="num">Saldo</th></tr></thead><tbody>
+    ${movs.map(m=>`<tr><td>${new Date(m.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td>${escapeHtml(m.desc)}</td>
+      <td class="num" style="font-weight:700;color:${m.monto<0?'var(--danger)':'var(--ok)'}">${m.monto<0?'−':'+'}${money(Math.abs(m.monto))}</td><td class="num">${money(m.saldo)}</td></tr>`).join('')}
+    <tr><td>${new Date(c.fecha_inicio+'T12:00:00').toLocaleDateString('es-CL')}</td><td><b>Saldo inicial</b></td><td></td><td class="num">${money(c.saldo_inicial)}</td></tr>
+    </tbody></table></div>`;
+}
+
+function abrirModalSaldosIniciales(){
+  const r=CUENTAS_VIEW.data; if(!r) return;
+  const hoy=fechaLocalISO(new Date());
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Saldos iniciales</h3>
+    <div style="font-size:13px;color:var(--text2);">Escribe cuánto hay en cada cuenta en la fecha indicada. El sistema suma y resta desde ese día. Si cambias un saldo o una fecha, se recalcula todo desde ahí.</div>
+    ${r.cuentas.map(c=>`<label>${escapeHtml(c.nombre)}</label>
+      <div style="display:flex;gap:8px;"><input type="number" step="1" id="si_${c.codigo}" value="${c.fecha_inicio?Number(c.saldo_inicial):''}" placeholder="Saldo" style="flex:1;">
+      <input type="date" id="sf_${c.codigo}" value="${c.fecha_inicio||hoy}" style="flex:0 0 150px;"></div>`).join('')}
+    <div class="sub-xs" style="margin-top:6px;">Efectivo = todo el efectivo del negocio (el cajón más lo que tengas guardado). Hazlo antes de abrir la caja del día.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="guardarSaldosIniciales()">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarSaldosIniciales(){
+  const r=CUENTAS_VIEW.data;
+  for(const c of r.cuentas){
+    const v=document.getElementById('si_'+c.codigo).value, f=document.getElementById('sf_'+c.codigo).value;
+    if(v==='') continue;
+    const {error}=await supa.from('cuentas').update({saldo_inicial:Number(v)||0,fecha_inicio:f}).eq('codigo',c.codigo);
+    if(error){ toast('Error: '+error.message,true); return; }
+    logAudit('Saldo inicial de cuenta','cuentas',`${c.nombre}: ${money(v)} desde ${f}`);
+  }
+  closeModal(); toast('Saldos guardados'); renderCuentas();
+}
+
+function abrirModalConciliar(codigo){
+  const r=CUENTAS_VIEW.data; const c=r.cuentas.find(x=>x.codigo===codigo);
+  const sis=r.saldo[codigo];
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Conciliar ${escapeHtml(c.nombre)}</h3>
+    <div class="caja-linea"><span>Saldo según el sistema</span><b>${money(sis)}</b></div>
+    <label>Saldo real ${codigo==='efectivo'?'(cuenta todo el efectivo)':'(míralo en la app)'}</label>
+    <input type="number" step="1" id="concReal" oninput="actualizarDifConc(${sis})" inputmode="numeric">
+    <div id="concDif" style="margin-top:8px;font-weight:800;"></div>
+    <label>Notas</label><input id="concNotas" maxlength="200" placeholder="${codigo==='efectivo'?'Ej: faltante sin explicar':'Ej: comisiones Transbank de la semana'}">
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="concAjustar" style="width:16px;height:16px;" checked>
+      Registrar la diferencia como ajuste (comisiones, cobros del banco), así el sistema parte desde el saldo real
+    </label>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnConc" onclick="guardarConciliacion('${codigo}',${sis})">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  setTimeout(()=>document.getElementById('concReal')?.focus(),50);
+}
+function actualizarDifConc(sis){
+  const v=document.getElementById('concReal').value, el=document.getElementById('concDif');
+  if(v===''){ el.textContent=''; return; }
+  const d=Math.round(Number(v)-sis);
+  el.textContent=d===0?'Cuadra exacto':(d<0?`Hay ${money(-d)} menos de lo que dice el sistema`:`Hay ${money(d)} más de lo que dice el sistema`);
+  el.style.color=d===0?'var(--ok)':'var(--danger)';
+}
+async function guardarConciliacion(codigo,sis){
+  const v=document.getElementById('concReal').value;
+  if(v===''){ toast('Escribe el saldo real',true); return; }
+  const real=Number(v), dif=Math.round(real-sis);
+  const notas=sanitize(document.getElementById('concNotas').value)||null;
+  const ajustar=document.getElementById('concAjustar').checked&&dif!==0;
+  const btn=document.getElementById('btnConc'); btn.disabled=true;
+  const hoy=fechaLocalISO(new Date());
+  const {error}=await supa.from('conciliaciones').insert({cuenta:codigo,fecha:hoy,saldo_sistema:sis,saldo_real:real,diferencia:dif,ajustado:ajustar,notas,registrado_por:SESSION.usuario}).select('id');
+  if(error){ btn.disabled=false; toast('Error: '+error.message,true); return; }
+  if(ajustar){
+    const mov=dif<0?{tipo:'egreso',cuenta_origen:codigo}:{tipo:'ingreso',cuenta_destino:codigo};
+    const {error:e2}=await supa.from('cuenta_movimientos').insert({...mov,fecha:hoy,monto:Math.abs(dif),descripcion:'Ajuste por conciliación'+(notas?': '+notas:''),registrado_por:SESSION.usuario}).select('id');
+    if(e2){ btn.disabled=false; toast('La conciliación se guardó, pero no el ajuste: '+e2.message,true); return; }
+  }
+  logAudit('Conciliación de cuenta','cuentas',`${codigo}: sistema ${money(sis)}, real ${money(real)}, diferencia ${money(dif)}${ajustar?' (ajustada)':''}`);
+  closeModal(); toast(dif===0?'Cuadra: conciliación guardada':'Conciliación guardada'); renderCuentas();
+}
+
+function abrirModalMovimientoCuenta(tipo){
+  const opts=Object.entries(CUENTAS_PAGO).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  const hoy=fechaLocalISO(new Date());
+  const t={traspaso:'Traspaso entre cuentas',ingreso:'Ingreso a una cuenta',egreso:'Salida de una cuenta'}[tipo];
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${t}</h3>
+    ${tipo==='traspaso'?`<div style="font-size:13px;color:var(--text2);">Ej: pasar plata de Mercado Pago a BancoEstado, o depositar efectivo guardado.</div>`:''}
+    ${tipo==='egreso'?`<div style="font-size:13px;color:var(--text2);">Ej: comisión del banco, retiro del dueño. Si es un gasto del negocio (arriendo, proveedor), regístralo mejor en Gastos.</div>`:''}
+    ${tipo==='ingreso'?`<div style="font-size:13px;color:var(--text2);">Ej: aporte del dueño, devolución. Las ventas ya se suman solas.</div>`:''}
+    ${tipo!=='ingreso'?`<label>${tipo==='traspaso'?'Desde':'Cuenta'}</label><select id="cmOrigen">${opts}</select>`:''}
+    ${tipo!=='egreso'?`<label>${tipo==='traspaso'?'Hacia':'Cuenta'}</label><select id="cmDestino">${opts}</select>`:''}
+    <label>Monto</label><input type="number" id="cmMonto" min="1" step="1" inputmode="numeric">
+    <label>Fecha</label><input type="date" id="cmFecha" value="${hoy}">
+    <label>Detalle</label><input id="cmDesc" maxlength="150">
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="guardarMovimientoCuenta('${tipo}')">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  if(tipo==='traspaso'){ document.getElementById('cmOrigen').value='mercadopago'; document.getElementById('cmDestino').value='bancoestado'; }
+}
+async function guardarMovimientoCuenta(tipo){
+  const monto=Number(document.getElementById('cmMonto').value);
+  const descripcion=sanitize(document.getElementById('cmDesc').value);
+  if(!(monto>0)){ toast('Escribe el monto',true); return; }
+  if(!descripcion){ toast('Escribe el detalle',true); return; }
+  const row={tipo,monto,descripcion,fecha:document.getElementById('cmFecha').value,registrado_por:SESSION.usuario,
+    cuenta_origen:tipo!=='ingreso'?document.getElementById('cmOrigen').value:null,
+    cuenta_destino:tipo!=='egreso'?document.getElementById('cmDestino').value:null};
+  if(tipo==='traspaso'&&row.cuenta_origen===row.cuenta_destino){ toast('Elige cuentas distintas',true); return; }
+  const {error}=await supa.from('cuenta_movimientos').insert(row).select('id');
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit('Movimiento de cuenta','cuentas',`${tipo} ${money(monto)} — ${descripcion}`);
+  closeModal(); toast('Movimiento registrado'); renderCuentas();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -4396,6 +4708,7 @@ async function confirmarCajeroPin(){
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
+  document.getElementById('navCuentas').style.display=canDo('verReportes')?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
