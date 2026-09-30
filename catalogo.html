@@ -41,7 +41,7 @@
  {"@type":"Question","name":"¿Cómo se paga el pedido?","acceptedAnswer":{"@type":"Answer","text":"Haces el pedido en la web, te confirmamos por WhatsApp el peso exacto y el total, y recién ahí pagas con Mercado Pago o transferencia."}},
  {"@type":"Question","name":"¿Venden queso venezolano por mayor?","acceptedAnswer":{"@type":"Answer","text":"Sí. Si tienes arepera, restaurante o minimarket, escríbenos por WhatsApp y te cotizamos precios por volumen."}},
  {"@type":"Question","name":"¿Qué es el queso llanero?","acceptedAnswer":{"@type":"Answer","text":"Es un queso blanco venezolano, firme y salado, ideal para rallar sobre arepas, cachapas y pabellón."}},
- {"@type":"Question","name":"¿A qué comunas hacen delivery?","acceptedAnswer":{"@type":"Answer","text":"Hacemos delivery a Santiago, San Joaquín, San Miguel, Ñuñoa y Providencia. Para otras comunas escríbenos por WhatsApp y coordinamos el día de despacho."}},
+ {"@type":"Question","name":"¿Cuánto cuesta el delivery?","acceptedAnswer":{"@type":"Answer","text":"Depende de la distancia desde nuestro local en Arturo Prat 2045: hasta 3 km $2.500, de 3 a 5 km $3.500 y de 5 a 7 km $5.000. Más lejos coordinamos por WhatsApp el día que vamos a tu comuna. También puedes retirar gratis en la tienda."}},
  {"@type":"Question","name":"¿Hacen despacho a regiones?","acceptedAnswer":{"@type":"Answer","text":"Sí. Escríbenos por WhatsApp y coordinamos el día y la forma de despacho a tu región."}},
  {"@type":"Question","name":"¿Dónde está la tienda?","acceptedAnswer":{"@type":"Answer","text":"Punto Queso está en Arturo Prat 2045, Santiago. También nos encuentras en Google Maps como Punto Queso."}}
 ]}
@@ -334,6 +334,22 @@ form textarea{height:auto;min-height:70px;padding:12px 14px;resize:vertical;}
 form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 .req{color:var(--danger);}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.entrega-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 4px;}
+.entrega-toggle button{height:46px;border-radius:12px;border:1.5px solid var(--line-2);background:var(--paper);font-weight:800;font-size:14px;color:var(--text2);}
+.entrega-toggle button.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.quote{font-size:13px;margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--cream);border:1px solid var(--line);line-height:1.45;}
+.quote b{font-weight:800;}
+.quote.ok{background:#E6F4EA;border-color:#cfe8d6;}
+.quote.warn{background:var(--yellow-soft);border-color:var(--line-2);}
+.quote a{color:var(--ink);font-weight:800;}
+.resumen{margin-top:16px;border-top:1px dashed var(--line-2);padding-top:12px;font-size:14px;}
+.resumen div{display:flex;justify-content:space-between;padding:3px 0;}
+.resumen .tot{font-weight:800;font-size:16px;}
+.resumen .gratis{color:var(--ok);font-weight:800;}
+.ref-bar{display:none;margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--yellow-soft);border:1px solid var(--line-2);font-size:13.5px;font-weight:600;}
+.ref-bar.show{display:block;}
+.tramos{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.tramos span{padding:6px 12px;border-radius:99px;background:var(--paper);border:1px solid var(--line-2);font-size:13px;font-weight:700;}
 .gps-row{margin:12px 0 2px;}
 .gps-btn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;background:var(--cream);border:1.5px solid var(--line-2);border-radius:99px;font-weight:700;font-size:13px;color:var(--ink);}
 .gps-btn:disabled{opacity:.5;cursor:not-allowed;}
@@ -413,6 +429,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 </nav>
 
 <main class="wrap">
+  <div class="ref-bar" id="refTop"></div>
 
   <section class="hero" aria-label="Destacados">
     <div class="car" id="car">
@@ -464,7 +481,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     </div>
     <div class="perks">
       <div class="perk"><div class="perk-ic"><svg class="ic" viewBox="0 0 24 24"><path d="M12 2l3 6 6 1-4.5 4.5L18 20l-6-3-6 3 1.5-6.5L3 9l6-1z"/></svg></div><div><strong id="trust1Strong">Fresco todos los días</strong><span id="trust1Span">Rotación diaria de mostrador</span></div></div>
-      <div class="perk"><div class="perk-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div><strong>Delivery en Santiago</strong><span>Ñuñoa, Providencia, San Miguel, San Joaquín y Santiago</span></div></div>
+      <div class="perk"><div class="perk-ic"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div><strong>Delivery en Santiago</strong><span id="perkDelivery">Hasta 7 km del local, desde $2.500</span></div></div>
       <div class="perk"><div class="perk-ic"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><div><strong>Pagas al confirmar</strong><span>Mercado Pago o transferencia</span></div></div>
     </div>
   </section>
@@ -473,12 +490,12 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     <div class="ship">
       <div class="ship-card">
         <h3><span class="dot"><svg class="ic" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>Delivery</h3>
-        <p>Llevamos tu pedido a domicilio en estas comunas de Santiago:</p>
-        <div class="comunas"><span>Santiago</span><span>San Joaquín</span><span>San Miguel</span><span>Ñuñoa</span><span>Providencia</span></div>
+        <p>Llevamos tu pedido a domicilio según la distancia desde el local (Arturo Prat 2045):</p>
+        <div class="tramos" id="tramosList"><span>Hasta 3 km · $2.500</span><span>3 a 5 km · $3.500</span><span>5 a 7 km · $5.000</span></div>
       </div>
       <div class="ship-card alt">
-        <h3><span class="dot"><svg class="ic" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>Otras comunas y regiones</h3>
-        <p>Haz tu pedido igual o escríbenos por WhatsApp: coordinamos contigo el día de despacho.</p>
+        <h3><span class="dot"><svg class="ic" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>Más lejos y regiones</h3>
+        <p>Haz tu pedido igual: coordinamos contigo por WhatsApp el día que vamos a tu comuna. También puedes retirar en la tienda.</p>
         <button class="ship-wa" onclick="accionSlide('wa-despacho')"><svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>Coordinar despacho</button>
       </div>
     </div>
@@ -491,7 +508,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     <details><summary>¿Cómo se paga el pedido?</summary><p>Haces el pedido en la web, te confirmamos por WhatsApp el peso exacto y el total, y recién ahí pagas con Mercado Pago o transferencia.</p></details>
     <details><summary>¿Venden queso venezolano por mayor?</summary><p>Sí. Si tienes arepera, restaurante o minimarket, escríbenos por WhatsApp y te cotizamos precios por volumen.</p></details>
     <details><summary>¿Qué es el queso llanero?</summary><p>Es un queso blanco venezolano, firme y salado, ideal para rallar sobre arepas, cachapas y pabellón.</p></details>
-    <details><summary>¿A qué comunas hacen delivery?</summary><p>Hacemos delivery a Santiago, San Joaquín, San Miguel, Ñuñoa y Providencia. Para otras comunas escríbenos por WhatsApp y coordinamos el día de despacho.</p></details>
+    <details><summary>¿Cuánto cuesta el delivery?</summary><p>Depende de la distancia desde nuestro local en Arturo Prat 2045: hasta 3 km $2.500, de 3 a 5 km $3.500 y de 5 a 7 km $5.000. Más lejos coordinamos por WhatsApp el día que vamos a tu comuna. También puedes retirar gratis en la tienda.</p></details>
     <details><summary>¿Hacen despacho a regiones?</summary><p>Sí. Escríbenos por WhatsApp y coordinamos el día y la forma de despacho a tu región.</p></details>
     <details><summary>¿Dónde está la tienda?</summary><p>Punto Queso está en Arturo Prat 2045, Santiago. También nos encuentras en Google Maps como Punto Queso.</p></details>
   </section>
@@ -533,8 +550,8 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     </div>
     <div class="sheet-body">
       <div id="cartList"></div>
-      <div class="cart-total-row"><span>Total estimado</span><span class="num" id="cartTotalTxt">$0</span></div>
-      <div class="cart-note">Los productos por kilo se pesan al preparar; te confirmamos el total exacto.</div>
+      <div class="cart-total-row"><span>Productos</span><span class="num" id="cartTotalTxt">$0</span></div>
+      <div class="cart-note">El delivery se calcula en el siguiente paso según tu dirección. Los productos por kilo se pesan al preparar; te confirmamos el total exacto.</div>
       <button class="btn dark block" id="btnIrCheckout" onclick="abrirCheckout()" style="margin-top:16px;height:52px;">Continuar</button>
     </div>
   </div>
@@ -552,23 +569,31 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
         <input type="text" id="pedidoNombre" autocomplete="name" required>
         <label for="pedidoTelefono">WhatsApp <span class="req">*</span></label>
         <input type="tel" id="pedidoTelefono" autocomplete="tel" placeholder="+56 9 ..." required>
-        <label for="pedidoCalle">Calle y número</label>
-        <input type="text" id="pedidoCalle" autocomplete="street-address" placeholder="Av. Siempre Viva 742">
-        <div class="row2">
-          <div><label for="pedidoDepto">Depto/Casa</label><input type="text" id="pedidoDepto" placeholder="12B"></div>
-          <div><label for="pedidoComuna">Comuna</label><input type="text" id="pedidoComuna" placeholder="Ñuñoa" list="comunasDelivery" autocomplete="address-level2" oninput="avisoComuna()"></div>
+        <div class="ref-bar" id="refCheckout"></div>
+        <div class="entrega-toggle" role="radiogroup" aria-label="Forma de entrega">
+          <button type="button" class="on" data-e="delivery" role="radio" aria-checked="true" onclick="setEntrega('delivery')">Delivery</button>
+          <button type="button" data-e="retiro" role="radio" aria-checked="false" onclick="setEntrega('retiro')">Retiro en tienda</button>
         </div>
-        <datalist id="comunasDelivery"><option value="Santiago"><option value="San Joaquín"><option value="San Miguel"><option value="Ñuñoa"><option value="Providencia"></datalist>
-        <div class="comuna-hint" id="comunaHint"></div>
-        <div class="gps-row">
-          <button type="button" class="gps-btn" id="btnGps" onclick="usarUbicacionActual()">
-            <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-            Usar mi ubicación actual
-          </button>
-          <div class="gps-status" id="gpsStatus">Ubicación capturada ✓</div>
+        <div id="bloqueDelivery">
+          <label for="pedidoCalle">Calle y número <span class="req">*</span></label>
+          <input type="text" id="pedidoCalle" autocomplete="street-address" placeholder="Av. Siempre Viva 742" oninput="direccionCambio()">
+          <div class="row2">
+            <div><label for="pedidoDepto">Depto/Casa</label><input type="text" id="pedidoDepto" placeholder="12B"></div>
+            <div><label for="pedidoComuna">Comuna</label><input type="text" id="pedidoComuna" placeholder="Ñuñoa" list="comunasDelivery" autocomplete="address-level2" oninput="direccionCambio()"></div>
+          </div>
+          <datalist id="comunasDelivery"><option value="Santiago"><option value="San Joaquín"><option value="San Miguel"><option value="Ñuñoa"><option value="Providencia"><option value="Estación Central"><option value="Independencia"><option value="Recoleta"><option value="Pedro Aguirre Cerda"><option value="La Cisterna"><option value="Macul"></datalist>
+          <div class="gps-row">
+            <button type="button" class="gps-btn" id="btnGps" onclick="usarUbicacionActual()">
+              <svg class="ic ic-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+              <span id="btnGpsTxt">Usar mi ubicación actual</span>
+            </button>
+          </div>
+          <div class="quote" id="deliveryQuote" style="display:none;"></div>
         </div>
+        <div class="quote" id="bloqueRetiro" style="display:none;">Retiras en <b>Arturo Prat 2045, Santiago</b>. Te avisamos por WhatsApp cuando esté listo. Sin costo de delivery.</div>
         <label for="pedidoNotas">Observaciones</label>
         <textarea id="pedidoNotas" placeholder="Horario preferido, instrucciones…"></textarea>
+        <div class="resumen" id="checkoutResumen"></div>
         <button type="submit" class="btn dark block" id="btnEnviarPedido" style="margin-top:18px;height:54px;">Enviar pedido</button>
       </form>
     </div>
@@ -594,7 +619,9 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
         <h2>¡Pedido enviado!</h2>
         <p>Tu número de pedido es</p>
         <div class="order-num num" id="successOrderNum">#0000</div>
-        <p>Te escribimos por WhatsApp para confirmar el peso y el total.</p>
+        <div class="resumen" id="successResumen" style="text-align:left;"></div>
+        <div class="quote" id="successMsg" style="display:none;text-align:left;"></div>
+        <p>Te escribimos por WhatsApp para confirmar el peso y el total, con el link de pago.</p>
         <button class="btn dark block" onclick="nuevoPedido()" style="margin-top:22px;height:52px;">Hacer otro pedido</button>
       </div>
     </div>
@@ -688,7 +715,6 @@ function splashSvg(fill,seed){
 // ══════════════════════════════════════════════════════════
 let PRODUCTOS=[];
 let CARRITO=[]; // {producto_id,nombre,precio,cantidad,unidad,vender_por_peso,qtyLabel,imagen_b64}
-let GPS_COORDS=null;
 let CFG={};
 
 // ══════════════════════════════════════════════════════════
@@ -1081,25 +1107,6 @@ function renderCartBar(){
   document.getElementById('hdrCartBadge').textContent=cantidadCarrito();
 }
 
-// ══════════════════════════════════════════════════════════
-//  GPS — sin API de Google Maps solo guardamos lat/lng como apoyo;
-//  el cliente igual escribe calle y comuna.
-// ══════════════════════════════════════════════════════════
-function usarUbicacionActual(){
-  const btn=document.getElementById('btnGps');
-  if(!('geolocation' in navigator)){ btn.style.display='none'; return; }
-  btn.disabled=true; btn.textContent='Obteniendo ubicación…';
-  navigator.geolocation.getCurrentPosition(
-    pos=>{
-      GPS_COORDS={lat:pos.coords.latitude,lng:pos.coords.longitude};
-      btn.disabled=false; btn.textContent='Ubicación lista';
-      document.getElementById('gpsStatus').classList.add('show');
-    },
-    ()=>{ GPS_COORDS=null; btn.style.display='none'; },
-    {enableHighAccuracy:true,timeout:8000}
-  );
-}
-
 function abrirCarrito(){ renderCartList(); document.getElementById('cartOverlay').classList.add('open'); }
 function cerrarCarrito(){ document.getElementById('cartOverlay').classList.remove('open'); }
 function renderCartList(){
@@ -1119,18 +1126,165 @@ function renderCartList(){
 }
 function quitarDelCarrito(idx){ const it=CARRITO.splice(idx,1)[0]; renderCartList(); renderCartBar(); if(it) refrescarControl(it.producto_id); }
 
-const COMUNAS_DELIVERY=["Santiago", "San Joaquín", "San Miguel", "Ñuñoa", "Providencia"];
-function normComuna(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
-function comunaConDelivery(c){ const n=normComuna(c); return COMUNAS_DELIVERY.some(x=>normComuna(x)===n); }
-function avisoComuna(){
-  const v=document.getElementById('pedidoComuna').value, el=document.getElementById('comunaHint');
-  if(normComuna(v).length<3){ el.className='comuna-hint'; return; }
-  if(comunaConDelivery(v)){ el.className='comuna-hint show ok'; el.textContent='✓ Tenemos delivery en '+v.trim()+'.'; }
-  else{ el.className='comuna-hint show coord'; el.textContent='A esta comuna o región coordinamos el día de despacho contigo por WhatsApp después de recibir tu pedido.'; }
+// ══════════════════════════════════════════════════════════
+//  ENTREGA Y DELIVERY POR DISTANCIA
+//  El navegador solo ubica la dirección (Google o GPS) y muestra el
+//  precio; el precio real lo vuelve a calcular el servidor al crear el
+//  pedido (crear_pedido_web), así nadie puede inventarse uno.
+// ══════════════════════════════════════════════════════════
+let ENTREGA='delivery';
+// punto: {lat,lng,fuente:'google'|'gps',texto} · cot: respuesta de cotizar_delivery
+let DELIV={punto:null,cot:null,estado:'idle',msg:''};
+let _geoTimer=null, _geoSeq=0;
+function tramosCfg(){
+  let t=CFG.delivery_tramos;
+  if(typeof t==='string'){ try{ t=JSON.parse(t); }catch(e){ t=null; } }
+  return Array.isArray(t)&&t.length?t.slice().sort((a,b)=>a.km-b.km):[{km:3,precio:2500},{km:5,precio:3500},{km:7,precio:5000}];
+}
+function kmTxt(n){ return Number(n).toLocaleString('es-CL',{maximumFractionDigits:1}); }
+function pintarTramos(){
+  const t=tramosCfg(); let prev=0;
+  const el=document.getElementById('tramosList');
+  if(el) el.innerHTML=t.map(x=>{ const s=prev?`${kmTxt(prev)} a ${kmTxt(x.km)} km`:`Hasta ${kmTxt(x.km)} km`; prev=x.km; return `<span>${s} · ${money(x.precio)}</span>`; }).join('');
+  const perk=document.getElementById('perkDelivery');
+  if(perk) perk.textContent=`Hasta ${kmTxt(t[t.length-1].km)} km del local, desde ${money(Math.min(...t.map(x=>x.precio)))}`;
+}
+function minimoRef(){ return Number(CFG.referidos_minimo)||20000; }
+function refActivo(){ return String(CFG.referidos_activo??'true')!=='false'; }
+
+// ── Invitación (?ref=CODIGO): se guarda 30 días en este navegador ──
+function leerRefUrl(){
+  try{
+    const u=new URL(location.href); const r=(u.searchParams.get('ref')||'').trim().toUpperCase();
+    if(/^[A-Z0-9]{4,12}$/.test(r)){
+      localStorage.setItem('pq_ref',JSON.stringify({c:r,t:Date.now()}));
+      u.searchParams.delete('ref'); history.replaceState(null,'',u.pathname+(u.search||'')+u.hash);
+    }
+  }catch(e){}
+}
+function refGuardado(){
+  try{
+    const o=JSON.parse(localStorage.getItem('pq_ref')||'null');
+    if(o&&o.c&&Date.now()-o.t<30*864e5) return o.c;
+  }catch(e){}
+  return null;
+}
+function olvidarRef(){ try{ localStorage.removeItem('pq_ref'); }catch(e){} }
+function pintarRef(){
+  const c=refActivo()&&refGuardado();
+  const txt=`🎁 Te invitaron: tu delivery es <b>gratis</b> en tu primera compra desde ${money(minimoRef())} en productos.`;
+  ['refTop','refCheckout'].forEach(id=>{ const el=document.getElementById(id); if(!el) return; el.innerHTML=c?txt:''; el.classList.toggle('show',!!c); });
+}
+
+function setEntrega(e){
+  ENTREGA=e==='retiro'?'retiro':'delivery';
+  document.querySelectorAll('.entrega-toggle button').forEach(b=>{ const on=b.dataset.e===ENTREGA; b.classList.toggle('on',on); b.setAttribute('aria-checked',on); });
+  document.getElementById('bloqueDelivery').style.display=ENTREGA==='delivery'?'':'none';
+  document.getElementById('bloqueRetiro').style.display=ENTREGA==='retiro'?'':'none';
+  pintarResumen();
+}
+// Se escribe la dirección: se busca en Google cuando el cliente deja de escribir.
+function direccionCambio(){
+  clearTimeout(_geoTimer);
+  if(DELIV.punto&&DELIV.punto.fuente==='gps') return;   // el GPS manda hasta que se vuelva a pedir
+  const calle=sanitize(document.getElementById('pedidoCalle').value);
+  if(calle.length<5||!/\d/.test(calle)){ DELIV={punto:null,cot:null,estado:'idle',msg:''}; pintarQuote(); return; }
+  _geoTimer=setTimeout(geocodificarDireccion,900);
+}
+let _gmapsP=null;
+function cargarGoogleMaps(){
+  const key=String(CFG.google_maps_key||'').trim();
+  if(!key) return Promise.reject(new Error('sin-key'));
+  if(window.google&&google.maps&&google.maps.Geocoder) return Promise.resolve();
+  if(_gmapsP) return _gmapsP;
+  _gmapsP=new Promise((res,rej)=>{
+    window.__pqGmapsListo=()=>res();
+    const sc=document.createElement('script');
+    sc.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__pqGmapsListo&loading=async&language=es&region=CL`;
+    sc.async=true; sc.onerror=()=>{ _gmapsP=null; rej(new Error('carga')); };
+    document.head.appendChild(sc);
+  });
+  return _gmapsP;
+}
+const TIPOS_OK=['street_address','premise','subpremise','establishment','point_of_interest','route','intersection'];
+async function geocodificarDireccion(){
+  const seq=++_geoSeq;
+  const calle=sanitize(document.getElementById('pedidoCalle').value);
+  const comuna=sanitize(document.getElementById('pedidoComuna').value)||'Santiago';
+  DELIV={punto:null,cot:null,estado:'buscando',msg:''}; pintarQuote();
+  try{
+    await cargarGoogleMaps();
+    const {results}=await new google.maps.Geocoder().geocode({address:`${calle}, ${comuna}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}});
+    if(seq!==_geoSeq) return;
+    const r=(results||[]).find(x=>(x.types||[]).some(t=>TIPOS_OK.includes(t)));
+    if(!r){ DELIV={punto:null,cot:null,estado:'error',msg:'No encontramos esa dirección exacta. Revisa calle, número y comuna, o usa tu ubicación actual.'}; pintarQuote(); return; }
+    await cotizarPunto({lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),fuente:'google',texto:r.formatted_address},seq);
+  }catch(e){
+    if(seq!==_geoSeq) return;
+    // Sin Google (sin key o sin conexión): el pedido sigue y el local confirma el delivery.
+    DELIV={punto:null,cot:null,estado:'sin-mapa',msg:''}; pintarQuote();
+  }
+}
+async function cotizarPunto(punto,seq){
+  const {data,error}=await supa.rpc('cotizar_delivery',{p_lat:punto.lat,p_lng:punto.lng});
+  if(seq!=null&&seq!==_geoSeq) return;
+  if(error||!data){ DELIV={punto,cot:null,estado:'sin-mapa',msg:''}; pintarQuote(); return; }
+  DELIV={punto,cot:data,estado:'ok',msg:''}; pintarQuote();
+}
+function usarUbicacionActual(){
+  const btn=document.getElementById('btnGps');
+  if(!('geolocation' in navigator)){ btn.style.display='none'; return; }
+  const txt=document.getElementById('btnGpsTxt');
+  btn.disabled=true; txt.textContent='Obteniendo ubicación…';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      btn.disabled=false; txt.textContent='Ubicación actual lista ✓';
+      clearTimeout(_geoTimer); const seq=++_geoSeq;
+      cotizarPunto({lat:pos.coords.latitude,lng:pos.coords.longitude,fuente:'gps',texto:'Tu ubicación actual'},seq);
+    },
+    ()=>{ btn.disabled=false; txt.textContent='No pudimos obtener tu ubicación. Escribe tu dirección.'; },
+    {enableHighAccuracy:true,timeout:10000}
+  );
+}
+function waLink(texto){
+  const n=String(CFG.whatsapp||CFG.negocio_telefono||'').replace(/\D/g,'');
+  return n.length>=8?`https://wa.me/${n}?text=${encodeURIComponent(texto)}`:'';
+}
+function pintarQuote(){
+  const el=document.getElementById('deliveryQuote'); if(!el) return;
+  const d=DELIV; let cls='quote', html='';
+  if(d.estado==='buscando'){ html='Buscando tu dirección…'; }
+  else if(d.estado==='error'){ cls+=' warn'; html=d.msg; }
+  else if(d.estado==='sin-mapa'){ cls+=' warn'; html='Te confirmamos el valor del delivery por WhatsApp.'; }
+  else if(d.estado==='ok'&&d.cot){
+    const lugar=d.punto.fuente==='gps'?'Tu ubicación actual':`📍 ${esc(d.punto.texto)}`;
+    if(d.cot.zona==='delivery'){ cls+=' ok'; html=`${lugar}<br>A <b>${kmTxt(d.cot.km)} km</b> del local · Delivery <b>${money(d.cot.precio)}</b>`; }
+    else{
+      cls+=' warn';
+      const wa=waLink('Hola! Quiero coordinar el despacho de mi pedido a '+(sanitize(document.getElementById('pedidoComuna').value)||'mi comuna'));
+      html=`${lugar}<br>Estás a <b>${kmTxt(d.cot.km)} km</b>: fuera de nuestra zona de delivery. Haz tu pedido igual y <b>coordinamos por WhatsApp</b> el día que vamos a tu comuna${wa?` · <a href="${wa}" target="_blank" rel="noopener">Escribir ahora</a>`:''}.`;
+    }
+  }
+  el.className=cls; el.style.display=html?'':'none'; el.innerHTML=html;
+  pintarResumen();
+}
+function pintarResumen(){
+  const el=document.getElementById('checkoutResumen'); if(!el) return;
+  const sub=totalCarrito();
+  let del='', delVal=0;
+  if(ENTREGA==='retiro'){ del='Gratis (retiro)'; }
+  else if(DELIV.estado==='ok'&&DELIV.cot&&DELIV.cot.zona==='delivery'){ delVal=Number(DELIV.cot.precio)||0; del=money(delVal); }
+  else del='Por confirmar';
+  const ref=ENTREGA==='delivery'&&refActivo()&&refGuardado()&&sub>=minimoRef()&&delVal>0;
+  el.innerHTML=`<div><span>Productos</span><span class="num">${money(sub)}</span></div>
+    <div><span>Delivery</span><span class="num">${ref?`<s>${del}</s> <span class="gratis">Gratis*</span>`:del}</span></div>
+    <div class="tot"><span>Total estimado</span><span class="num">${money(sub+(ref?0:delVal))}</span></div>
+    ${ref?`<div style="font-size:12px;color:var(--muted);display:block;">*Si es tu primera compra. Lo confirmamos al enviar.</div>`:''}`;
 }
 function abrirCheckout(){
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
   cerrarCarrito();
+  pintarRef(); pintarResumen();
   document.getElementById('checkoutOverlay').classList.add('open');
 }
 function cerrarCheckout(){ document.getElementById('checkoutOverlay').classList.remove('open'); }
@@ -1141,27 +1295,40 @@ async function enviarPedido(){
   const calle=sanitize(document.getElementById('pedidoCalle').value);
   const depto=sanitize(document.getElementById('pedidoDepto').value);
   const comuna=sanitize(document.getElementById('pedidoComuna').value);
-  let notas=sanitize(document.getElementById('pedidoNotas').value);
-  if(comuna&&!comunaConDelivery(comuna)){ notas=(notas?notas+' | ':'')+'Fuera de zona de delivery: coordinar día de despacho'; }
-  if(GPS_COORDS){ notas=(notas?notas+' | ':'')+`Ubicación GPS: ${GPS_COORDS.lat.toFixed(6)},${GPS_COORDS.lng.toFixed(6)}`; }
+  const notas=sanitize(document.getElementById('pedidoNotas').value);
   if(!nombre){ toast('Escribe tu nombre',true); return; }
-  if(!telefono){ toast('Escribe tu WhatsApp',true); return; }
+  if(telefono.replace(/\D/g,'').length<8){ toast('Escribe tu WhatsApp',true); return; }
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
+  if(ENTREGA==='delivery'&&!calle&&!DELIV.punto){ toast('Escribe tu dirección o usa tu ubicación actual',true); return; }
+  if(ENTREGA==='delivery'&&DELIV.estado==='buscando'){ toast('Un momento, estamos calculando el delivery…'); return; }
   const btn=document.getElementById('btnEnviarPedido');
   btn.disabled=true; btn.textContent='Enviando…';
   try{
-    // Precios y total los calcula el servidor desde el catálogo: aquí solo
-    // viaja qué productos y cuánto (nadie puede mandar un precio inventado).
-    const {data:pedidoId,error}=await supa.rpc('crear_pedido_publico',{
-      p_cliente_nombre:nombre,p_cliente_tel:telefono,
-      p_direccion_calle:calle||null,p_direccion_depto:depto||null,p_direccion_comuna:comuna||null,
-      p_notas:notas||null,
-      p_items:CARRITO.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad}))
-    });
-    if(error||!pedidoId){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
-    document.getElementById('successOrderNum').textContent='#'+String(pedidoId).padStart(4,'0');
+    // Precios, delivery y total los calcula el servidor: aquí solo viaja qué
+    // productos, cuánto y dónde (nadie puede mandar un precio inventado).
+    const punto=ENTREGA==='delivery'&&DELIV.punto?DELIV.punto:null;
+    const ref=refActivo()?refGuardado():null;
+    const {data:r,error}=await supa.rpc('crear_pedido_web',{p:{
+      nombre,telefono,calle:calle||null,depto:depto||null,comuna:comuna||null,notas:notas||null,
+      entrega:ENTREGA,lat:punto?punto.lat:null,lng:punto?punto.lng:null,ref,
+      items:CARRITO.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad}))
+    }});
+    if(error||!r||!r.id){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
+    if(ref) olvidarRef();
+    document.getElementById('successOrderNum').textContent='#'+String(r.id).padStart(4,'0');
+    const delTxt=r.tipo==='retiro'?'Retiro en tienda':r.delivery==null?'Por coordinar':Number(r.delivery)===0?'<span class="gratis">Gratis 🎁</span>':money(r.delivery);
+    document.getElementById('successResumen').innerHTML=`<div><span>Productos</span><span class="num">${money(r.subtotal)}</span></div>
+      <div><span>Delivery</span><span class="num">${delTxt}</span></div>
+      <div class="tot"><span>Total estimado</span><span class="num">${money(r.total)}</span></div>`;
+    const msgs=[];
+    if(r.mensaje) msgs.push(esc(r.mensaje));
+    if(r.tipo==='coordinar'){ const wa=waLink(`Hola! Hice el pedido #${r.id} y quiero coordinar el despacho`); msgs.push(`Coordinamos contigo por WhatsApp el día de despacho${wa?` · <a href="${wa}" target="_blank" rel="noopener">Escribir ahora</a>`:''}.`); }
+    const sm=document.getElementById('successMsg');
+    sm.innerHTML=msgs.join('<br>'); sm.style.display=msgs.length?'':'none';
+    sm.className='quote'+(r.beneficio?' ok':'');
     cerrarCheckout();
     document.getElementById('successOverlay').classList.add('open');
+    pintarRef();
   }catch(e){
     toast('Error de red, intenta de nuevo',true);
   }finally{
@@ -1169,9 +1336,10 @@ async function enviarPedido(){
   }
 }
 function nuevoPedido(){
-  CARRITO=[]; GPS_COORDS=null;
-  document.getElementById('gpsStatus').classList.remove('show');
-  document.getElementById('comunaHint').className='comuna-hint';
+  CARRITO=[]; DELIV={punto:null,cot:null,estado:'idle',msg:''}; _geoSeq++;
+  const g=document.getElementById('btnGps'); if(g) g.disabled=false;
+  const gt=document.getElementById('btnGpsTxt'); if(gt) gt.textContent='Usar mi ubicación actual';
+  pintarQuote(); setEntrega('delivery');
   document.getElementById('checkoutForm').reset();
   document.getElementById('successOverlay').classList.remove('open');
   renderCartBar(); renderGrid();
@@ -1212,8 +1380,10 @@ document.addEventListener('keydown',e=>{
 
 document.querySelector('#nosotros .splash-path').setAttribute('d',splashPath(100,100,3));
 renderCarrusel();
+leerRefUrl();
+pintarRef();
 cargarProductos();
-cargarConfig().then(()=>{});
+cargarConfig().then(()=>{ pintarTramos(); pintarRef(); });
 
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
 </script>

@@ -118,7 +118,11 @@ Es un archivo completamente aparte del sistema admin: mismo cliente PostgREST (`
 
 La dirección ya no es un solo campo de texto libre: son tres campos separados en `catalogo.html` — `id="pedidoCalle"` (calle y número), `id="pedidoDepto"` (depto/casa, opcional) y `id="pedidoComuna"` (comuna) — que se guardan directo en las columnas `pedidos.direccion_calle`, `pedidos.direccion_depto` y `pedidos.direccion_comuna` (no se concatenan en `notas`; `notas`/observaciones sigue siendo un campo aparte para instrucciones extra). Lo mismo aplica al formulario manual de "Nuevo pedido" del admin (`puntoqueso-os.html`), que ahora también tiene esos tres campos.
 
-**Google Maps Places Autocomplete (pendiente, falta API key):** cuando haya una API key de Google Maps, basta engancharle `google.maps.places.Autocomplete` al input `#pedidoCalle` de `catalogo.html` — el id se dejó estable a propósito para esto.
+**Delivery por distancia (migraciones/008):** el cliente elige Delivery o Retiro en tienda. La dirección se ubica con Google (Maps JavaScript API + Geocoding API, key en Configuración → Delivery por distancia) o con el GPS del teléfono, y el precio sale de la distancia en línea recta al local según los tramos configurados (por defecto ≤3 km $2.500, ≤5 km $3.500, ≤7 km $5.000). Más lejos, o sin ubicación, el pedido queda "por coordinar" y el local escribe el monto en el detalle del pedido. El servidor (`crear_pedido_web`) recalcula siempre el precio: el navegador solo manda el punto. La key de Google es pública por diseño: restríngela por dominio (quesosvenezolanos.cl, pedidos.autix.pro, puntoqueso.autix.pro) en Google Cloud.
+
+**Referidos (migraciones/008):** al entregar un pedido, el cliente recibe por WhatsApp su link `https://quesosvenezolanos.cl/?ref=CODIGO`. Quien llega con ese link y es nuevo (su teléfono nunca pidió ni está en Clientes), con productos desde el mínimo y en otra dirección, tiene delivery gratis. Cuando ese pedido queda entregado **y** pagado, quien invitó gana un delivery gratis (vence y tiene tope, configurable) y se le avisa por WhatsApp; se aplica solo en su próximo pedido. Si el pedido se anula, todo se revierte. Pantalla **Referidos** en el panel.
+
+**Publicar la tienda:** `bash scripts/publicar_tienda.sh <commit>` actualiza pedidos.autix.pro y quesosvenezolanos.cl (la primera vez ubica la carpeta de la página en preparación y deja respaldo en `index-preparacion.html`).
 
 ## WhatsApp (Evolution API)
 

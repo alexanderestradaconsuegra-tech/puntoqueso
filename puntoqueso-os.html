@@ -450,6 +450,10 @@ tr:last-child td{border-bottom:none;}
       <svg class="ic" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
       Pedidos (WhatsApp)
     </div>
+    <div class="nav-item" data-view="referidos" onclick="nav('referidos')">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M12 8v13M3 12h18M12 8S10.5 3 7.5 3a2.5 2.5 0 000 5M12 8s1.5-5 4.5-5a2.5 2.5 0 010 5"/></svg>
+      Referidos
+    </div>
     <div class="nav-item" data-view="ventas" onclick="nav('ventas')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       Ventas
@@ -734,6 +738,28 @@ tr:last-child td{border-bottom:none;}
       <tbody id="usuariosPageBody"></tbody></table></div>
     </div>
 
+    <!-- REFERIDOS -->
+    <div class="view" id="view-referidos">
+      <div class="topbar"><div><h2>Referidos</h2><div class="sub">Invitaciones de clientes y deliveries gratis ganados</div></div></div>
+      <div class="card" style="padding:18px;max-width:560px;margin-bottom:18px;">
+        <h3 style="margin-bottom:6px;">Link de invitación de un cliente</h3>
+        <div class="sub">Solo para quien ya compró: pedido entregado, o compra en el local registrada con su teléfono. Al entregar un pedido el link se le manda solo por WhatsApp.</div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+          <input id="refTel" placeholder="+56 9 ..." inputmode="tel" style="flex:1;min-width:160px;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
+          <button class="btn" onclick="generarLinkReferido()">Ver link</button>
+        </div>
+        <div id="refLinkOut" style="margin-top:10px;"></div>
+      </div>
+      <div class="card" style="padding:18px;margin-bottom:18px;">
+        <h3 style="margin-bottom:10px;">Invitaciones</h3>
+        <div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Invitó</th><th>Invitado</th><th>Pedido</th><th>Estado</th></tr></thead><tbody id="referidosBody"></tbody></table></div>
+      </div>
+      <div class="card" style="padding:18px;">
+        <h3 style="margin-bottom:10px;">Deliveries gratis ganados</h3>
+        <div class="table-scroll"><table><thead><tr><th>Cliente</th><th>Por invitar a</th><th>Estado</th><th>Vence</th><th></th></tr></thead><tbody id="premiosBody"></tbody></table></div>
+      </div>
+    </div>
+
     <!-- CONFIG -->
     <div class="view" id="view-config">
       <div class="topbar"><div><h2>Configuración</h2><div class="sub">Datos del negocio</div></div></div>
@@ -798,6 +824,36 @@ tr:last-child td{border-bottom:none;}
         <input id="cfgGoogleReviewUrl" placeholder="https://g.page/r/.../review" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
         <button class="btn" onclick="guardarConfig()">Guardar</button>
         <div id="qrPreviews" style="display:flex;gap:20px;flex-wrap:wrap;margin-top:16px;"></div>
+      </div>
+      <div class="card" style="padding:20px;max-width:480px;margin-top:18px;">
+        <h3 style="margin-bottom:12px;">Delivery por distancia</h3>
+        <div class="sub" style="margin-bottom:12px;">El precio se calcula por la distancia en línea recta desde el local. Más lejos del último tramo, el pedido queda "por coordinar" y el monto lo pones tú en el pedido.</div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">API Key de Google Maps</label>
+        <input id="cfgGmapsKey" placeholder="AIza..." autocomplete="off" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Ubicación del local (latitud, longitud)</label>
+        <div style="display:flex;gap:8px;">
+          <input id="cfgLocalLat" placeholder="-33.47" inputmode="decimal" oninput="actualizarLinkMapaLocal()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+          <input id="cfgLocalLng" placeholder="-70.64" inputmode="decimal" oninput="actualizarLinkMapaLocal()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px;">
+          <button type="button" class="btn secondary" style="padding:7px 11px;font-size:12.5px;" onclick="ubicarLocalGoogle()">Ubicar el local con Google</button>
+          <a id="cfgLocalMapa" href="#" target="_blank" rel="noopener" style="font-size:12.5px;font-weight:700;color:var(--brand-dark);align-self:center;">Ver en Google Maps</a>
+        </div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Tramos (hasta km → precio)</label>
+        <div id="cfgTramos"></div>
+        <h3 style="margin:18px 0 12px;">Programa de referidos</h3>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;">
+          <input type="checkbox" id="cfgRefActivo" style="width:16px;height:16px;"> Programa activo
+        </label>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Monto mínimo en productos (invitado y premio)</label>
+        <input id="cfgRefMinimo" type="number" min="0" step="1000" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;"><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Máx. deliveries gratis acumulados</label><input id="cfgRefTope" type="number" min="1" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;"></div>
+          <div style="flex:1;"><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Vencen a los (días)</label><input id="cfgRefDias" type="number" min="1" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;"></div>
+        </div>
+        <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Dirección de la tienda web (para los links)</label>
+        <input id="cfgTiendaUrl" placeholder="https://quesosvenezolanos.cl" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
+        <button class="btn" onclick="guardarConfigDelivery()">Guardar delivery y referidos</button>
       </div>
       <div class="card" style="padding:20px;max-width:480px;margin-top:18px;" id="cfgExcelCard">
         <h3 style="margin-bottom:12px;">Excel</h3>
@@ -1185,6 +1241,7 @@ function nav(view){
   if(view==='dashboard') renderDashboard();
   if(view==='terminal'){ renderPosProductos(); verificarCajaTerminal(); }
   if(view==='pedidos') renderPedidos();
+  if(view==='referidos') renderReferidos();
   if(view==='ventas') renderVentas();
   if(view==='productos') renderProductos();
   if(view==='clientes') renderClientes();
@@ -1307,7 +1364,7 @@ async function iniciarApp(){
   initWeightKeyboard();
   // Config tiene formularios largos: si el refresco automático la recargara
   // mientras alguien está escribiendo, borraría todo antes de guardar.
-  setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
+  setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
 }
 (function(){
   try{
@@ -2134,7 +2191,7 @@ function pintarPedidos(){
     return `
     <tr><td>#${p.id}<div style="color:var(--muted);font-size:11px;">${escapeHtml(p.cliente_tel||'-')}</div></td>
     <td>${escapeHtml(p.cliente_nombre||'-')}</td>
-    <td style="font-size:12.5px;">${escapeHtml(dir||'-')}</td>
+    <td style="font-size:12.5px;">${escapeHtml(dir||'-')}${etiquetaEntrega(p)?`<div class="sub-xs">${escapeHtml(etiquetaEntrega(p))}</div>`:''}</td>
     <td class="num">${money(p.total)}${p.pesos_ajustados?`<div style="color:var(--muted);font-size:11px;">peso ajustado</div>`:''}</td>
     <td>
       <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
@@ -2157,7 +2214,7 @@ function pintarPedidos(){
       <div class="lc-row"><div class="lc-main">
         <div class="lc-top"><div class="lc-title">#${p.id} · ${escapeHtml(p.cliente_nombre||'-')}</div>
           <div class="lc-fig">${money(p.total)}${p.pesos_ajustados?`<span class="lc-fig-sub">peso ajustado</span>`:''}</div></div>
-        <div class="lc-meta">${escapeHtml(dir||'-')}${p.cliente_tel?` · ${escapeHtml(p.cliente_tel)}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
+        <div class="lc-meta">${escapeHtml(dir||'-')}${p.cliente_tel?` · ${escapeHtml(p.cliente_tel)}`:''}${etiquetaEntrega(p)?`<br>${escapeHtml(etiquetaEntrega(p))}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
         <div class="lc-badges">
           <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
           ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
@@ -2179,11 +2236,14 @@ async function avanzarEstadoPedido(id,nuevoEstado){
   if(nuevoEstado==='en_camino'&&p.estado_pago==='pendiente'){
     if(!confirm('Este pedido aún no está pagado. ¿Despachar de todas formas?')) return;
   }
-  await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',id);
+  const {error:estErr}=await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',id);
+  if(estErr){ toast('Error: '+estErr.message,true); return; }
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → ${nuevoEstado}`);
-  const msg=mensajePedidoEstado(p,nuevoEstado);
+  let msg=mensajePedidoEstado(p,nuevoEstado);
+  if(msg&&nuevoEstado==='entregado') msg+=await textoInvitacion(p);
   if(msg&&p.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
   toast('Estado actualizado'); await loadAll(); renderPedidos();
+  notificarPremiosReferidos();
 }
 async function anularPedido(id){
   if(!confirm('¿Anular este pedido?')) return;
@@ -2198,6 +2258,7 @@ async function marcarPagoPedido(id,nuevoEstadoPago){
   await supa.from('pedidos').update({estado_pago:nuevoEstadoPago}).eq('id',id);
   logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → pago ${nuevoEstadoPago}`);
   toast('Pago actualizado'); closeModal(); await loadAll(); renderPedidos();
+  notificarPremiosReferidos();
 }
 function openPedidoModal(){
   const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre}</option>`).join('');
@@ -2301,6 +2362,13 @@ async function confirmarFacturarPedido(id){
       await supa.from('stock_movimientos').insert({producto_id:it.producto_id,tipo:'salida',cantidad:it.cantidad,motivo:'Pedido WhatsApp facturado',origen:'whatsapp',referencia_id:venta.id,registrado_por:SESSION.usuario});
     }
   }
+  // El delivery va como una línea más de la venta (sin producto ni stock), así
+  // la boleta suma igual que el total cobrado.
+  if(costoDelivery(p)>0){
+    const c=costoDelivery(p);
+    const {error:dErr}=await supa.from('venta_items').insert({venta_id:venta.id,producto_id:null,producto_nombre:'Delivery',cantidad:1,precio_unitario:c,subtotal:c,costo_unitario:0});
+    if(dErr) console.error('No se pudo agregar la línea de delivery',dErr);
+  }
   // El pedido conserva su etapa real de entrega ('entregado'); la marca de
   // facturado es venta_id, que además impide volver a facturarlo.
   const {error:pedErr}=await supa.from('pedidos').update({venta_id:venta.id}).eq('id',id);
@@ -2382,11 +2450,24 @@ async function abrirPedidoDetalle(id){
     <div style="font-size:12px;color:var(--muted);">Ajusta el peso real que saliste de la balanza. Se guarda en kg; aquí escribes gramos.</div>
     <div style="margin-top:8px;">${filas}</div>
     ${agregarHTML}
+    ${p.tipo_entrega==='retiro'?`<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px;font-weight:600;">Retiro en tienda</div>`:`
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13.5px;font-weight:600;">Delivery${p.distancia_km!=null?` · ${fmtKm(p.distancia_km)}`:''}</div>
+        <div style="font-size:11.5px;color:var(--muted);">${p.beneficio_delivery==='referido'?'Gratis por invitación 🎁':p.beneficio_delivery==='premio'?'Gratis: premio por invitar 🎁':p.tipo_entrega==='coordinar'?'Fuera de zona o sin ubicación: coordina y escribe el monto':p.tipo_entrega?'Calculado por distancia':'Escribe el monto si corresponde'}${p.referido_codigo?` · código ${escapeHtml(p.referido_codigo)}`:''}</div>
+        ${p.lat!=null&&p.lng!=null?`<a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener" style="font-size:12px;font-weight:700;color:var(--brand-dark);">Ver ubicación en el mapa</a>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;width:110px;">
+        <span style="font-size:12px;color:var(--muted);">$</span>
+        <input id="pdiDelivery" type="number" step="100" min="0" value="${p.costo_delivery??''}" placeholder="—" ${editable?'':'disabled'} oninput="recalcPedidoDetalle()" style="text-align:right;">
+      </div>
+      <div style="width:82px;"></div>
+    </div>`}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:16px;font-weight:700;">
       <span>Total</span><span id="pdiTotal" class="num">${money(p.total)}</span>
     </div>
     ${p.total_original!=null?`<div style="font-size:11.5px;color:var(--muted);text-align:right;">Total original del pedido: ${money(p.total_original)}</div>`:''}
-    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="guardarPesosPedido()">Guardar pesos</button></div>`:''}
+    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="guardarPesosPedido()">Guardar pesos y delivery</button></div>`:''}
     ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="enviarBoletaYLinkPago(${p.id})">📤 Enviar boleta + link de pago</button></div>`:''}
     <div class="actions">
       ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
@@ -2413,6 +2494,21 @@ function leerCantidadesPedidoDetalle(){
     return v;
   });
 }
+// Delivery escrito en el detalle (vacío = sin monto / por definir).
+function leerDeliveryPedidoDetalle(){
+  const el=document.getElementById('pdiDelivery');
+  if(!el){ const p=pedidoPorId(PEDIDO_DET.id); return costoDelivery(p); }
+  const v=parseFloat(el.value);
+  return isFinite(v)&&v>0?v:0;
+}
+function deliveryDetalleCambio(p){
+  const el=document.getElementById('pdiDelivery');
+  if(!el||el.disabled) return false;
+  const txt=el.value.trim();
+  const nuevo=txt===''?null:Math.max(0,parseFloat(txt)||0);
+  const actual=p.costo_delivery==null?null:Number(p.costo_delivery);
+  return nuevo!==actual;
+}
 function recalcPedidoDetalle(){
   const cants=leerCantidadesPedidoDetalle();
   let total=0;
@@ -2422,6 +2518,7 @@ function recalcPedidoDetalle(){
     const el=document.getElementById('pdiSub'+i);
     if(el) el.textContent=money(sub);
   });
+  total+=leerDeliveryPedidoDetalle();
   const t=document.getElementById('pdiTotal');
   if(t) t.textContent=money(total);
   return total;
@@ -2431,9 +2528,11 @@ async function guardarPesosPedido(){
   const p=pedidoPorId(id);
   if(!p) return;
   const cants=leerCantidadesPedidoDetalle();
-  const nuevoTotal=cants.reduce((s,c,i)=>s+(Number(PEDIDO_DET.items[i].precio_unitario)||0)*c,0);
+  const delivery=leerDeliveryPedidoDetalle();
+  const cambioDelivery=deliveryDetalleCambio(p);
+  const nuevoTotal=cants.reduce((s,c,i)=>s+(Number(PEDIDO_DET.items[i].precio_unitario)||0)*c,0)+delivery;
   const cambios=PEDIDO_DET.items.map((it,i)=>({it,nueva:cants[i]})).filter(({it,nueva})=>Math.abs(nueva-Number(it.cantidad))>1e-9);
-  if(!cambios.length&&Math.abs(nuevoTotal-Number(p.total))<0.5){ toast('No hay cambios que guardar'); return; }
+  if(!cambios.length&&!cambioDelivery&&Math.abs(nuevoTotal-Number(p.total))<0.5){ toast('No hay cambios que guardar'); return; }
   // Orden deliberado: primero los items, el pedido (padre) al final. Sin
   // transacciones en PostgREST, si algo falla a mitad de camino los items
   // quedan consistentes y el total es recalculable desde ellos.
@@ -2449,7 +2548,12 @@ async function guardarPesosPedido(){
       return;
     }
   }
-  const patchPedido={total:nuevoTotal,pesos_ajustados:true};
+  const patchPedido={total:nuevoTotal};
+  if(cambios.length) patchPedido.pesos_ajustados=true;
+  if(cambioDelivery){
+    const txt=document.getElementById('pdiDelivery').value.trim();
+    patchPedido.costo_delivery=txt===''?null:delivery;
+  }
   if(p.total_original==null) patchPedido.total_original=Number(p.total);
   const totalCambio=Math.abs(nuevoTotal-Number(p.total))>=0.5;
   // ⚠️ El link de Mercado Pago se emitió por el monto anterior: si el total
@@ -2464,7 +2568,7 @@ async function guardarPesosPedido(){
     return;
   }
   logAudit('Ajuste de pesos pedido','pedidos',`Pedido #${id}: total ${money(p.total)} → ${money(nuevoTotal)}${linkInvalidado?' (link de pago invalidado)':''}`);
-  toast(linkInvalidado?'Pesos guardados — el link de pago quedó obsoleto, vuelve a generarlo con el nuevo monto':'Pesos guardados');
+  toast(linkInvalidado?'Cambios guardados — el link de pago quedó obsoleto, vuelve a generarlo con el nuevo monto':'Cambios guardados');
   await loadAll(); renderPedidos();
   abrirPedidoDetalle(id);
 }
@@ -2579,7 +2683,8 @@ async function recalcularTotalPedido(p,accion){
     toast('El producto se actualizó, pero no se pudo recalcular el total: '+error.message+'. Revisa el pedido antes de cobrar.',true);
     abrirPedidoDetalle(id); return;
   }
-  const nuevoTotal=(items||[]).reduce((s,it)=>s+(Number(it.subtotal)||0),0);
+  // el delivery también es parte del total (no es un item)
+  const nuevoTotal=(items||[]).reduce((s,it)=>s+(Number(it.subtotal)||0),0)+costoDelivery(p);
   const patch={total:nuevoTotal};
   // total_original = lo que pidió el cliente: se fija solo en el primer cambio
   if(p.total_original==null) patch.total_original=Number(p.total);
@@ -2599,6 +2704,213 @@ async function recalcularTotalPedido(p,accion){
 }
 
 // ══════════════════════════════════════════════════════════
+//  ENTREGA: delivery por distancia (lo calcula el servidor al crear el
+//  pedido web; aquí se muestra y el local puede ajustarlo)
+// ══════════════════════════════════════════════════════════
+function costoDelivery(p){ return Number(p&&p.costo_delivery)||0; }
+function fmtKm(km){ return km==null?'':`${Number(km).toLocaleString('es-CL',{maximumFractionDigits:1})} km`; }
+function etiquetaEntrega(p){
+  if(!p||!p.tipo_entrega) return '';
+  if(p.tipo_entrega==='retiro') return 'Retiro en tienda';
+  const km=p.distancia_km!=null?` · ${fmtKm(p.distancia_km)}`:'';
+  if(p.beneficio_delivery==='referido') return `Delivery gratis (invitación)${km}`;
+  if(p.beneficio_delivery==='premio') return `Delivery gratis (premio)${km}`;
+  if(p.tipo_entrega==='coordinar') return p.costo_delivery!=null?`Delivery ${money(p.costo_delivery)} (coordinado)${km}`:`Delivery por coordinar${km}`;
+  return `Delivery ${money(costoDelivery(p))}${km}`;
+}
+function lineaDeliveryMensaje(p){
+  if(!p||!p.tipo_entrega) return costoDelivery(p)>0?`Delivery: ${money(costoDelivery(p))}`:'';
+  if(p.tipo_entrega==='retiro') return 'Retiro en tienda';
+  if(p.beneficio_delivery==='referido') return 'Delivery: GRATIS 🎁 (invitación)';
+  if(p.beneficio_delivery==='premio') return 'Delivery: GRATIS 🎁 (ganado por invitar)';
+  if(p.costo_delivery==null) return 'Delivery: por coordinar';
+  return `Delivery: ${money(costoDelivery(p))}`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  REFERIDOS
+// ══════════════════════════════════════════════════════════
+function referidosActivo(){ return String(CONFIG_CACHE.referidos_activo??'true')!=='false'; }
+function tiendaUrl(){ return String(CONFIG_CACHE.tienda_url||'https://quesosvenezolanos.cl').replace(/\/+$/,''); }
+function minimoReferidos(){ return Number(CONFIG_CACHE.referidos_minimo)||20000; }
+// Texto que se suma al aviso de "entregado": el link personal del cliente.
+async function textoInvitacion(p){
+  if(!referidosActivo()||!p||!p.cliente_tel) return '';
+  const {data,error}=await supa.rpc('codigo_referido',{p_tel:p.cliente_tel,p_nombre:p.cliente_nombre||null});
+  if(error||!data){ if(error) console.error('codigo_referido',error); return ''; }
+  return `\n\n🎁 Invita a tus amigos con tu link: ${tiendaUrl()}/?ref=${data}\nEllos tienen delivery gratis en su primera compra desde ${money(minimoReferidos())} y tú ganas un delivery gratis por cada amigo que compre.`;
+}
+// Avisa por WhatsApp a quien invitó cuando gana su delivery gratis.
+// Se marca antes de enviar (igual que las confirmaciones): nunca se repite.
+let _notificandoPremios=false;
+async function notificarPremiosReferidos(){
+  if(_notificandoPremios) return;
+  _notificandoPremios=true;
+  try{
+    const {data:premios,error}=await supa.from('referidos_premios').select('id,telefono,referido_id,vence_at').eq('notificado',false).eq('estado','disponible').limit(20);
+    if(error||!premios||!premios.length) return;
+    for(const pr of premios){
+      const {data:ok,error:e2}=await supa.from('referidos_premios').update({notificado:true}).eq('id',pr.id).eq('notificado',false).select('id');
+      if(e2||!ok||!ok.length) continue;
+      const [{data:cod},{data:ref}]=await Promise.all([
+        supa.from('referidos_codigos').select('nombre').eq('telefono',pr.telefono).limit(1),
+        pr.referido_id?supa.from('referidos').select('referido_nombre').eq('id',pr.referido_id).limit(1):Promise.resolve({data:[]}),
+      ]);
+      const nombre=(cod&&cod[0]&&cod[0].nombre)||'';
+      const amigo=(ref&&ref[0]&&ref[0].referido_nombre)||'Tu amigo';
+      const vence=new Date(pr.vence_at).toLocaleDateString('es-CL');
+      await enviarWhatsApp(pr.telefono,`🎉 ¡Hola ${nombre}! ${amigo} compró con tu invitación en ${nombreNegocio()}.\nGanaste un *delivery gratis* para tu próximo pedido desde ${money(minimoReferidos())} (vence el ${vence}). Se aplica solo al pedir con este mismo número: ${tiendaUrl()}`);
+      logAudit('Premio de referido avisado','referidos',`${pr.telefono} (premio #${pr.id})`);
+    }
+  }catch(e){ console.error('notificarPremiosReferidos',e); }
+  finally{ _notificandoPremios=false; }
+}
+const REF_ESTADO={pendiente:['Esperando entrega y pago','pendiente'],ganado:['Ganó delivery gratis','pagado'],sin_premio:['Sin premio (tope alcanzado)','por-cobrar'],anulado:['Anulado','anulado']};
+async function renderReferidos(){
+  const [rR,pR,cR]=await Promise.all([
+    supa.from('referidos').select('*').order('created_at',{ascending:false}).limit(200),
+    supa.from('referidos_premios').select('*').order('created_at',{ascending:false}).limit(200),
+    supa.from('referidos_codigos').select('telefono,codigo,nombre'),
+  ]);
+  if(rR.error||pR.error||cR.error){ const e=rR.error||pR.error||cR.error; console.error(e); toast('Error cargando referidos: '+e.message,true); return; }
+  const nombres={}; (cR.data||[]).forEach(c=>nombres[c.telefono]=c);
+  const quien=t=>`${escapeHtml(nombres[t]?.nombre||'')}<div class="sub-xs">${escapeHtml(t)}${nombres[t]?` · ${escapeHtml(nombres[t].codigo)}`:''}</div>`;
+  document.getElementById('referidosBody').innerHTML=(rR.data||[]).map(r=>{
+    const [txt,cls]=REF_ESTADO[r.estado]||[r.estado,''];
+    return `<tr><td>${new Date(r.created_at).toLocaleDateString('es-CL')}</td><td>${quien(r.referente_tel)}</td>
+      <td>${escapeHtml(r.referido_nombre||'')}<div class="sub-xs">${escapeHtml(r.referido_tel)}</div></td>
+      <td>${r.pedido_id?`<a href="#" onclick="nav('pedidos');abrirPedidoDetalle(${r.pedido_id});return false;">#${r.pedido_id}</a>`:'—'}</td>
+      <td><span class="badge ${cls}">${txt}</span>${r.nota?`<div class="sub-xs">${escapeHtml(r.nota)}</div>`:''}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" class="empty">Aún no hay invitaciones</td></tr>';
+  const refPor={}; (rR.data||[]).forEach(r=>refPor[r.id]=r);
+  const ahora=Date.now();
+  document.getElementById('premiosBody').innerHTML=(pR.data||[]).map(pr=>{
+    const vencido=pr.estado==='disponible'&&new Date(pr.vence_at).getTime()<ahora;
+    const txt=vencido?'Vencido':({disponible:'Disponible',usado:`Usado${pr.pedido_uso_id?` (pedido #${pr.pedido_uso_id})`:''}`,anulado:'Anulado'}[pr.estado]||pr.estado);
+    const cls=vencido||pr.estado==='anulado'?'anulado':pr.estado==='usado'?'pagado':'pendiente';
+    return `<tr><td>${quien(pr.telefono)}</td><td>${escapeHtml(refPor[pr.referido_id]?.referido_nombre||'—')}</td>
+      <td><span class="badge ${cls}">${txt}</span></td><td>${new Date(pr.vence_at).toLocaleDateString('es-CL')}</td>
+      <td>${pr.estado==='disponible'&&!vencido&&canDo('verReportes')?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="anularPremioReferido(${pr.id})">Anular</button>`:''}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" class="empty">Aún no hay deliveries gratis ganados</td></tr>';
+}
+async function anularPremioReferido(id){
+  if(!canDo('verReportes')){ toast('No tienes permiso',true); return; }
+  if(!confirm('¿Anular este delivery gratis? El cliente ya no podrá usarlo.')) return;
+  const {error}=await supa.from('referidos_premios').update({estado:'anulado'}).eq('id',id).eq('estado','disponible');
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit('Premio de referido anulado','referidos',`premio #${id}`);
+  toast('Delivery gratis anulado'); renderReferidos();
+}
+async function generarLinkReferido(){
+  const tel=document.getElementById('refTel').value;
+  const out=document.getElementById('refLinkOut');
+  const {data,error}=await supa.rpc('codigo_referido',{p_tel:tel,p_nombre:null});
+  if(error){ out.innerHTML=`<div class="sub" style="color:var(--danger);">${escapeHtml(error.message)}</div>`; return; }
+  if(!data){ out.innerHTML='<div class="sub" style="color:var(--warn);">Este número todavía no tiene compras entregadas ni compras en el local registradas con su teléfono.</div>'; return; }
+  const link=`${tiendaUrl()}/?ref=${data}`;
+  out.innerHTML=`<input readonly value="${escapeHtml(link)}" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);" onclick="this.select()">
+    <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn secondary" onclick="navigator.clipboard.writeText('${link}').then(()=>toast('Link copiado'))">Copiar</button></div>`;
+}
+
+// ── Configuración: delivery y referidos ──
+function tramosConfig(cfg){
+  let t=cfg.delivery_tramos;
+  if(typeof t==='string'){ try{ t=JSON.parse(t); }catch(e){ t=null; } }
+  return Array.isArray(t)?t:[{km:3,precio:2500},{km:5,precio:3500},{km:7,precio:5000}];
+}
+function pintarConfigDelivery(cfg){
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v??''; };
+  set('cfgGmapsKey',cfg.google_maps_key||'');
+  set('cfgLocalLat',cfg.local_lat||''); set('cfgLocalLng',cfg.local_lng||'');
+  actualizarLinkMapaLocal();
+  const tramos=tramosConfig(cfg);
+  const filas=[...tramos,{},{}].slice(0,Math.max(4,tramos.length));
+  document.getElementById('cfgTramos').innerHTML=filas.map((t,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <span class="sub-xs" style="width:42px;">Hasta</span>
+      <input id="cfgTramoKm${i}" type="number" min="0" step="0.5" value="${t.km??''}" placeholder="km" style="width:80px;padding:9px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
+      <span class="sub-xs">km →</span>
+      <input id="cfgTramoPrecio${i}" type="number" min="0" step="100" value="${t.precio??''}" placeholder="$" style="flex:1;padding:9px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
+    </div>`).join('');
+  document.getElementById('cfgTramos').dataset.n=filas.length;
+  const chk=document.getElementById('cfgRefActivo'); if(chk) chk.checked=String(cfg.referidos_activo??'true')!=='false';
+  set('cfgRefMinimo',cfg.referidos_minimo??20000);
+  set('cfgRefTope',cfg.referidos_tope??3);
+  set('cfgRefDias',cfg.referidos_dias??90);
+  set('cfgTiendaUrl',cfg.tienda_url||'https://quesosvenezolanos.cl');
+}
+function actualizarLinkMapaLocal(){
+  const a=document.getElementById('cfgLocalMapa'); if(!a) return;
+  const lat=document.getElementById('cfgLocalLat').value.trim(), lng=document.getElementById('cfgLocalLng').value.trim();
+  a.style.display=lat&&lng?'':'none';
+  a.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat+','+lng)}`;
+}
+let _gmapsPromise=null;
+function cargarGoogleMaps(key){
+  if(window.google&&google.maps&&google.maps.Geocoder) return Promise.resolve();
+  if(_gmapsPromise) return _gmapsPromise;
+  _gmapsPromise=new Promise((res,rej)=>{
+    window.__pqGmapsListo=()=>res();
+    const sc=document.createElement('script');
+    sc.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__pqGmapsListo&loading=async&language=es&region=CL`;
+    sc.async=true; sc.onerror=()=>{ _gmapsPromise=null; rej(new Error('No se pudo cargar Google Maps')); };
+    document.head.appendChild(sc);
+  });
+  return _gmapsPromise;
+}
+async function ubicarLocalGoogle(){
+  const key=document.getElementById('cfgGmapsKey').value.trim();
+  const dir=(document.getElementById('cfgNegocioDireccion').value||CONFIG_CACHE.negocio_direccion||'').trim();
+  if(!key){ toast('Primero pega la API Key de Google Maps',true); return; }
+  if(!dir){ toast('Completa la dirección del negocio (en Datos del negocio)',true); return; }
+  try{
+    await cargarGoogleMaps(key);
+    const {results}=await new google.maps.Geocoder().geocode({address:dir+', Chile',region:'CL'});
+    const r=results&&results[0];
+    if(!r){ toast('Google no encontró esa dirección',true); return; }
+    document.getElementById('cfgLocalLat').value=r.geometry.location.lat().toFixed(6);
+    document.getElementById('cfgLocalLng').value=r.geometry.location.lng().toFixed(6);
+    actualizarLinkMapaLocal();
+    toast('Ubicado: '+r.formatted_address+'. Revisa el mapa y guarda.');
+  }catch(e){ console.error(e); toast('Google Maps: '+(e.message||e)+'. Revisa la API Key.',true); }
+}
+async function guardarConfigDelivery(){
+  if(!canDo('gestionarUsuarios')){ toast('Solo un administrador puede cambiar esto',true); return; }
+  const lat=Number(String(document.getElementById('cfgLocalLat').value).replace(',','.'));
+  const lng=Number(String(document.getElementById('cfgLocalLng').value).replace(',','.'));
+  const latTxt=document.getElementById('cfgLocalLat').value.trim(), lngTxt=document.getElementById('cfgLocalLng').value.trim();
+  if((latTxt||lngTxt)&&!(lat<-17&&lat>-56&&lng<-66&&lng>-76)){ toast('La ubicación del local no parece estar en Chile. Revisa latitud y longitud.',true); return; }
+  const n=Number(document.getElementById('cfgTramos').dataset.n)||4;
+  const tramos=[];
+  for(let i=0;i<n;i++){
+    const km=Number(document.getElementById('cfgTramoKm'+i).value), precio=Number(document.getElementById('cfgTramoPrecio'+i).value);
+    const kmTxt=document.getElementById('cfgTramoKm'+i).value.trim(), prTxt=document.getElementById('cfgTramoPrecio'+i).value.trim();
+    if(!kmTxt&&!prTxt) continue;
+    if(!(km>0)||!(precio>=0)||!prTxt){ toast(`Revisa el tramo ${i+1}: km y precio`,true); return; }
+    tramos.push({km,precio});
+  }
+  tramos.sort((a,b)=>a.km-b.km);
+  const claves={
+    google_maps_key:document.getElementById('cfgGmapsKey').value.trim(),
+    local_lat:latTxt?String(lat):'', local_lng:lngTxt?String(lng):'',
+    delivery_tramos:tramos,
+    referidos_activo:document.getElementById('cfgRefActivo').checked?'true':'false',
+    referidos_minimo:String(Math.max(0,Number(document.getElementById('cfgRefMinimo').value)||0)),
+    referidos_tope:String(Math.max(1,parseInt(document.getElementById('cfgRefTope').value,10)||3)),
+    referidos_dias:String(Math.max(1,parseInt(document.getElementById('cfgRefDias').value,10)||90)),
+    tienda_url:(document.getElementById('cfgTiendaUrl').value.trim()||'https://quesosvenezolanos.cl').replace(/\/+$/,''),
+  };
+  for(const [clave,valor] of Object.entries(claves)){
+    const {error}=await supa.from('config').upsert({clave,valor},{onConflict:'clave'});
+    if(error){ toast('Error al guardar "'+clave+'": '+error.message,true); return; }
+    CONFIG_CACHE[clave]=valor;
+  }
+  logAudit('Configuración de delivery y referidos','config',tramos.map(t=>`≤${t.km}km ${money(t.precio)}`).join(', '));
+  toast('Delivery y referidos guardados');
+  pintarConfigDelivery(CONFIG_CACHE);
+}
+
+// ══════════════════════════════════════════════════════════
 //  BOLETA + LINK DE PAGO por WhatsApp (acción combinada)
 // ══════════════════════════════════════════════════════════
 function nombreNegocio(){
@@ -2615,7 +2927,10 @@ function mensajeBoletaPedido(p,items,link){
       :`  ${fmtCantidadPedido(it.cantidad,porPeso)} — ${money(it.subtotal)}`;
     return `• ${it.producto_nombre||''}\n${detalle}`;
   }).join('\n');
-  return `🧀 *${nombreNegocio()}* — Pedido #${p.id}\n\n${lineas}\n\n*Total: ${money(p.total)}*\n\nPaga aquí 👉 ${link}`;
+  const lDel=lineaDeliveryMensaje(p);
+  const sub=Number(p.total)-costoDelivery(p);
+  const resumen=lDel?`Productos: ${money(sub)}\n${lDel}\n`:'';
+  return `🧀 *${nombreNegocio()}* — Pedido #${p.id}\n\n${lineas}\n\n${resumen}*Total: ${money(p.total)}*\n\nPaga aquí 👉 ${link}`;
 }
 function whatsappConfigurado(){
   return !!(CONFIG_CACHE.evolution_api_url&&CONFIG_CACHE.evolution_api_key&&CONFIG_CACHE.evolution_instance);
@@ -3556,6 +3871,7 @@ async function cargarConfigForm(){
   document.getElementById('cfgCatalogoUrl').value=cfg.catalogo_url||'';
   document.getElementById('cfgGoogleReviewUrl').value=cfg.google_review_url||'';
   renderQrPreviews(cfg.catalogo_url,cfg.google_review_url);
+  pintarConfigDelivery(cfg);
   document.getElementById('importProductosFile').style.display=canDo('editarInventario')?'block':'none';
 }
 function qrCardHtml(titulo,url){
