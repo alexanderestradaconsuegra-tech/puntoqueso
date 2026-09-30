@@ -49,7 +49,7 @@
 <meta name="theme-color" content="#FFD100">
 <link rel="manifest" href="manifest-catalogo.json">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
-<link rel="icon" type="image/png" href="favicon.png">
+<link rel="icon" type="image/png" href="favicon-pq.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -425,7 +425,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 <header class="hdr">
   <div class="wrap hdr-in">
     <a class="brand" href="#top" aria-label="Inicio">
-      <img src="logo.png" alt="Punto Queso" width="44" height="44">
+      <img src="logo-pq.png" alt="Punto Queso" width="44" height="44">
       <div style="min-width:0;">
         <div class="brand-name" id="hdrName">Punto <span>Queso</span></div>
         <div class="brand-sub" id="hdrSub">Quesos y fiambres a domicilio</div>
@@ -536,7 +536,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 <footer class="foot" id="contacto">
   <div class="wrap">
     <div class="foot-top">
-      <img src="logo.png" alt="" width="56" height="56">
+      <img src="logo-pq.png" alt="" width="56" height="56">
       <div class="foot-name" id="footerName">Punto Queso</div>
     </div>
     <div class="addr"><svg class="ic" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -897,7 +897,7 @@ function renderCarrusel(){
       </div>
       ${s.foto?'':`<div class="slide-art" aria-hidden="true">
         ${splashSvg(fills[i%3],i*13+5)}
-        <div class="pic">${src?`<img src="${src}" alt="">`:`<img class="logo-fill" src="logo.png" alt="">`}</div>
+        <div class="pic">${src?`<img src="${src}" alt="">`:`<img class="logo-fill" src="logo-pq.png" alt="">`}</div>
       </div>`}
     </div>`;
   }).join('');
