@@ -24,7 +24,7 @@ alter table usuarios add column if not exists permisos jsonb default '{}'::jsonb
 create table if not exists productos (
   id bigserial primary key,
   nombre text not null,
-  categoria text default 'otros',       -- queso | fiambre | otros
+  categoria text default 'Otros',       -- Quesos | Jamones | Embutidos | Congelados | Bebidas | Golosinas | Otros
   unidad text default 'kg',             -- kg | unid
   precio numeric not null default 0,
   stock numeric default 0,

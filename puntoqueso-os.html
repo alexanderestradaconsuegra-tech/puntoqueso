@@ -2897,16 +2897,27 @@ async function anularVentaCore(id,motivo){
 // un nombre distinto), esa categoría real se agrega igual como opción
 // extra en opcionesCategoriaProducto(), para no perderla ni resetearla.
 const CATEGORIAS_PRODUCTO=['Quesos','Jamones','Embutidos','Congelados','Bebidas','Golosinas','Otros'];
+// Lleva una categoría a su forma oficial: 'queso'/'QUESOS' → 'Quesos', 'otros' → 'Otros'.
+// Si no es oficial, solo pone la primera letra en mayúscula. Misma regla que migraciones/006.
+function normalizarCategoria(c){
+  c=String(c||'').trim();
+  if(!c) return 'Otros';
+  const l=c.toLowerCase();
+  const oficial=CATEGORIAS_PRODUCTO.find(o=>{ const ol=o.toLowerCase(); return ol===l||ol===l+'s'||ol===l+'es'; });
+  return oficial||(c.charAt(0).toUpperCase()+c.slice(1));
+}
 function opcionesCategoriaProducto(actual){
-  actual=(actual||'').trim();
+  // Antes, una categoría vieja como 'otros' no coincidía exacto con 'Otros',
+  // ninguna opción quedaba elegida y al guardar el producto pasaba a 'Quesos'.
+  actual=actual?normalizarCategoria(actual):'';
   const lista=[...CATEGORIAS_PRODUCTO];
-  if(actual&&!lista.some(c=>c.toLowerCase()===actual.toLowerCase())) lista.push(actual);
+  if(actual&&!lista.includes(actual)) lista.push(actual);
   return lista.map(c=>`<option value="${escapeHtml(c)}" ${c===actual||(!actual&&c==='Otros')?'selected':''}>${escapeHtml(c)}</option>`).join('');
 }
 // Categorías reales de tus productos, para los chips de filtro de la lista
 // (ahí sí interesa ver exactamente lo que hay cargado, no solo las fijas).
 function categoriasExistentes(){
-  return [...new Set(DB.productos.map(p=>(p.categoria||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  return [...new Set(DB.productos.map(p=>normalizarCategoria(p.categoria)))].sort((a,b)=>a.localeCompare(b,'es'));
 }
 function renderCatChipsProductos(){
   const cont=document.getElementById('prodCatChips');
@@ -3067,7 +3078,7 @@ function renderProductos(filter=''){
   document.querySelectorAll('#view-productos .col-costo').forEach(el=>el.style.display=verC?'':'none');
   const rows=DB.productos
     .filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()))
-    .filter(p=>PROD_CAT_FILTER==='todos'||p.categoria===PROD_CAT_FILTER)
+    .filter(p=>PROD_CAT_FILTER==='todos'||normalizarCategoria(p.categoria)===PROD_CAT_FILTER)
     .filter(pasaFiltroVis);
   document.getElementById('productosBody').innerHTML=rows.map(p=>{
     const m=margenProducto(p);
@@ -3215,7 +3226,7 @@ async function guardarProducto(id){
   const nombre=sanitize(document.getElementById('prNombre').value);
   if(!nombre){ toast('El nombre es obligatorio',true); return; }
   const row={
-    nombre,categoria:document.getElementById('prCategoria').value,unidad:document.getElementById('prUnidad').value,
+    nombre,categoria:normalizarCategoria(document.getElementById('prCategoria').value),unidad:document.getElementById('prUnidad').value,
     precio:Number(document.getElementById('prPrecio').value)||0,
     // vacío => null (este producto no tiene precio mayorista y no mostrará la opción en caja)
     precio_mayor:Number(document.getElementById('prPrecioMayor').value)||null,
@@ -4984,7 +4995,7 @@ async function importarProductosExcel(file){
     const catExcel=sanitize(val(r,'categoria'));
     const row={
       nombre,
-      categoria:categoriaSugerida(nombre,catExcel),
+      categoria:normalizarCategoria(categoriaSugerida(nombre,catExcel)),
       unidad,
       precio:parseNumeroImport(val(r,'precio')),stock:parseCantidadImport(val(r,'stock')),
       stock_minimo:parseCantidadImport(val(r,'stock_minimo')),sku,

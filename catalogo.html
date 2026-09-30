@@ -783,7 +783,7 @@ function numeroWhatsApp(){
 //  CATEGORÍAS
 // ══════════════════════════════════════════════════════════
 function categorias(){
-  const cats=[...new Set(PRODUCTOS.map(p=>p.categoria||'otros'))];
+  const cats=[...new Set(PRODUCTOS.map(p=>p.categoria||'Otros'))];
   // lo venezolano primero: en quesosvenezolanos.cl es el protagonista, y en
   // la tienda general es la marca propia
   return cats.sort((a,b)=>(ES_VE(b)-ES_VE(a))||a.localeCompare(b,'es'));
@@ -915,7 +915,7 @@ function renderTiles(){
   document.getElementById('explora').style.display=cats.length?'':'none';
   document.getElementById('tiles').className='tiles n'+cats.length;
   document.getElementById('tiles').innerHTML=cats.map((c,i)=>{
-    const conFoto=PRODUCTOS.find(p=>(p.categoria||'otros')===c&&p.imagen_b64);
+    const conFoto=PRODUCTOS.find(p=>(p.categoria||'Otros')===c&&p.imagen_b64);
     return `<button class="tile t${i%4}" onclick="irACategoria(${JSON.stringify(c).replace(/"/g,'&quot;')})">
       <span>${esc(c)}</span>
       ${conFoto?`<img src="${conFoto.imagen_b64}" alt="" loading="lazy">`:`<span class="t-ph">${esc(c.charAt(0).toUpperCase())}</span>`}
@@ -932,7 +932,7 @@ function renderGrid(){
   const grid=document.getElementById('grid');
   if(!rows.length){ grid.innerHTML=`<p class="empty">${PRODUCTOS.length?'No encontramos productos con esa búsqueda':'Pronto tendremos productos disponibles'}</p>`; return; }
   grid.innerHTML=categorias().map(c=>{
-    const ps=rows.filter(p=>(p.categoria||'otros')===c);
+    const ps=rows.filter(p=>(p.categoria||'Otros')===c);
     if(!ps.length) return '';
     return `<div class="cat-sec" id="cat-${slug(c)}"><h3>${esc(c)}</h3><div class="grid">${ps.map(renderProdCard).join('')}</div></div>`;
   }).join('');
@@ -1021,7 +1021,7 @@ function abrirDetalle(id){
   }
   document.getElementById('detailBody').innerHTML=`
     <div class="detail-img">${p.imagen_b64?`<img src="${p.imagen_b64}" alt="${esc(p.nombre)}">`:`<span class="ph">${inicial(p)}</span>`}</div>
-    <span class="detail-cat">${esc(p.categoria||'otros')}</span>
+    <span class="detail-cat">${esc(p.categoria||'Otros')}</span>
     <div class="detail-name">${esc(p.nombre)}</div>
     <div class="detail-price num">${precioTxt(p)}</div>
     <p class="detail-desc${desc?'':' empty'}">${desc?esc(desc):'Pregúntanos por WhatsApp si quieres saber más de este producto.'}</p>
