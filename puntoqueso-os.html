@@ -841,6 +841,11 @@ tr:last-child td{border-bottom:none;}
         </div>
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Tramos (hasta km → precio)</label>
         <div id="cfgTramos"></div>
+        <h3 style="margin:18px 0 8px;">Stock en la tienda web</h3>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;font-size:13px;">
+          <input type="checkbox" id="cfgWebStock" style="width:16px;height:16px;margin-top:2px;"> No dejar comprar en la web lo que no tiene stock
+        </label>
+        <div class="sub" style="margin-bottom:14px;">Lo pedido y aún no facturado queda apartado. Los productos sin stock salen como "Agotado". Apágalo si tu stock no está al día.</div>
         <h3 style="margin:18px 0 12px;">Programa de referidos</h3>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;">
           <input type="checkbox" id="cfgRefActivo" style="width:16px;height:16px;"> Programa activo
@@ -2897,6 +2902,7 @@ function pintarConfigDelivery(cfg){
     </div>`).join('');
   document.getElementById('cfgTramos').dataset.n=filas.length;
   const chk=document.getElementById('cfgRefActivo'); if(chk) chk.checked=String(cfg.referidos_activo??'true')!=='false';
+  const chkS=document.getElementById('cfgWebStock'); if(chkS) chkS.checked=String(cfg.web_control_stock??'true')!=='false';
   set('cfgRefMinimo',cfg.referidos_minimo??20000);
   set('cfgRefTope',cfg.referidos_tope??3);
   set('cfgRefDias',cfg.referidos_dias??90);
@@ -2959,6 +2965,7 @@ async function guardarConfigDelivery(){
     local_lat:latTxt?String(lat):'', local_lng:lngTxt?String(lng):'',
     delivery_tramos:tramos,
     referidos_activo:document.getElementById('cfgRefActivo').checked?'true':'false',
+    web_control_stock:document.getElementById('cfgWebStock').checked?'true':'false',
     referidos_minimo:String(Math.max(0,Number(document.getElementById('cfgRefMinimo').value)||0)),
     referidos_tope:String(Math.max(1,parseInt(document.getElementById('cfgRefTope').value,10)||3)),
     referidos_dias:String(Math.max(1,parseInt(document.getElementById('cfgRefDias').value,10)||90)),

@@ -135,21 +135,23 @@ button{cursor:pointer;}
 .s-blanco .slide-cta{background:var(--ink);color:#fff;}
 /* banner con foto de fondo amarillo: el texto va sobre el amarillo */
 .slide.s-photo.claro{background-color:#FDC603;color:var(--ink);}
-.slide.s-photo.claro::before{background:linear-gradient(180deg,rgba(253,198,3,0) 34%,rgba(253,198,3,.85) 54%,#FDC603 72%);}
+.slide.s-photo.claro::before{background:linear-gradient(180deg,rgba(253,198,3,0) 120px,rgba(253,198,3,.9) 205px,#FDC603 232px);}
 .s-photo.claro .slide-tag{background:var(--ink);color:var(--yellow);}
 .slide.s-photo.claro h1 em,.slide.s-photo.claro h2 em{color:#fff;text-shadow:3px 3px 0 var(--ink);}
 .s-photo.claro .slide-cta{background:var(--ink);color:#fff;}
 .s-photo.claro p{opacity:1;}
 /* banner con foto: el lado izquierdo de la foto es negro, ahí va el texto */
-.slide.s-photo{background:#0b0a09 var(--foto) right top/auto 58% no-repeat;color:#fff;align-items:end;min-height:500px;padding-top:230px;}
-.slide.s-photo::before{content:'';position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(11,10,9,0) 30%,rgba(11,10,9,.85) 58%,#0b0a09 70%);}
+.slide.s-photo{background:#0b0a09 var(--foto) var(--fx,88%) 0/auto 230px no-repeat;color:#fff;align-items:end;min-height:0;padding-top:196px;padding-bottom:52px;}
+.slide.s-photo::before{content:'';position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(11,10,9,0) 120px,rgba(11,10,9,.88) 205px,#0b0a09 232px);}
 .s-photo .slide-tag{background:var(--yellow);color:var(--ink);}
 .slide.s-photo h1 em,.slide.s-photo h2 em{color:var(--yellow);text-shadow:none;}
 .s-photo .slide-cta{background:var(--yellow);color:var(--ink);}
 .slide-copy{position:relative;z-index:2;max-width:520px;}
 .slide-tag{display:inline-block;font-family:var(--disp);font-size:15px;padding:6px 14px;border-radius:10px;background:var(--ink);color:var(--yellow);margin-bottom:14px;transform:rotate(-2deg);}
 .s-ink .slide-tag{background:var(--yellow);color:var(--ink);}
-.slide h2,.slide h1{font-size:40px;margin-bottom:12px;}
+.slide h2,.slide h1{font-size:34px;line-height:1.02;margin-bottom:10px;}
+.slide.s-photo .slide-tag{font-size:13px;padding:5px 12px;margin-bottom:10px;}
+.slide.s-photo p{font-size:14px;margin-bottom:16px;}
 .slide h1 em,.slide h2 em{font-style:normal;color:#fff;-webkit-text-stroke:0;text-shadow:3px 3px 0 var(--ink);}
 .s-ink h2 em{color:var(--yellow);text-shadow:none;}
 .slide p{font-size:15px;font-weight:500;max-width:40ch;margin-bottom:20px;opacity:.88;}
@@ -222,6 +224,10 @@ button{cursor:pointer;}
 .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--sh);transition:transform .15s,box-shadow .15s;}
 .card:hover{box-shadow:var(--sh-md);}
 .card-img{position:relative;display:block;width:100%;aspect-ratio:1/1;background:var(--cream);border:none;padding:0;overflow:hidden;}
+.card.agotado .card-img img,.card.agotado .card-img .ph{filter:grayscale(1);opacity:.55;}
+.stock-badge{position:absolute;left:8px;top:8px;z-index:2;font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;background:var(--ink);color:#fff;text-transform:uppercase;letter-spacing:.04em;}
+.stock-badge.pocos{background:var(--yellow);color:var(--ink);}
+.btn.agotado-btn,.btn.agotado-btn:hover{background:#ece6d3;color:var(--muted);border-color:#ece6d3;cursor:not-allowed;box-shadow:none;}
 .card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .35s;}
 .card:hover .card-img img{transform:scale(1.05);}
 .card-img .ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--disp);font-size:56px;color:var(--yellow);background:var(--ink);}
@@ -319,7 +325,8 @@ footer.foot::before{content:'';position:absolute;right:-120px;top:-140px;width:4
 .foot-bottom{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;font-size:12.5px;color:rgba(255,255,255,.5);position:relative;}
 .foot-credit{display:inline-flex;align-items:center;gap:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid rgba(255,255,255,.12);transition:border-color .2s,color .2s;}
 .foot-credit:hover,.foot-credit:focus-visible{border-color:var(--yellow);color:#fff;outline:none;}
-.foot-credit .ae{width:26px;height:26px;border-radius:50%;background:var(--yellow);color:var(--ink);font-weight:900;font-size:11px;letter-spacing:.02em;display:flex;align-items:center;justify-content:center;}
+.foot-credit .ae{height:16px;width:auto;display:block;margin-left:6px;opacity:.95;}
+.foot-credit .sep{width:1px;height:16px;background:rgba(255,255,255,.18);}
 .foot-credit b{color:#fff;font-weight:800;}
 .inst-steps{display:grid;gap:10px;margin:6px 0 4px;}
 .inst-steps div{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--cream);border:1px solid var(--line);font-size:14px;}
@@ -426,7 +433,9 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
   .slide.s-photo.claro::before{background:linear-gradient(90deg,rgba(253,198,3,.95) 0%,rgba(253,198,3,.75) 30%,rgba(253,198,3,0) 50%);}
   .tiles.n2,.tiles.n4{grid-template-columns:repeat(2,1fr);}
   .car-btn{display:flex;}
-  .slide.s-photo{background-size:cover;background-position:right center;align-items:center;min-height:440px;padding-top:48px;}
+  .slide.s-photo{background-size:cover;background-position:right center;align-items:center;min-height:440px;padding-top:48px;padding-bottom:64px;}
+  .slide.s-photo .slide-tag{font-size:15px;padding:6px 14px;margin-bottom:14px;}
+  .slide.s-photo p{font-size:17px;margin-bottom:20px;}
   .slide.s-photo::before{background:linear-gradient(90deg,rgba(11,10,9,.9) 0%,rgba(11,10,9,.6) 38%,rgba(11,10,9,0) 60%);}
   .car-dots{left:0;justify-content:center;}
   .strip a{display:inline-flex;}
@@ -572,7 +581,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     <div class="foot-bottom">
       <span id="footCopy">© Punto Queso</span>
       <a class="foot-credit" href="https://alexanderestrada.com/?utm_source=puntoqueso&amp;utm_medium=footer&amp;utm_campaign=credito" target="_blank" rel="noopener" aria-label="Sitio desarrollado por Alexander Estrada (abre alexanderestrada.com)">
-        <span class="ae" aria-hidden="true">AE</span><span>Diseño y desarrollo por <b>Alexander Estrada</b></span>
+        <img class="ae" src="ae-logo.png" alt="" width="38" height="16"><span class="sep" aria-hidden="true"></span><span>Diseño y desarrollo por <b>Alexander Estrada</b></span>
         <svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
       </a>
     </div>
@@ -783,6 +792,7 @@ let CFG={};
 // ══════════════════════════════════════════════════════════
 const DOMINIO_VE=/quesosvenezolanos\.cl$/i.test(location.hostname);
 const ES_VE=c=>/venezolan|campolac/i.test(c||'');
+const ES_QUESO=c=>/queso|quesillo/i.test(c||'');
 
 const SLIDES = DOMINIO_VE ? [
   {tema:'s-photo claro',foto:'hero-arepa',tag:'Sabor de casa',titulo:'El queso que tu arepa <em>estaba extrañando</em>',
@@ -791,7 +801,7 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-photo',foto:'fiambres-quesos',tag:'Todo en un pedido',titulo:'Tu mesa completa <em>sin salir de casa</em>',
    texto:'Suma quesos maduros, mortadela, salame y más. Lo pesamos al preparar y te confirmamos el total por WhatsApp antes de pagar.',
    cta:'Armar mi pedido',accion:'menu',pic:'ve2'},
-  {tema:'s-photo',foto:'mayorista-camion',tag:'Areperas y restaurantes',titulo:'Más margen <em>en cada arepa</em>',
+  {tema:'s-photo',foto:'mayorista-camion',fx:'72%',tag:'Areperas y restaurantes',titulo:'Más margen <em>en cada arepa</em>',
    texto:'Precio por mayor en llanero, queso de mano y más. Stock constante y despacho refrigerado directo a tu negocio. Cotiza en minutos.',
    cta:'Cotizar por mayor',accion:'wa',pic:'logo'},
 ] : [
@@ -801,7 +811,7 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-ink',tag:'Quesos venezolanos',titulo:'El sabor de casa, <em>hecho en Chile</em>',
    texto:'Llanero, de mano, palmita, guayanés, trenza y más, elaborados artesanalmente por Campolac.',
    cta:'Ver quesos venezolanos',accion:'ve',pic:'ve'},
-  {tema:'s-photo',foto:'mayorista-camion',tag:'Para tu negocio',titulo:'Más margen <em>en cada venta</em>',
+  {tema:'s-photo',foto:'mayorista-camion',fx:'72%',tag:'Para tu negocio',titulo:'Más margen <em>en cada venta</em>',
    texto:'¿Arepera, restaurante o minimarket? Precio por mayor, stock constante y despacho refrigerado directo. Cotiza en minutos.',
    cta:'Cotizar por mayor',accion:'wa',pic:'logo'},
 ];
@@ -836,7 +846,19 @@ async function cargarProductos(){
   }
   // Orden elegido en el panel (1 primero); los sin posición, por nombre.
   PRODUCTOS=(data||[]).sort(compararOrden);
+  await marcarDisponibilidad();
   renderTodo();
+}
+// Agotado / últimas unidades según el stock del sistema (sin mostrar cantidades).
+// Lo agotado queda al final de su categoría.
+async function marcarDisponibilidad(){
+  try{
+    const {data,error}=await supa.rpc('disponibilidad_web');
+    if(error||!Array.isArray(data)) return;
+    const m={}; data.forEach(r=>m[r.id]=r);
+    PRODUCTOS.forEach(p=>{ p.agotado=!!m[p.id]?.agotado; p.pocos=!!m[p.id]?.pocos; });
+    PRODUCTOS.sort((a,b)=>(a.agotado-b.agotado)||compararOrden(a,b));
+  }catch(e){}
 }
 function ordenDe(p){ return p.orden==null?Infinity:Number(p.orden); }
 function compararOrden(a,b){
@@ -909,7 +931,8 @@ function categorias(){
   const cats=[...new Set(PRODUCTOS.map(p=>p.categoria||'Otros'))];
   // lo venezolano primero: en quesosvenezolanos.cl es el protagonista, y en
   // la tienda general es la marca propia
-  return cats.sort((a,b)=>(ES_VE(b)-ES_VE(a))||a.localeCompare(b,'es'));
+  // Quesos primero (los venezolanos antes), después el resto por nombre
+  return cats.sort((a,b)=>(ES_VE(b)-ES_VE(a))||(ES_QUESO(b)-ES_QUESO(a))||a.localeCompare(b,'es'));
 }
 function productosVE(){ return PRODUCTOS.filter(p=>ES_VE(p.categoria)||ES_VE(p.nombre)); }
 
@@ -958,7 +981,7 @@ function renderCarrusel(){
   document.getElementById('carTrack').innerHTML=SLIDES.map((s,i)=>{
     const src=imgParaSlide(s.pic);
     const H=i===0?'h1':'h2';
-    const estilo=s.foto?` style="--foto:url('${s.foto}.webp')"`:'';
+    const estilo=s.foto?` style="--foto:url('${s.foto}.webp')${s.fx?`;--fx:${s.fx}`:''}"`:'';
     return `<div class="slide ${s.tema}"${estilo} role="group" aria-roledescription="diapositiva" aria-label="${i+1} de ${SLIDES.length}">
       <div class="slide-copy">
         <span class="slide-tag">${esc(s.tag)}</span>
@@ -1019,7 +1042,7 @@ function accionSlide(a){
 // ══════════════════════════════════════════════════════════
 function renderPromos(){
   // Primero los que el dueño ordenó; entre el resto, con foto y más caros primero.
-  let lista=PRODUCTOS.slice().sort((a,b)=>((ordenDe(a)-ordenDe(b))||0)||(!!b.imagen_b64-!!a.imagen_b64)||((ES_VE(b.categoria)-ES_VE(a.categoria))*(DOMINIO_VE?1:0))||(Number(b.precio)-Number(a.precio)));
+  let lista=PRODUCTOS.filter(p=>!p.agotado).sort((a,b)=>((ordenDe(a)-ordenDe(b))||0)||(ES_QUESO(b.categoria)-ES_QUESO(a.categoria))||(!!b.imagen_b64-!!a.imagen_b64)||((ES_VE(b.categoria)-ES_VE(a.categoria))*(DOMINIO_VE?1:0))||(Number(b.precio)-Number(a.precio)));
   if(DOMINIO_VE&&productosVE().length) lista=lista.filter(p=>ES_VE(p.categoria)||ES_VE(p.nombre));
   lista=lista.slice(0,6);
   const row=document.getElementById('promoRow');
@@ -1068,10 +1091,13 @@ function renderProdCard(p){
   const img=`<button class="card-img" onclick="abrirDetalle(${p.id})" aria-label="Ver detalle de ${nom}">
       ${p.imagen_b64?`<img src="${p.imagen_b64}" alt="${nom}" loading="lazy">`:`<span class="ph">${inicial(p)}</span>`}
       ${p.vender_por_peso?'<span class="card-badge">Por kilo</span>':''}
+      ${p.agotado?'<span class="stock-badge">Agotado</span>':p.pocos?'<span class="stock-badge pocos">¡Últimas unidades!</span>':''}
     </button>`;
   const desc=(p.descripcion||'').toString().trim();
   let control;
-  if(p.vender_por_peso){
+  if(p.agotado){
+    control=`<button class="btn block agotado-btn" disabled>Agotado</button>`;
+  }else if(p.vender_por_peso){
     control=`
       <div class="wpick" id="wpick-${p.id}">
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g')">250g</button>
@@ -1086,7 +1112,7 @@ function renderProdCard(p){
   }else{
     control=`<div id="qwrap-${p.id}">${renderQtyControl(p)}</div>`;
   }
-  return `<article class="card">
+  return `<article class="card${p.agotado?' agotado':''}">
     ${img}
     <div class="card-body">
       <button class="card-name" onclick="abrirDetalle(${p.id})">${nom}</button>
@@ -1129,7 +1155,9 @@ function abrirDetalle(id){
   if(!p) return;
   const desc=(p.descripcion||'').toString().trim();
   let controls;
-  if(p.vender_por_peso){
+  if(p.agotado){
+    controls=`<button class="btn block agotado-btn" style="height:52px;" disabled>Agotado por ahora</button>`;
+  }else if(p.vender_por_peso){
     controls=`
       <div class="wpick open">
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g');cerrarDetalle();">250g</button>
@@ -1181,6 +1209,7 @@ function agregarAlCarrito(id){
   refrescarControl(id);
 }
 function agregarAlCarritoConCantidad(p,cantidad,qtyLabel){
+  if(p.agotado){ toast(`${p.nombre} está agotado por ahora`,true); return; }
   const existente=CARRITO.find(i=>i.producto_id===p.id&&i.qtyLabel===qtyLabel);
   if(existente&&!p.vender_por_peso){ existente.cantidad+=cantidad; }
   else CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad,unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel,imagen_b64:p.imagen_b64||null});
