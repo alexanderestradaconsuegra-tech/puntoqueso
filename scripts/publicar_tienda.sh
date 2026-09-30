@@ -29,7 +29,7 @@ echo "── 1/3 Descargando la tienda del commit $REF"
 bajar catalogo.html                  index.html
 bajar manifest-catalogo.json         manifest-catalogo.json
 bajar sw-catalogo.js                 sw.js
-for f in icon-192.png icon-512.png icon-180.png favicon.png favicon.ico logo.png hero-quesos.webp og-image.jpg; do bajar "$f" "$f"; done
+for f in icon-192.png icon-512.png icon-180.png favicon.png favicon.ico logo.png hero-quesos.webp fiambres-quesos.webp og-image.jpg; do bajar "$f" "$f"; done
 bajar proximamente/robots.txt        robots.txt
 bajar proximamente/sitemap.xml       sitemap.xml
 grep -q "crear_pedido_web" "$TMP/index.html" || { echo "ERROR: el archivo descargado no es la tienda nueva"; exit 1; }
