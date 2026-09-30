@@ -150,6 +150,12 @@ tr:last-child td{border-bottom:none;}
 .ci-mayor:active{transform:scale(.95);}
 .ci-mayor.on{background:var(--brand);border-color:var(--brand-dark);color:var(--brand-text);}
 .pos-prod-img{width:100%;height:80px;object-fit:cover;border-radius:8px;margin-bottom:8px;background:var(--mint);}
+.flag-web{border:1.5px solid var(--border);background:#fff;border-radius:99px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);white-space:nowrap;}
+.flag-web.on{background:#e8f5ec;border-color:var(--ok);color:var(--ok);}
+.flag-fav{border:none;background:none;cursor:pointer;font-size:22px;line-height:1;padding:2px 6px;color:#d6cfb8;}
+.flag-fav.on{color:var(--brand-dark);}
+.flag-web:disabled,.flag-fav:disabled{cursor:default;}
+.pos-tabs{margin-bottom:10px;}
 .pos-prod-ph{width:100%;height:80px;border-radius:8px;margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;}
 .prod-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;background:var(--mint);}
 .prod-thumb-ph{width:40px;height:40px;border-radius:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;}
@@ -526,6 +532,7 @@ tr:last-child td{border-bottom:none;}
         <div id="cajaBar" class="caja-bar"></div>
         <input id="posBuscar" placeholder="Buscar producto..." oninput="renderPosProductos(this.value)" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
       </div>
+      <div class="cat-chips pos-tabs" id="posTabs"></div>
       <div class="pos-grid">
         <div class="pos-products" id="posProductos"></div>
         <div class="pos-cart card" style="padding:16px;">
@@ -611,20 +618,26 @@ tr:last-child td{border-bottom:none;}
       <div class="topbar"><div><h2>Productos</h2><div class="sub">Catálogo de la tienda</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn secondary" id="btnListaCompra" onclick="exportarListaCompra()">🛒 Lista de compra<span id="btnListaCompraN" class="badge" style="margin-left:6px;"></span></button>
+          <button class="btn secondary" id="btnMasVendidos" onclick="marcarFavoritosMasVendidos()">★ Marcar los más vendidos</button>
           <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button>
         </div></div>
       <div class="toolbar">
         <input id="prodBuscar" placeholder="Buscar..." oninput="renderProductos(this.value)">
         <div class="cat-chips" id="prodCatChips"></div>
+        <div class="cat-chips" id="prodVisChips"></div>
       </div>
       <div class="bulk-bar" id="bulkBarproductos">
         <span class="bulk-count" id="bulkCountproductos">0 seleccionados</span>
+        <button class="btn secondary bulk-inv" style="padding:8px 12px;font-size:12.5px;" onclick="bulkFlagProductos('en_catalogo',true)">Mostrar en la web</button>
+        <button class="btn secondary bulk-inv" style="padding:8px 12px;font-size:12.5px;" onclick="bulkFlagProductos('en_catalogo',false)">Ocultar de la web</button>
+        <button class="btn secondary bulk-inv" style="padding:8px 12px;font-size:12.5px;" onclick="bulkFlagProductos('favorito',true)">★ Favoritos</button>
+        <button class="btn secondary bulk-inv" style="padding:8px 12px;font-size:12.5px;" onclick="bulkFlagProductos('favorito',false)">Quitar ★</button>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkDesactivarProductos()">Desactivar seleccionados</button>
         <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkEliminarProductos()">Eliminar seleccionados</button>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
       </div>
@@ -985,6 +998,11 @@ function sesionVencida(){
 let SESSION=null;
 let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[],gastosRecurrentes:[]};
 let PROD_CAT_FILTER='todos';
+// Filtro de la lista de Productos por marca: todos | web | oculto | fav
+let PROD_VIS_FILTER='todos';
+// Pestaña de la Terminal: 'favoritos' | 'todos'. null = elegir sola al abrir
+// (favoritos si hay alguno marcado).
+let POS_TAB=null;
 let CARRITO=[];
 let currentPage='dashboard';
 let METODO_PAGO='efectivo';
@@ -1473,8 +1491,28 @@ async function renderChartTopProductos(mesD,ganancia){
 // ══════════════════════════════════════════════════════════
 //  TERMINAL DE VENTAS (POS)
 // ══════════════════════════════════════════════════════════
+function setPosTab(tab){
+  POS_TAB=tab;
+  renderPosProductos(document.getElementById('posBuscar')?.value||'');
+}
 function renderPosProductos(filter=''){
-  const rows=DB.productos.filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()));
+  const nFav=DB.productos.filter(p=>p.favorito).length;
+  // Se decide la pestaña inicial recién cuando ya cargaron los productos.
+  if(POS_TAB===null&&DB.productos.length) POS_TAB=nFav?'favoritos':'todos';
+  const tab=POS_TAB||'todos';
+  const buscando=!!filter.trim();
+  // Al buscar se busca en todo el inventario, no solo en la pestaña.
+  const enFav=tab==='favoritos'&&!buscando;
+  const tabs=document.getElementById('posTabs');
+  if(tabs) tabs.innerHTML=[['favoritos',`★ Favoritos (${nFav})`],['todos',`Todos (${DB.productos.length})`]]
+    .map(([k,t])=>`<button type="button" class="cat-chip${!buscando&&tab===k?' active':''}" onclick="setPosTab('${k}')">${t}</button>`).join('')
+    +(buscando?'<span class="sub-xs" style="align-self:center;">Buscando en todos los productos</span>':'');
+  const rows=DB.productos
+    .filter(p=>!enFav||p.favorito)
+    .filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()));
+  const vacio=enFav
+    ? `<p class="empty">Aún no hay favoritos. Márcalos con la estrella en Productos${canDo('editarInventario')?` o <a href="#" onclick="marcarFavoritosMasVendidos();return false;">marca los más vendidos</a>`:''}.</p>`
+    : '<p class="empty">Sin productos</p>';
   document.getElementById('posProductos').innerHTML=rows.map(p=>`
     <button class="pos-prod" onclick="${p.vender_por_peso?`openWeightPicker(${p.id})`:`agregarAlCarrito(${p.id})`}">
       ${p.imagen_b64?`<img class="pos-prod-img" src="${p.imagen_b64}" alt="">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
@@ -1482,7 +1520,7 @@ function renderPosProductos(filter=''){
       <div class="pp-precio num">${money(p.precio)}/${p.unidad||'kg'}</div>
       ${Number(p.precio_mayor)>0?`<div class="pp-mayor num">Mayor ${money(p.precio_mayor)}</div>`:''}
       <div class="pp-stock">Stock: ${Number(p.stock).toLocaleString('es-CL')} ${p.unidad||'kg'}</div>
-    </button>`).join('')||'<p class="empty">Sin productos</p>';
+    </button>`).join('')||vacio;
   // cliente select
   const sel=document.getElementById('posCliente');
   const prev=sel.value;
@@ -2878,6 +2916,74 @@ function renderCatChipsProductos(){
     cats.map(c=>`<button type="button" class="cat-chip" data-cat="${escapeHtml(c)}" onclick="filtrarCategoriaProductos(${JSON.stringify(c).replace(/"/g,'&quot;')})">${escapeHtml(c)}</button>`).join('');
   cont.querySelectorAll('.cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.cat===PROD_CAT_FILTER));
 }
+function renderVisChipsProductos(){
+  const cont=document.getElementById('prodVisChips');
+  if(!cont) return;
+  const n=f=>DB.productos.filter(f).length;
+  const ops=[
+    ['todos','Web y ocultos'],
+    ['web',`En la web (${n(p=>p.en_catalogo)})`],
+    ['oculto',`Ocultos de la web (${n(p=>!p.en_catalogo)})`],
+    ['fav',`★ Favoritos (${n(p=>p.favorito)})`],
+  ];
+  cont.innerHTML=ops.map(([k,t])=>`<button type="button" class="cat-chip${PROD_VIS_FILTER===k?' active':''}" onclick="filtrarVisProductos('${k}')">${t}</button>`).join('');
+}
+function filtrarVisProductos(k){
+  PROD_VIS_FILTER=k;
+  renderProductos(document.getElementById('prodBuscar')?.value||'');
+}
+function pasaFiltroVis(p){
+  if(PROD_VIS_FILTER==='web') return !!p.en_catalogo;
+  if(PROD_VIS_FILTER==='oculto') return !p.en_catalogo;
+  if(PROD_VIS_FILTER==='fav') return !!p.favorito;
+  return true;
+}
+function flagWebBtn(p,editar){
+  return `<button type="button" class="flag-web${p.en_catalogo?' on':''}" ${editar?'':'disabled'} onclick="toggleFlagProducto(${p.id},'en_catalogo')" title="${p.en_catalogo?'Se ve en la tienda web. Toca para ocultarlo':'No se ve en la tienda web. Toca para mostrarlo'}">${p.en_catalogo?'En la web':'Oculto'}</button>`;
+}
+function flagFavBtn(p,editar){
+  return `<button type="button" class="flag-fav${p.favorito?' on':''}" ${editar?'':'disabled'} onclick="toggleFlagProducto(${p.id},'favorito')" title="${p.favorito?'Favorito: aparece primero en la Terminal. Toca para quitarlo':'Toca para marcarlo como favorito'}" aria-label="Favorito">${p.favorito?'★':'☆'}</button>`;
+}
+const FLAG_TXT={
+  en_catalogo:[ 'Oculto de la web','Visible en la web' ],
+  favorito:[ 'Quitado de favoritos','Marcado como favorito' ],
+};
+async function toggleFlagProducto(id,campo){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  if(!(campo in FLAG_TXT)) return;
+  const p=DB.productos.find(x=>x.id===id); if(!p) return;
+  const valor=!p[campo];
+  const {error}=await supa.from('productos').update({[campo]:valor}).eq('id',id);
+  if(error){ toast('Error: '+error.message,true); return; }
+  p[campo]=valor;
+  logAudit(FLAG_TXT[campo][valor?1:0],'productos',p.nombre);
+  toast(`${p.nombre}: ${FLAG_TXT[campo][valor?1:0].toLowerCase()}`);
+  renderProductos(document.getElementById('prodBuscar')?.value||'');
+}
+async function bulkFlagProductos(campo,valor){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  if(!(campo in FLAG_TXT)) return;
+  const ids=[...BULK.productos];
+  if(!ids.length) return;
+  const {error}=await supa.from('productos').update({[campo]:valor}).in('id',ids);
+  if(error){ toast('Error: '+error.message,true); return; }
+  DB.productos.forEach(p=>{ if(ids.includes(p.id)) p[campo]=valor; });
+  logAudit(FLAG_TXT[campo][valor?1:0]+' (masivo)','productos',`${ids.length} producto(s): ${ids.join(', ')}`);
+  toast(`${ids.length} producto(s): ${FLAG_TXT[campo][valor?1:0].toLowerCase()}`);
+  bulkClear('productos'); renderProductos(document.getElementById('prodBuscar')?.value||'');
+}
+async function marcarFavoritosMasVendidos(){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  if(!confirm('Se pondrá la estrella a los 20 productos que salieron en más ventas los últimos 30 días.\nLos favoritos que ya tienes se mantienen. ¿Continuar?')) return;
+  const {data,error}=await supa.rpc('marcar_favoritos_mas_vendidos',{p_limite:20,p_dias:30});
+  if(error){ toast('Error: '+error.message,true); return; }
+  const n=Number(data)||0;
+  logAudit('Favoritos por más vendidos','productos',`${n} producto(s) marcados`);
+  toast(n?`${n} producto(s) nuevos en favoritos`:'Los más vendidos ya estaban en favoritos (o aún no hay ventas)');
+  await loadAll();
+  if(document.getElementById('view-productos')?.classList.contains('active')) renderProductos(document.getElementById('prodBuscar')?.value||'');
+  if(document.getElementById('view-terminal')?.classList.contains('active')){ POS_TAB='favoritos'; renderPosProductos(document.getElementById('posBuscar')?.value||''); }
+}
 function filtrarCategoriaProductos(cat){
   PROD_CAT_FILTER=cat;
   document.querySelectorAll('#prodCatChips .cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
@@ -2948,16 +3054,21 @@ async function exportarListaCompra(){
 
 function renderProductos(filter=''){
   renderCatChipsProductos();
+  renderVisChipsProductos();
   actualizarBadgeListaCompra();
   const btnNuevo=document.getElementById('btnNuevoProducto');
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
+  const btnMV=document.getElementById('btnMasVendidos');
+  if(btnMV) btnMV.style.display=canDo('editarInventario')?'inline-flex':'none';
+  document.querySelectorAll('#bulkBarproductos .bulk-inv').forEach(b=>b.style.display=canDo('editarInventario')?'':'none');
   // Las columnas de costo/margen solo existen si el usuario puede ver costos:
   // se ocultan los encabezados y tampoco se emiten las celdas (el dato no llega al DOM).
   const verC=canDo('verCostos'), editar=canDo('editarInventario');
   document.querySelectorAll('#view-productos .col-costo').forEach(el=>el.style.display=verC?'':'none');
   const rows=DB.productos
     .filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()))
-    .filter(p=>PROD_CAT_FILTER==='todos'||p.categoria===PROD_CAT_FILTER);
+    .filter(p=>PROD_CAT_FILTER==='todos'||p.categoria===PROD_CAT_FILTER)
+    .filter(pasaFiltroVis);
   document.getElementById('productosBody').innerHTML=rows.map(p=>{
     const m=margenProducto(p);
     return `
@@ -2968,10 +3079,12 @@ function renderProductos(filter=''){
     ${verC?`<td class="num"><input class="costo-inline num" type="number" step="1" min="0" value="${Number(p.costo)||0}" ${editar?'':'disabled'} onchange="guardarCostoInline(${p.id},this.value)" title="Editar costo"></td>
     <td class="num">${m?`<span style="font-weight:700;color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}</span>${m.pct!==null?`<div class="sub-xs">${m.pct.toFixed(0)}%</div>`:''}`:'<span class="sub-xs">Sin costo</span>'}</td>`:''}
     <td class="num" style="font-weight:600;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
+    <td>${flagWebBtn(p,editar)}</td>
+    <td>${flagFavBtn(p,editar)}</td>
     <td style="display:flex;gap:6px;">
       ${editar?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
-    </td></tr>`;}).join('')||`<tr><td colspan="${verC?9:7}" class="empty">Sin productos</td></tr>`;
+    </td></tr>`;}).join('')||`<tr><td colspan="${verC?11:9}" class="empty">Sin productos</td></tr>`;
 
   document.getElementById('productosCards').innerHTML=rows.map(p=>`
     <div class="lcard">
@@ -2982,7 +3095,7 @@ function renderProductos(filter=''){
           <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
           <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
           ${canDo('verCostos')?(()=>{const m=margenProducto(p);return `<div class="lc-meta">Costo: ${Number(p.costo)?money(p.costo):'—'}${m?` · Margen: <b style="color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}${m.pct!==null?` (${m.pct.toFixed(0)}%)`:''}</b>`:''}</div>`;})():''}
-          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span></div>
+          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span>${flagWebBtn(p,editar)}${flagFavBtn(p,editar)}</div>
         </div>
         ${canDo('editarInventario')?`<div class="lc-actions">
           <button class="lc-more" onclick="openProductoModal(${p.id})"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>
@@ -3072,6 +3185,14 @@ function openProductoModal(id){
       <input type="checkbox" id="prVenderPeso" style="width:16px;height:16px;" ${p.vender_por_peso?'checked':''}>
       Se vende por peso (kg)
     </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+      <input type="checkbox" id="prEnCatalogo" style="width:16px;height:16px;" ${p.en_catalogo?'checked':''}>
+      Mostrar en la tienda web
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+      <input type="checkbox" id="prFavorito" style="width:16px;height:16px;" ${p.favorito?'checked':''}>
+      ★ Favorito (aparece primero en la Terminal)
+    </label>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="guardarProducto(${id||'null'})">Guardar</button>
@@ -3104,6 +3225,8 @@ async function guardarProducto(id){
     sku:sanitize(document.getElementById('prSku').value)||null,
     descripcion:sanitize(document.getElementById('prDescripcion').value)||null,
     vender_por_peso:document.getElementById('prVenderPeso').checked,
+    en_catalogo:document.getElementById('prEnCatalogo').checked,
+    favorito:document.getElementById('prFavorito').checked,
     imagen_b64:_prodImagenB64||null,
     updated_at:new Date().toISOString()
   };

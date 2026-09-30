@@ -46,6 +46,10 @@ alter table productos add column if not exists descripcion text; -- descripción
 -- Se elige por línea del carrito, no por venta completa: un mismo ticket puede llevar
 -- unos productos al por mayor y otros al detalle.
 alter table productos add column if not exists precio_mayor numeric;
+-- en_catalogo: se muestra en la tienda web (el filtro para el público está en migraciones/005).
+-- favorito: aparece primero en la Terminal de ventas.
+alter table productos add column if not exists en_catalogo boolean not null default false;
+alter table productos add column if not exists favorito boolean not null default false;
 
 -- ── clientes ──
 create table if not exists clientes (
