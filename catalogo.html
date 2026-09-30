@@ -350,6 +350,14 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 .ref-bar.show{display:block;}
 .tramos{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .tramos span{padding:6px 12px;border-radius:99px;background:var(--paper);border:1px solid var(--line-2);font-size:13px;font-weight:700;}
+.dir-wrap{position:relative;}
+.sugerencias{position:absolute;left:0;right:0;top:100%;z-index:30;margin-top:4px;background:var(--paper);border:1.5px solid var(--line-2);border-radius:12px;box-shadow:var(--sh-md);overflow:hidden;display:none;}
+.sugerencias.show{display:block;}
+.sugerencias button{display:block;width:100%;text-align:left;padding:11px 14px;border:none;background:none;border-bottom:1px solid var(--line);font-size:14px;line-height:1.3;color:var(--text);}
+.sugerencias button:last-of-type{border-bottom:none;}
+.sugerencias button:hover,.sugerencias button:focus{background:var(--cream);outline:none;}
+.sugerencias small{display:block;color:var(--muted);font-size:12px;}
+.sugerencias .g{padding:5px 12px;text-align:right;font-size:11px;color:var(--muted);background:var(--cream);}
 .gps-row{margin:12px 0 2px;}
 .gps-btn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;background:var(--cream);border:1.5px solid var(--line-2);border-radius:99px;font-weight:700;font-size:13px;color:var(--ink);}
 .gps-btn:disabled{opacity:.5;cursor:not-allowed;}
@@ -576,10 +584,13 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
         </div>
         <div id="bloqueDelivery">
           <label for="pedidoCalle">Calle y número <span class="req">*</span></label>
-          <input type="text" id="pedidoCalle" autocomplete="street-address" placeholder="Av. Siempre Viva 742" oninput="direccionCambio()">
+          <div class="dir-wrap">
+            <input type="text" id="pedidoCalle" autocomplete="off" placeholder="Escribe tu calle y número" oninput="direccionCambio()" onkeydown="teclaSugerencias(event)" onblur="setTimeout(ocultarSugerencias,200)" aria-autocomplete="list" aria-controls="sugerencias">
+            <div class="sugerencias" id="sugerencias" role="listbox"></div>
+          </div>
           <div class="row2">
             <div><label for="pedidoDepto">Depto/Casa</label><input type="text" id="pedidoDepto" placeholder="12B"></div>
-            <div><label for="pedidoComuna">Comuna</label><input type="text" id="pedidoComuna" placeholder="Ñuñoa" list="comunasDelivery" autocomplete="address-level2" oninput="direccionCambio()"></div>
+            <div><label for="pedidoComuna">Comuna</label><input type="text" id="pedidoComuna" placeholder="Ñuñoa" list="comunasDelivery" autocomplete="address-level2" oninput="comunaCambio()"></div>
           </div>
           <datalist id="comunasDelivery"><option value="Santiago"><option value="San Joaquín"><option value="San Miguel"><option value="Ñuñoa"><option value="Providencia"><option value="Estación Central"><option value="Independencia"><option value="Recoleta"><option value="Pedro Aguirre Cerda"><option value="La Cisterna"><option value="Macul"></datalist>
           <div class="gps-row">
@@ -1183,48 +1194,132 @@ function setEntrega(e){
   document.getElementById('bloqueRetiro').style.display=ENTREGA==='retiro'?'':'none';
   pintarResumen();
 }
-// Se escribe la dirección: se busca en Google cuando el cliente deja de escribir.
+// ── Dirección con sugerencias de Google (Places) ──
+// Mientras el cliente escribe se muestran direcciones reales; al elegir una
+// queda el punto exacto. Si Places no está disponible, se usa el Geocoder
+// con lo escrito (y si tampoco, el local calcula el delivery en el panel).
+let _sugTimer=null, _sugSeq=0, _sugLista=[], _sugToken=null, _placesOk=null;
+function localLatLng(){
+  const lat=Number(CFG.local_lat), lng=Number(CFG.local_lng);
+  return isFinite(lat)&&isFinite(lng)&&lat&&lng?{lat,lng}:{lat:-33.47,lng:-70.65};
+}
 function direccionCambio(){
-  clearTimeout(_geoTimer);
-  if(DELIV.punto&&DELIV.punto.fuente==='gps') return;   // el GPS manda hasta que se vuelva a pedir
+  clearTimeout(_sugTimer); clearTimeout(_geoTimer);
+  // Se cambió la dirección: el punto anterior ya no vale (salvo el GPS)
+  if(DELIV.punto&&DELIV.punto.fuente!=='gps'){ DELIV={punto:null,cot:null,estado:'idle',msg:''}; pintarQuote(); }
   const calle=sanitize(document.getElementById('pedidoCalle').value);
-  if(calle.length<5||!/\d/.test(calle)){ DELIV={punto:null,cot:null,estado:'idle',msg:''}; pintarQuote(); return; }
-  _geoTimer=setTimeout(geocodificarDireccion,900);
+  if(calle.length<3){ ocultarSugerencias(); return; }
+  _sugTimer=setTimeout(buscarSugerencias,250);
+}
+function comunaCambio(){
+  if(DELIV.punto&&DELIV.punto.fuente==='google-texto'){ DELIV={punto:null,cot:null,estado:'idle',msg:''}; pintarQuote(); }
 }
 let _gmapsP=null;
 function cargarGoogleMaps(){
   const key=String(CFG.google_maps_key||'').trim();
   if(!key) return Promise.reject(new Error('sin-key'));
-  if(window.google&&google.maps&&google.maps.Geocoder) return Promise.resolve();
+  if(window.google&&google.maps&&google.maps.importLibrary) return Promise.resolve();
   if(_gmapsP) return _gmapsP;
   _gmapsP=new Promise((res,rej)=>{
     window.__pqGmapsListo=()=>res();
     const sc=document.createElement('script');
-    sc.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__pqGmapsListo&loading=async&language=es&region=CL`;
+    sc.src=`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__pqGmapsListo&loading=async&language=es&region=CL&v=weekly`;
     sc.async=true; sc.onerror=()=>{ _gmapsP=null; rej(new Error('carga')); };
     document.head.appendChild(sc);
   });
   return _gmapsP;
 }
-const TIPOS_OK=['street_address','premise','subpremise','establishment','point_of_interest','route','intersection'];
+async function buscarSugerencias(){
+  const seq=++_sugSeq;
+  const calle=sanitize(document.getElementById('pedidoCalle').value);
+  const comuna=sanitize(document.getElementById('pedidoComuna').value);
+  if(_placesOk===false){ if(/\d/.test(calle)&&calle.length>=5) _geoTimer=setTimeout(()=>geocodificarDireccion(),700); return; }
+  try{
+    await cargarGoogleMaps();
+    const {AutocompleteSuggestion,AutocompleteSessionToken}=await google.maps.importLibrary('places');
+    if(!_sugToken) _sugToken=new AutocompleteSessionToken();
+    const {suggestions}=await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input:comuna?`${calle}, ${comuna}`:calle, sessionToken:_sugToken,
+      includedRegionCodes:['cl'], language:'es', region:'cl',
+      locationBias:{center:localLatLng(),radius:20000},
+    });
+    if(seq!==_sugSeq) return;
+    _placesOk=true;
+    _sugLista=(suggestions||[]).map(x=>x.placePrediction).filter(Boolean).slice(0,5);
+    pintarSugerencias();
+  }catch(e){
+    if(seq!==_sugSeq) return;
+    // Places no habilitado o sin key: se sigue con el Geocoder sobre lo escrito
+    if(e&&e.message!=='sin-key') console.warn('Places no disponible, uso Geocoder:',e);
+    _placesOk=false; ocultarSugerencias();
+    if(/\d/.test(calle)&&calle.length>=5) _geoTimer=setTimeout(()=>geocodificarDireccion(),700);
+    else if(e&&e.message==='sin-key'){ DELIV={punto:null,cot:null,estado:'sin-mapa',msg:''}; pintarQuote(); }
+  }
+}
+function pintarSugerencias(){
+  const el=document.getElementById('sugerencias');
+  if(!_sugLista.length){ ocultarSugerencias(); return; }
+  el.innerHTML=_sugLista.map((p,i)=>{
+    const main=p.mainText?p.mainText.toString():p.text.toString();
+    const sec=p.secondaryText?p.secondaryText.toString():'';
+    return `<button type="button" role="option" onmousedown="event.preventDefault()" onclick="elegirSugerencia(${i})">${esc(main)}${sec?`<small>${esc(sec)}</small>`:''}</button>`;
+  }).join('')+'<div class="g">Sugerencias de Google</div>';
+  el.classList.add('show');
+}
+function ocultarSugerencias(){ const el=document.getElementById('sugerencias'); if(el) el.classList.remove('show'); }
+function teclaSugerencias(ev){
+  const el=document.getElementById('sugerencias');
+  if(!el||!el.classList.contains('show')) return;
+  if(ev.key==='Escape'){ ocultarSugerencias(); return; }
+  if(ev.key==='Enter'){ ev.preventDefault(); elegirSugerencia(0); }
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); el.querySelector('button')?.focus(); }
+}
+function componente(comps,tipo){ const c=(comps||[]).find(x=>(x.types||[]).includes(tipo)); return c?(c.longText||c.long_name||''):''; }
+async function elegirSugerencia(i){
+  const pred=_sugLista[i]; if(!pred) return;
+  ocultarSugerencias(); clearTimeout(_geoTimer);
+  const seq=++_geoSeq;
+  DELIV={punto:null,cot:null,estado:'buscando',msg:''}; pintarQuote();
+  try{
+    const place=pred.toPlace();
+    await place.fetchFields({fields:['location','formattedAddress','addressComponents']});
+    _sugToken=null;   // la sesión de Google termina al elegir
+    if(seq!==_geoSeq) return;
+    const comps=place.addressComponents||[];
+    const numero=componente(comps,'street_number'), calle=componente(comps,'route');
+    const comuna=componente(comps,'administrative_area_level_3')||componente(comps,'locality');
+    const inp=document.getElementById('pedidoCalle');
+    inp.value=calle?`${calle}${numero?' '+numero:''}`:(pred.mainText?pred.mainText.toString():inp.value);
+    if(comuna) document.getElementById('pedidoComuna').value=comuna;
+    if(calle&&!numero){ DELIV={punto:null,cot:null,estado:'error',msg:'Falta el número de tu dirección. Escríbelo (ej: '+esc(calle)+' 1234) y elige de nuevo.'}; pintarQuote(); inp.focus(); return; }
+    await cotizarPunto({lat:place.location.lat(),lng:place.location.lng(),fuente:'google',texto:place.formattedAddress||inp.value},seq);
+  }catch(e){
+    console.warn('No se pudo leer la dirección elegida',e);
+    if(seq===_geoSeq) geocodificarDireccion();
+  }
+}
+// Respaldo: ubicar lo escrito (sin elegir sugerencia)
 async function geocodificarDireccion(){
   const seq=++_geoSeq;
   const calle=sanitize(document.getElementById('pedidoCalle').value);
   const comuna=sanitize(document.getElementById('pedidoComuna').value)||'Santiago';
+  if(!calle){ return; }
   DELIV={punto:null,cot:null,estado:'buscando',msg:''}; pintarQuote();
   try{
     await cargarGoogleMaps();
-    const {results}=await new google.maps.Geocoder().geocode({address:`${calle}, ${comuna}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}});
+    const {Geocoder}=await google.maps.importLibrary('geocoding');
+    const {results}=await new Geocoder().geocode({address:`${calle}, ${comuna}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}});
     if(seq!==_geoSeq) return;
     const r=(results||[]).find(x=>(x.types||[]).some(t=>TIPOS_OK.includes(t)));
     if(!r){ DELIV={punto:null,cot:null,estado:'error',msg:'No encontramos esa dirección exacta. Revisa calle, número y comuna, o usa tu ubicación actual.'}; pintarQuote(); return; }
-    await cotizarPunto({lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),fuente:'google',texto:r.formatted_address},seq);
+    await cotizarPunto({lat:r.geometry.location.lat(),lng:r.geometry.location.lng(),fuente:'google-texto',texto:r.formatted_address},seq);
   }catch(e){
     if(seq!==_geoSeq) return;
-    // Sin Google (sin key o sin conexión): el pedido sigue y el local confirma el delivery.
+    // Sin Google: el pedido sigue y el local calcula el delivery en el panel
     DELIV={punto:null,cot:null,estado:'sin-mapa',msg:''}; pintarQuote();
   }
 }
+const TIPOS_OK=['street_address','premise','subpremise','establishment','point_of_interest','route','intersection'];
 async function cotizarPunto(punto,seq){
   const {data,error}=await supa.rpc('cotizar_delivery',{p_lat:punto.lat,p_lng:punto.lng});
   if(seq!=null&&seq!==_geoSeq) return;
@@ -1255,7 +1350,7 @@ function pintarQuote(){
   const d=DELIV; let cls='quote', html='';
   if(d.estado==='buscando'){ html='Buscando tu dirección…'; }
   else if(d.estado==='error'){ cls+=' warn'; html=d.msg; }
-  else if(d.estado==='sin-mapa'){ cls+=' warn'; html='Te confirmamos el valor del delivery por WhatsApp.'; }
+  else if(d.estado==='sin-mapa'){ cls+=' warn'; html='Calculamos tu delivery por distancia y te lo confirmamos junto con el total por WhatsApp.'; }
   else if(d.estado==='ok'&&d.cot){
     const lugar=d.punto.fuente==='gps'?'Tu ubicación actual':`📍 ${esc(d.punto.texto)}`;
     if(d.cot.zona==='delivery'){ cls+=' ok'; html=`${lugar}<br>A <b>${kmTxt(d.cot.km)} km</b> del local · Delivery <b>${money(d.cot.precio)}</b>`; }
@@ -1301,6 +1396,10 @@ async function enviarPedido(){
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
   if(ENTREGA==='delivery'&&!calle&&!DELIV.punto){ toast('Escribe tu dirección o usa tu ubicación actual',true); return; }
   if(ENTREGA==='delivery'&&DELIV.estado==='buscando'){ toast('Un momento, estamos calculando el delivery…'); return; }
+  if(ENTREGA==='delivery'&&!DELIV.punto&&calle&&DELIV.estado!=='sin-mapa'&&DELIV.estado!=='error'){
+    ocultarSugerencias(); await geocodificarDireccion();
+    if(DELIV.estado==='ok'){ toast('Revisa el delivery calculado y vuelve a tocar Enviar'); return; }
+  }
   const btn=document.getElementById('btnEnviarPedido');
   btn.disabled=true; btn.textContent='Enviando…';
   try{
@@ -1316,13 +1415,15 @@ async function enviarPedido(){
     if(error||!r||!r.id){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
     if(ref) olvidarRef();
     document.getElementById('successOrderNum').textContent='#'+String(r.id).padStart(4,'0');
-    const delTxt=r.tipo==='retiro'?'Retiro en tienda':r.delivery==null?'Por coordinar':Number(r.delivery)===0?'<span class="gratis">Gratis 🎁</span>':money(r.delivery);
+    const lejos=r.tipo==='coordinar'&&r.km!=null;
+    const delTxt=r.tipo==='retiro'?'Retiro en tienda':Number(r.delivery)===0&&r.delivery!=null?'<span class="gratis">Gratis 🎁</span>':r.delivery==null?(lejos?'Por coordinar':'Según distancia'):money(r.delivery);
     document.getElementById('successResumen').innerHTML=`<div><span>Productos</span><span class="num">${money(r.subtotal)}</span></div>
       <div><span>Delivery</span><span class="num">${delTxt}</span></div>
       <div class="tot"><span>Total estimado</span><span class="num">${money(r.total)}</span></div>`;
     const msgs=[];
     if(r.mensaje) msgs.push(esc(r.mensaje));
-    if(r.tipo==='coordinar'){ const wa=waLink(`Hola! Hice el pedido #${r.id} y quiero coordinar el despacho`); msgs.push(`Coordinamos contigo por WhatsApp el día de despacho${wa?` · <a href="${wa}" target="_blank" rel="noopener">Escribir ahora</a>`:''}.`); }
+    if(lejos){ const wa=waLink(`Hola! Hice el pedido #${r.id} y quiero coordinar el despacho`); msgs.push(`Coordinamos contigo por WhatsApp el día de despacho${wa?` · <a href="${wa}" target="_blank" rel="noopener">Escribir ahora</a>`:''}.`); }
+    else if(r.tipo==='coordinar'&&r.delivery==null) msgs.push('Calculamos tu delivery por distancia y te lo confirmamos junto con el total.');
     const sm=document.getElementById('successMsg');
     sm.innerHTML=msgs.join('<br>'); sm.style.display=msgs.length?'':'none';
     sm.className='quote'+(r.beneficio?' ok':'');

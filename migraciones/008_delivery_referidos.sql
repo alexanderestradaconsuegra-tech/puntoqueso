@@ -303,7 +303,9 @@ begin
         insert into referidos (codigo, referente_tel, referido_tel, referido_nombre, pedido_id)
         values (v_ref, v_refe, v_tn, v_nombre, v_id);
         v_ref_ok := true;
-        if v_tipo = 'delivery' and v_costo > 0 then
+        if (v_tipo = 'delivery' and v_costo > 0) or (v_entrega = 'delivery' and v_km is null) then
+          -- (si la tienda no pudo ubicar la dirección, el local calcula la
+          --  distancia en el panel, pero el delivery ya queda gratis)
           v_costo := 0; v_benef := 'referido';
           v_msg := '¡Delivery gratis por invitación!';
         else

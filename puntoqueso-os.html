@@ -2396,6 +2396,12 @@ async function abrirPedidoDetalle(id){
   const p=(pf&&pf[0])||pedidoPorId(id);
   if(!p) return;
   recordarPedidos([p]);
+  // Delivery sin monto y con dirección: se calcula solo (una vez por pedido)
+  if(pedidoNecesitaDelivery(p)&&CONFIG_CACHE.google_maps_key&&!_deliveryIntentado.has(p.id)){
+    _deliveryIntentado.add(p.id);
+    const calc=await calcularDeliveryPedido(p.id,{silencioso:true});
+    if(calc){ renderPedidos(); return abrirPedidoDetalle(p.id); }
+  }
   const enCache=DB.pedidos.findIndex(x=>x.id===p.id);
   if(enCache>=0) DB.pedidos[enCache]=p;
   const {data:items,error}=await supa.from('pedido_items').select('*').eq('pedido_id',id).order('id');
@@ -2456,6 +2462,7 @@ async function abrirPedidoDetalle(id){
         <div style="font-size:13.5px;font-weight:600;">Delivery${p.distancia_km!=null?` · ${fmtKm(p.distancia_km)}`:''}</div>
         <div style="font-size:11.5px;color:var(--muted);">${p.beneficio_delivery==='referido'?'Gratis por invitación 🎁':p.beneficio_delivery==='premio'?'Gratis: premio por invitar 🎁':p.tipo_entrega==='coordinar'?'Fuera de zona o sin ubicación: coordina y escribe el monto':p.tipo_entrega?'Calculado por distancia':'Escribe el monto si corresponde'}${p.referido_codigo?` · código ${escapeHtml(p.referido_codigo)}`:''}</div>
         ${p.lat!=null&&p.lng!=null?`<a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener" style="font-size:12px;font-weight:700;color:var(--brand-dark);">Ver ubicación en el mapa</a>`:''}
+        ${editable&&!p.beneficio_delivery&&p.direccion_calle?`<button type="button" class="btn secondary" style="padding:5px 9px;font-size:11.5px;margin-top:4px;display:block;" onclick="calcularDeliveryDesdeDetalle(${p.id})">${p.costo_delivery==null?'Calcular delivery con Google':'Recalcular por distancia'}</button>`:''}
       </div>
       <div style="display:flex;align-items:center;gap:4px;width:110px;">
         <span style="font-size:12px;color:var(--muted);">$</span>
@@ -2715,7 +2722,10 @@ function etiquetaEntrega(p){
   const km=p.distancia_km!=null?` · ${fmtKm(p.distancia_km)}`:'';
   if(p.beneficio_delivery==='referido') return `Delivery gratis (invitación)${km}`;
   if(p.beneficio_delivery==='premio') return `Delivery gratis (premio)${km}`;
-  if(p.tipo_entrega==='coordinar') return p.costo_delivery!=null?`Delivery ${money(p.costo_delivery)} (coordinado)${km}`:`Delivery por coordinar${km}`;
+  if(p.tipo_entrega==='coordinar'){
+    if(p.costo_delivery!=null) return `Delivery ${money(p.costo_delivery)} (coordinado)${km}`;
+    return p.distancia_km!=null?`Delivery por coordinar${km}`:'Delivery por calcular';
+  }
   return `Delivery ${money(costoDelivery(p))}${km}`;
 }
 function lineaDeliveryMensaje(p){
@@ -2725,6 +2735,59 @@ function lineaDeliveryMensaje(p){
   if(p.beneficio_delivery==='premio') return 'Delivery: GRATIS 🎁 (ganado por invitar)';
   if(p.costo_delivery==null) return 'Delivery: por coordinar';
   return `Delivery: ${money(costoDelivery(p))}`;
+}
+
+// Pedido con delivery sin monto: se calcula por distancia antes de cobrar.
+function pedidoNecesitaDelivery(p){
+  return !!p&&p.tipo_entrega!=='retiro'&&p.costo_delivery==null&&p.estado!=='anulado'&&!pedidoFacturado(p)
+    &&(!!p.direccion_calle||p.lat!=null);
+}
+const _deliveryIntentado=new Set();
+async function calcularDeliveryPedido(id,{silencioso=false}={}){
+  const avisar=(m,err)=>{ if(!silencioso||err) toast(m,!!err); };
+  const {data:pf,error}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
+  const p=pf&&pf[0];
+  if(error||!p){ avisar('No se pudo leer el pedido',true); return null; }
+  if(p.tipo_entrega==='retiro'){ avisar('Este pedido es retiro en tienda'); return p; }
+  let lat=p.lat, lng=p.lng, dirGoogle='';
+  if(lat==null||lng==null){
+    const key=String(CONFIG_CACHE.google_maps_key||'').trim();
+    if(!key){ avisar('Falta la API Key de Google en Configuración → Delivery por distancia',true); return null; }
+    if(!p.direccion_calle){ avisar('El pedido no tiene dirección',true); return null; }
+    try{
+      await cargarGoogleMaps(key);
+      const {Geocoder}=await google.maps.importLibrary('geocoding');
+      const {results}=await new Geocoder().geocode({address:`${p.direccion_calle}, ${p.direccion_comuna||'Santiago'}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}});
+      const r=(results||[]).find(x=>(x.types||[]).some(t=>['street_address','premise','subpremise','establishment','point_of_interest','route','intersection'].includes(t)));
+      if(!r){ avisar(`Google no encontró "${p.direccion_calle}". Escribe el delivery a mano.`,true); return null; }
+      lat=r.geometry.location.lat(); lng=r.geometry.location.lng(); dirGoogle=r.formatted_address;
+    }catch(e){ console.error(e); avisar('Google Maps no respondió: '+(e.message||e)+'. Revisa la API Key o escribe el delivery a mano.',true); return null; }
+  }
+  const {data:cot,error:cErr}=await supa.rpc('cotizar_delivery',{p_lat:lat,p_lng:lng});
+  if(cErr||!cot){ avisar('No se pudo calcular el delivery: '+(cErr?.message||''),true); return null; }
+  if(cot.zona!=='delivery'){
+    await supa.from('pedidos').update({lat,lng,distancia_km:cot.km,tipo_entrega:'coordinar'}).eq('id',id);
+    avisar(cot.km!=null?`A ${fmtKm(cot.km)}: fuera de la zona de delivery. Coordina con el cliente y escribe el monto.`:'Falta la ubicación del local en Configuración → Delivery por distancia.',true);
+    return null;
+  }
+  const {data:items}=await supa.from('pedido_items').select('subtotal').eq('pedido_id',id);
+  const sub=(items||[]).reduce((a,it)=>a+(Number(it.subtotal)||0),0);
+  const total=sub+Number(cot.precio);
+  const patch={lat,lng,distancia_km:cot.km,tipo_entrega:'delivery',costo_delivery:Number(cot.precio),total};
+  if(p.total_original==null&&Math.abs(total-Number(p.total))>=0.5) patch.total_original=Number(p.total);
+  if(Math.abs(total-Number(p.total))>=0.5&&p.mp_link){ patch.mp_link=null; patch.mp_preference_id=null; }
+  const {data:up,error:uErr}=await supa.from('pedidos').update(patch).eq('id',id).select('*');
+  if(uErr||!up||!up.length){ avisar('No se pudo guardar el delivery: '+(uErr?.message||''),true); return null; }
+  logAudit('Delivery calculado','pedidos',`Pedido #${id}: ${fmtKm(cot.km)} → ${money(cot.precio)}${dirGoogle?` (${dirGoogle})`:''}`);
+  avisar(`Delivery calculado: ${fmtKm(cot.km)} → ${money(cot.precio)}`);
+  recordarPedidos(up);
+  const i=DB.pedidos.findIndex(x=>x.id===id); if(i>=0) DB.pedidos[i]=up[0];
+  return up[0];
+}
+async function calcularDeliveryDesdeDetalle(id){
+  const r=await calcularDeliveryPedido(id);
+  if(r){ await loadAll(); renderPedidos(); }
+  abrirPedidoDetalle(id);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2847,7 +2910,7 @@ function actualizarLinkMapaLocal(){
 }
 let _gmapsPromise=null;
 function cargarGoogleMaps(key){
-  if(window.google&&google.maps&&google.maps.Geocoder) return Promise.resolve();
+  if(window.google&&google.maps&&google.maps.importLibrary) return Promise.resolve();
   if(_gmapsPromise) return _gmapsPromise;
   _gmapsPromise=new Promise((res,rej)=>{
     window.__pqGmapsListo=()=>res();
@@ -2865,7 +2928,8 @@ async function ubicarLocalGoogle(){
   if(!dir){ toast('Completa la dirección del negocio (en Datos del negocio)',true); return; }
   try{
     await cargarGoogleMaps(key);
-    const {results}=await new google.maps.Geocoder().geocode({address:dir+', Chile',region:'CL'});
+    const {Geocoder}=await google.maps.importLibrary('geocoding');
+    const {results}=await new Geocoder().geocode({address:dir+', Chile',region:'CL'});
     const r=results&&results[0];
     if(!r){ toast('Google no encontró esa dirección',true); return; }
     document.getElementById('cfgLocalLat').value=r.geometry.location.lat().toFixed(6);
@@ -2938,8 +3002,14 @@ function whatsappConfigurado(){
 async function enviarBoletaYLinkPago(id){
   const token=CONFIG_CACHE.mercadopago_access_token;
   if(!token){ toast('Configura tu Access Token de Mercado Pago en Configuración primero',true); return; }
-  const p=pedidoPorId(id);
+  let p=pedidoPorId(id);
   if(!p) return;
+  // La boleta no sale sin delivery: si falta, se calcula por distancia ahora.
+  if(pedidoNecesitaDelivery(p)){
+    const calc=await calcularDeliveryPedido(id,{silencioso:true});
+    if(calc) p=calc;
+    else if(!confirm('Este pedido no tiene el delivery definido (no se pudo calcular).\n\n¿Enviar la boleta SIN delivery? Si no, cancela y escribe el monto en el pedido.')) return;
+  }
   if(!(Number(p.total)>0)){ toast('El pedido no tiene monto que cobrar',true); return; }
   // Invariante anti-link-obsoleto: la boleta SIEMPRE se envía con una
   // preferencia recién creada por el total actual. Guardar pesos ya borra el
