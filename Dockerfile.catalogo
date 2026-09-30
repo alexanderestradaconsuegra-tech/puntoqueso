@@ -10,4 +10,6 @@ COPY favicon.ico /usr/share/nginx/html/favicon.ico
 COPY logo.png /usr/share/nginx/html/logo.png
 COPY hero-quesos.webp /usr/share/nginx/html/hero-quesos.webp
 COPY fiambres-quesos.webp /usr/share/nginx/html/fiambres-quesos.webp
+COPY hero-arepa.webp /usr/share/nginx/html/hero-arepa.webp
+COPY llanero-campolac.webp /usr/share/nginx/html/llanero-campolac.webp
 EXPOSE 80
