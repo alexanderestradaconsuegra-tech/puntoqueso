@@ -296,15 +296,40 @@ button{cursor:pointer;}
 .faq details p{padding:0 18px 16px;color:var(--text2);max-width:70ch;}
 
 /* ── FOOTER ── */
-footer.foot{margin-top:44px;background:var(--yellow);color:var(--ink);padding:30px 0 110px;}
-.foot-top{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
-.foot-top img{width:56px;height:56px;border-radius:14px;}
-.foot-name{font-family:var(--disp);font-size:26px;line-height:1;}
-.foot-info{display:flex;flex-wrap:wrap;gap:10px 18px;font-size:14px;font-weight:600;}
-.foot-info a,.foot-info .fi-row{display:flex;align-items:center;gap:7px;color:var(--ink);text-decoration:none;}
-.pwa-cta{margin-top:18px;padding:14px 16px;border-radius:var(--r);background:rgba(255,255,255,.55);font-size:13px;line-height:1.5;}
-.pwa-cta strong{display:block;font-size:14px;margin-bottom:2px;}
-.foot-copy{margin-top:18px;font-size:12px;font-weight:600;opacity:.7;}
+footer.foot{margin-top:56px;background:#11100e;color:#fff;padding:52px 0 120px;position:relative;overflow:hidden;}
+footer.foot::before{content:'';position:absolute;right:-120px;top:-140px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,209,0,.16),rgba(255,209,0,0) 70%);pointer-events:none;}
+.foot-grid{display:grid;gap:28px;position:relative;}
+.foot-logo{width:64px;height:64px;object-fit:contain;display:block;margin-bottom:18px;}
+.foot-eyebrow{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:700;margin-bottom:10px;}
+.foot-h{font-family:var(--disp);font-size:34px;line-height:1.05;margin:0 0 12px;color:#fff;text-transform:none;}
+.foot-h span{color:var(--yellow);}
+.foot-p{font-size:14.5px;line-height:1.6;color:rgba(255,255,255,.68);max-width:44ch;margin:0;}
+.foot-cards{display:grid;grid-template-columns:1fr;gap:10px;}
+.fcard{display:flex;align-items:center;gap:12px;min-height:66px;padding:12px 14px;border-radius:18px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.035);color:#fff;text-decoration:none;font:inherit;text-align:left;width:100%;cursor:pointer;transition:border-color .2s,transform .2s,background .2s;}
+.fcard:hover,.fcard:focus-visible{border-color:var(--yellow);background:rgba(255,209,0,.06);transform:translateY(-2px);outline:none;}
+.fcard-ic{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s,color .2s;}
+.fcard:hover .fcard-ic,.fcard:focus-visible .fcard-ic{background:var(--yellow);color:var(--ink);}
+.fcard-ic svg{width:20px;height:20px;}
+.fcard-txt{flex:1;min-width:0;}
+.fcard-txt b{display:block;font-size:15px;font-weight:800;}
+.fcard-txt small{display:block;font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fcard-pill{font-size:11px;font-weight:700;padding:5px 10px;border-radius:99px;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);white-space:nowrap;}
+.fcard.dest{border-color:rgba(255,209,0,.45);}
+.fcard.dest .fcard-pill{background:var(--yellow);border-color:var(--yellow);color:var(--ink);}
+.foot-bottom{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;font-size:12.5px;color:rgba(255,255,255,.5);position:relative;}
+.foot-credit{display:inline-flex;align-items:center;gap:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid rgba(255,255,255,.12);transition:border-color .2s,color .2s;}
+.foot-credit:hover,.foot-credit:focus-visible{border-color:var(--yellow);color:#fff;outline:none;}
+.foot-credit .ae{width:26px;height:26px;border-radius:50%;background:var(--yellow);color:var(--ink);font-weight:900;font-size:11px;letter-spacing:.02em;display:flex;align-items:center;justify-content:center;}
+.foot-credit b{color:#fff;font-weight:800;}
+.inst-steps{display:grid;gap:10px;margin:6px 0 4px;}
+.inst-steps div{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--cream);border:1px solid var(--line);font-size:14px;}
+.inst-steps i{font-style:normal;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--yellow);display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;}
+@media(min-width:720px){
+  .foot-grid{grid-template-columns:minmax(0,.9fr) minmax(0,1.4fr);gap:48px;align-items:center;}
+  .foot-cards{grid-template-columns:repeat(2,1fr);}
+  .foot-h{font-size:44px;}
+}
+.foot-grid>*{min-width:0;}
 
 /* ── BARRA INFERIOR: "Comenzar pedido" / carrito ── */
 .bottom-cta{position:fixed;left:0;right:0;bottom:0;z-index:60;padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:flex;justify-content:center;pointer-events:none;}
@@ -535,20 +560,32 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 
 <footer class="foot" id="contacto">
   <div class="wrap">
-    <div class="foot-top">
-      <img src="logo-pq-v2.png" alt="" width="56" height="56">
-      <div class="foot-name" id="footerName">Punto Queso</div>
+    <div class="foot-grid">
+      <div>
+        <img class="foot-logo" src="logo-pq-v2.png" alt="Punto Queso" width="64" height="64" loading="lazy">
+        <div class="foot-eyebrow">Conectemos</div>
+        <h2 class="foot-h">Queso fresco, <span>a un mensaje</span> de distancia.</h2>
+        <p class="foot-p">Pide por la web, escríbenos por WhatsApp o pasa a vernos en Arturo Prat 2045, Santiago. Te respondemos rápido.</p>
+      </div>
+      <div class="foot-cards" id="footCards"></div>
     </div>
-    <div class="addr"><svg class="ic" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <a href="https://www.google.com/maps/search/?api=1&query=Punto+Queso+Arturo+Prat+2045+Santiago" target="_blank" rel="noopener">Punto Queso · Arturo Prat 2045, Santiago</a></div>
-    <div class="foot-info" id="footerInfo"></div>
-    <div class="pwa-cta">
-      <strong>Tenlo a un toque</strong>
-      Android: menú (⋮) → "Instalar app". iPhone: compartir (□↑) → "Agregar a inicio".
+    <div class="foot-bottom">
+      <span id="footCopy">© Punto Queso</span>
+      <a class="foot-credit" href="https://alexanderestrada.com/?utm_source=puntoqueso&amp;utm_medium=footer&amp;utm_campaign=credito" target="_blank" rel="noopener" aria-label="Sitio desarrollado por Alexander Estrada (abre alexanderestrada.com)">
+        <span class="ae" aria-hidden="true">AE</span><span>Diseño y desarrollo por <b>Alexander Estrada</b></span>
+        <svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+      </a>
     </div>
-    <div class="foot-copy" id="footCopy">© Punto Queso</div>
   </div>
 </footer>
+<div class="overlay" id="installOverlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="sheet" role="dialog" aria-label="Instalar la app">
+    <div class="sheet-head"><h2>Instala la app</h2>
+      <button class="sheet-close" onclick="document.getElementById('installOverlay').classList.remove('open')" aria-label="Cerrar"><svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="sheet-body" id="installBody"></div>
+  </div>
+</div>
 
 <div class="bottom-cta">
   <button id="btnComenzar" onclick="document.getElementById('menu').scrollIntoView({behavior:'smooth'})">
@@ -785,7 +822,6 @@ if(DOMINIO_VE){
   document.getElementById('storyH2').textContent='Somos Punto Queso';
   document.getElementById('storyP').textContent='En Punto Queso nos enorgullece ofrecer una amplia variedad de quesos elaborados por Campolac, de la mano de artesanos apasionados y comprometidos con la tradición quesera. Llanero, de mano, palmita, guayanés, trenza y más: los elegimos con cuidado, los pesamos al momento y los llevamos a tu puerta con la cadena de frío intacta.';
   document.getElementById('storyLinkFull').style.display='block';
-  document.getElementById('footCopy').textContent='© Punto Queso · Quesos venezolanos en Santiago';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -815,15 +851,51 @@ async function cargarConfig(){
     data.forEach(r=>CFG[r.clave]=r.valor);
     const dir=sanitize(CFG.negocio_direccion), tel=sanitize(CFG.negocio_telefono);
     const ig=sanitize(CFG.negocio_instagram).replace(/^@/,''), tt=sanitize(CFG.negocio_tiktok).replace(/^@/,'');
-    const wa=numeroWhatsApp();
-    const rows=[];
-    if(dir&&!/arturo prat/i.test(dir)) rows.push(`<a class="fi-row" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dir)}" target="_blank" rel="noopener"><svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${esc(dir)}</a>`);
-    if(wa) rows.push(`<a class="fi-row" href="https://wa.me/${wa}" target="_blank" rel="noopener"><svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>WhatsApp</a>`);
-    else if(tel) rows.push(`<a class="fi-row" href="tel:${esc(tel.replace(/\s+/g,''))}">${esc(tel)}</a>`);
-    if(ig) rows.push(`<a class="fi-row" href="https://instagram.com/${encodeURIComponent(ig)}" target="_blank" rel="noopener"><svg class="ic ic-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/></svg>@${esc(ig)}</a>`);
-    if(tt) rows.push(`<a class="fi-row" href="https://tiktok.com/@${encodeURIComponent(tt)}" target="_blank" rel="noopener">TikTok @${esc(tt)}</a>`);
-    document.getElementById('footerInfo').innerHTML=rows.join('');
+    pintarFooter({dir,tel,ig,tt,wa:numeroWhatsApp()});
   }catch(e){ /* decorativo: si falla no rompe el pedido */ }
+}
+// ── Pie de página: tarjetas de contacto que funcionan al tocarlas ──
+const FIC={
+  wa:'<svg class="ic" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z"/></svg>',
+  ig:'<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6"/></svg>',
+  tt:'<svg class="ic" viewBox="0 0 24 24"><path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.4 2.6 2.2 4.4 5 4.6"/></svg>',
+  map:'<svg class="ic" viewBox="0 0 24 24"><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  app:'<svg class="ic" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M12 8v6M9 11l3 3 3-3"/></svg>',
+  cart:'<svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 2-1.6L21 7H6"/></svg>',
+  tel:'<svg class="ic" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
+};
+function fcard({href,onclick,ic,titulo,sub,pill,dest}){
+  const inner=`<span class="fcard-ic">${FIC[ic]}</span><span class="fcard-txt"><b>${esc(titulo)}</b>${sub?`<small>${esc(sub)}</small>`:''}</span><span class="fcard-pill">${esc(pill)}</span>`;
+  return href?`<a class="fcard${dest?' dest':''}" href="${href}" target="_blank" rel="noopener">${inner}</a>`
+             :`<button type="button" class="fcard${dest?' dest':''}" onclick="${onclick}">${inner}</button>`;
+}
+function pintarFooter(d={}){
+  const cards=[];
+  cards.push(fcard({onclick:"accionSlide('menu')",ic:'cart',titulo:'Hacer mi pedido',sub:'Delivery hasta 7 km',pill:'Pedir',dest:true}));
+  if(d.wa) cards.push(fcard({href:`https://wa.me/${d.wa}?text=${encodeURIComponent('Hola Punto Queso! 🧀')}`,ic:'wa',titulo:'WhatsApp',sub:'Respuesta rápida',pill:'Escribir'}));
+  else if(d.tel) cards.push(fcard({href:`tel:${d.tel.replace(/\s+/g,'')}`,ic:'tel',titulo:'Llámanos',sub:d.tel,pill:'Llamar'}));
+  if(d.ig) cards.push(fcard({href:`https://instagram.com/${encodeURIComponent(d.ig)}`,ic:'ig',titulo:'Instagram',sub:'@'+d.ig,pill:'Seguir'}));
+  if(d.tt) cards.push(fcard({href:`https://tiktok.com/@${encodeURIComponent(d.tt)}`,ic:'tt',titulo:'TikTok',sub:'@'+d.tt,pill:'Seguir'}));
+  const dir=d.dir&&!/arturo prat/i.test(d.dir)?d.dir:'Arturo Prat 2045, Santiago';
+  cards.push(fcard({href:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('Punto Queso '+dir)}`,ic:'map',titulo:'Visítanos',sub:dir,pill:'Cómo llegar'}));
+  if(!appInstalada()) cards.push(fcard({onclick:'instalarApp()',ic:'app',titulo:'App Punto Queso',sub:'Pide en 2 toques',pill:'Instalar'}));
+  document.getElementById('footCards').innerHTML=cards.join('');
+}
+// ── Instalar como app (PWA) ──
+let _instalarEvt=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _instalarEvt=e; });
+window.addEventListener('appinstalled',()=>{ _instalarEvt=null; toast('¡Listo! Punto Queso quedó en tu inicio'); pintarFooter(_footData()); });
+function appInstalada(){ return window.matchMedia&&matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }
+function _footData(){ return {dir:sanitize(CFG.negocio_direccion),tel:sanitize(CFG.negocio_telefono),ig:sanitize(CFG.negocio_instagram).replace(/^@/,''),tt:sanitize(CFG.negocio_tiktok).replace(/^@/,''),wa:numeroWhatsApp()}; }
+async function instalarApp(){
+  if(_instalarEvt){ _instalarEvt.prompt(); try{ await _instalarEvt.userChoice; }catch(e){} _instalarEvt=null; return; }
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  const pasos=ios
+    ?[['1','Toca <b>Compartir</b> (el cuadrado con la flecha ↑) abajo en Safari'],['2','Elige <b>Agregar a inicio</b>'],['3','Toca <b>Agregar</b>: el ícono de Punto Queso queda en tu pantalla']]
+    :[['1','Abre el menú <b>⋮</b> de tu navegador'],['2','Toca <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>'],['3','Confirma: el ícono de Punto Queso queda en tu pantalla']];
+  document.getElementById('installBody').innerHTML=`<p style="margin:0 0 12px;color:var(--text2);">Tu pedido a un toque, sin buscar la página cada vez.</p>
+    <div class="inst-steps">${pasos.map(([n,t])=>`<div><i>${n}</i><span>${t}</span></div>`).join('')}</div>`;
+  document.getElementById('installOverlay').classList.add('open');
 }
 function numeroWhatsApp(){
   const n=String(CFG.whatsapp||CFG.negocio_telefono||'').replace(/\D/g,'');
@@ -1492,6 +1564,8 @@ document.querySelector('#nosotros .splash-path').setAttribute('d',splashPath(100
 renderCarrusel();
 leerRefUrl();
 pintarRef();
+pintarFooter({});
+document.getElementById('footCopy').textContent=`© ${new Date().getFullYear()} Punto Queso${DOMINIO_VE?' · Quesos venezolanos en Santiago':''}`;
 cargarProductos();
 cargarConfig().then(()=>{ pintarTramos(); pintarRef(); });
 
