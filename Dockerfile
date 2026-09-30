@@ -8,6 +8,6 @@ COPY icon-180.png /usr/share/nginx/html/icon-180.png
 COPY favicon.png /usr/share/nginx/html/favicon.png
 COPY favicon.ico /usr/share/nginx/html/favicon.ico
 COPY logo.png /usr/share/nginx/html/logo.png
-COPY logo-pq.png /usr/share/nginx/html/logo-pq.png
+COPY logo-pq-v2.png /usr/share/nginx/html/logo-pq-v2.png
 COPY favicon-pq.png /usr/share/nginx/html/favicon-pq.png
 EXPOSE 80
