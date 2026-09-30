@@ -50,6 +50,8 @@ alter table productos add column if not exists precio_mayor numeric;
 -- favorito: aparece primero en la Terminal de ventas.
 alter table productos add column if not exists en_catalogo boolean not null default false;
 alter table productos add column if not exists favorito boolean not null default false;
+-- orden: posición elegida por el dueño (1 primero); null = después, por nombre (migraciones/007).
+alter table productos add column if not exists orden int;
 
 -- ── clientes ──
 create table if not exists clientes (

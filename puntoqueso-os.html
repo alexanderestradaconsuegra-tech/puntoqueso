@@ -140,6 +140,7 @@ tr:last-child td{border-bottom:none;}
 /* costo editable directo en la fila de Productos (carga rápida de costos) */
 .costo-inline{width:92px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;
   font-size:13px;font-weight:600;text-align:right;background:#fff;color:var(--text);}
+.orden-inline{width:58px;text-align:center;}
 .costo-inline:disabled{background:var(--mint);color:var(--muted);}
 .pos-prod .pp-mayor{font-size:11px;font-weight:700;color:var(--text2);background:var(--mint);border:1px solid var(--border2);border-radius:99px;padding:1px 7px;display:inline-block;margin-top:3px;}
 .pos-prod .pp-stock{font-size:11px;color:var(--muted);margin-top:3px;}
@@ -637,7 +638,7 @@ tr:last-child td{border-bottom:none;}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th title="1 sale primero en la Terminal y en la tienda web. Vacío = después, por nombre">Orden</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
       </div>
@@ -1509,7 +1510,8 @@ function renderPosProductos(filter=''){
     +(buscando?'<span class="sub-xs" style="align-self:center;">Buscando en todos los productos</span>':'');
   const rows=DB.productos
     .filter(p=>!enFav||p.favorito)
-    .filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()));
+    .filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()))
+    .sort(compararOrden);
   const vacio=enFav
     ? `<p class="empty">Aún no hay favoritos. Márcalos con la estrella en Productos${canDo('editarInventario')?` o <a href="#" onclick="marcarFavoritosMasVendidos();return false;">marca los más vendidos</a>`:''}.</p>`
     : '<p class="empty">Sin productos</p>';
@@ -2927,6 +2929,25 @@ function renderCatChipsProductos(){
     cats.map(c=>`<button type="button" class="cat-chip" data-cat="${escapeHtml(c)}" onclick="filtrarCategoriaProductos(${JSON.stringify(c).replace(/"/g,'&quot;')})">${escapeHtml(c)}</button>`).join('');
   cont.querySelectorAll('.cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.cat===PROD_CAT_FILTER));
 }
+// Orden elegido por el dueño: los que tienen posición primero (1, 2, 3…),
+// después el resto por nombre. Se usa en Productos y en la Terminal.
+function compararOrden(a,b){
+  const oa=a.orden==null?Infinity:Number(a.orden), ob=b.orden==null?Infinity:Number(b.orden);
+  return (oa-ob)||String(a.nombre||'').localeCompare(String(b.nombre||''),'es');
+}
+function ordenInput(p,editar){
+  return `<input class="costo-inline orden-inline num" type="number" step="1" min="1" placeholder="—" value="${p.orden??''}" ${editar?'':'disabled'} onchange="guardarOrdenProducto(${p.id},this.value)" title="Posición: 1 sale primero. Vacío = después, por nombre">`;
+}
+async function guardarOrdenProducto(id,valor){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  const pos=parseInt(valor,10);
+  const {error}=await supa.rpc('mover_producto',{p_id:id,p_pos:pos>0?pos:null});
+  if(error){ toast('Error al cambiar la posición: '+error.message,true); return; }
+  const p=DB.productos.find(x=>x.id===id);
+  logAudit('Posición cambiada','productos',`${p?.nombre||'#'+id} → ${pos>0?pos:'sin posición'}`);
+  toast(pos>0?`${p?.nombre||'Producto'} en la posición ${pos}`:`${p?.nombre||'Producto'} sin posición`);
+  await loadAll(); renderProductos(document.getElementById('prodBuscar')?.value||'');
+}
 function renderVisChipsProductos(){
   const cont=document.getElementById('prodVisChips');
   if(!cont) return;
@@ -3079,7 +3100,8 @@ function renderProductos(filter=''){
   const rows=DB.productos
     .filter(p=>(p.nombre||'').toLowerCase().includes((filter||'').toLowerCase()))
     .filter(p=>PROD_CAT_FILTER==='todos'||normalizarCategoria(p.categoria)===PROD_CAT_FILTER)
-    .filter(pasaFiltroVis);
+    .filter(pasaFiltroVis)
+    .sort(compararOrden);
   document.getElementById('productosBody').innerHTML=rows.map(p=>{
     const m=margenProducto(p);
     return `
@@ -3090,12 +3112,13 @@ function renderProductos(filter=''){
     ${verC?`<td class="num"><input class="costo-inline num" type="number" step="1" min="0" value="${Number(p.costo)||0}" ${editar?'':'disabled'} onchange="guardarCostoInline(${p.id},this.value)" title="Editar costo"></td>
     <td class="num">${m?`<span style="font-weight:700;color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}</span>${m.pct!==null?`<div class="sub-xs">${m.pct.toFixed(0)}%</div>`:''}`:'<span class="sub-xs">Sin costo</span>'}</td>`:''}
     <td class="num" style="font-weight:600;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</td>
+    <td>${ordenInput(p,editar)}</td>
     <td>${flagWebBtn(p,editar)}</td>
     <td>${flagFavBtn(p,editar)}</td>
     <td style="display:flex;gap:6px;">
       ${editar?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
-    </td></tr>`;}).join('')||`<tr><td colspan="${verC?11:9}" class="empty">Sin productos</td></tr>`;
+    </td></tr>`;}).join('')||`<tr><td colspan="${verC?12:10}" class="empty">Sin productos</td></tr>`;
 
   document.getElementById('productosCards').innerHTML=rows.map(p=>`
     <div class="lcard">
@@ -3106,7 +3129,7 @@ function renderProductos(filter=''){
           <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
           <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
           ${canDo('verCostos')?(()=>{const m=margenProducto(p);return `<div class="lc-meta">Costo: ${Number(p.costo)?money(p.costo):'—'}${m?` · Margen: <b style="color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}${m.pct!==null?` (${m.pct.toFixed(0)}%)`:''}</b>`:''}</div>`;})():''}
-          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span>${flagWebBtn(p,editar)}${flagFavBtn(p,editar)}</div>
+          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span>${flagWebBtn(p,editar)}${flagFavBtn(p,editar)}<label class="sub-xs" style="display:inline-flex;align-items:center;gap:4px;">Orden ${ordenInput(p,editar)}</label></div>
         </div>
         ${canDo('editarInventario')?`<div class="lc-actions">
           <button class="lc-more" onclick="openProductoModal(${p.id})"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>

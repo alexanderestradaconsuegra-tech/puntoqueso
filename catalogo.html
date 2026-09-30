@@ -746,14 +746,19 @@ if(DOMINIO_VE){
 //  CARGA
 // ══════════════════════════════════════════════════════════
 async function cargarProductos(){
-  const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,imagen_b64,descripcion,activo').eq('activo','true').order('nombre',{ascending:true});
+  const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,imagen_b64,descripcion,activo,orden').eq('activo','true').order('nombre',{ascending:true});
   if(error){
     document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo en un momento.</p>';
     document.getElementById('promoRow').innerHTML='';
     return;
   }
-  PRODUCTOS=data||[];
+  // Orden elegido en el panel (1 primero); los sin posición, por nombre.
+  PRODUCTOS=(data||[]).sort(compararOrden);
   renderTodo();
+}
+function ordenDe(p){ return p.orden==null?Infinity:Number(p.orden); }
+function compararOrden(a,b){
+  return (ordenDe(a)-ordenDe(b))||String(a.nombre||'').localeCompare(String(b.nombre||''),'es');
 }
 function renderTodo(){ publicarProductosSEO(); renderCarrusel(); renderCatBar(); renderPromos(); renderTiles(); renderGrid(); renderCartBar(); }
 
@@ -895,7 +900,8 @@ function accionSlide(a){
 //  DESTACADOS Y BLOQUES DE MENÚ
 // ══════════════════════════════════════════════════════════
 function renderPromos(){
-  let lista=PRODUCTOS.slice().sort((a,b)=>(!!b.imagen_b64-!!a.imagen_b64)||((ES_VE(b.categoria)-ES_VE(a.categoria))*(DOMINIO_VE?1:0))||(Number(b.precio)-Number(a.precio)));
+  // Primero los que el dueño ordenó; entre el resto, con foto y más caros primero.
+  let lista=PRODUCTOS.slice().sort((a,b)=>((ordenDe(a)-ordenDe(b))||0)||(!!b.imagen_b64-!!a.imagen_b64)||((ES_VE(b.categoria)-ES_VE(a.categoria))*(DOMINIO_VE?1:0))||(Number(b.precio)-Number(a.precio)));
   if(DOMINIO_VE&&productosVE().length) lista=lista.filter(p=>ES_VE(p.categoria)||ES_VE(p.nombre));
   lista=lista.slice(0,6);
   const row=document.getElementById('promoRow');
