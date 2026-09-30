@@ -103,7 +103,7 @@ button{cursor:pointer;}
 .hdr{position:sticky;top:0;z-index:50;background:var(--paper);border-bottom:1px solid var(--line);}
 .hdr-in{height:var(--hdr-h);display:flex;align-items:center;gap:16px;}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);min-width:0;}
-.brand img{width:44px;height:44px;border-radius:12px;flex-shrink:0;}
+.brand img{width:46px;height:46px;flex-shrink:0;object-fit:contain;}
 .brand-name{font-family:var(--disp);font-size:22px;line-height:1;white-space:nowrap;}
 .brand-name span{background:var(--yellow);color:var(--ink);padding:0 5px;border-radius:6px;margin-left:2px;}
 .brand-sub{font-size:11px;color:var(--muted);font-weight:600;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -754,8 +754,8 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-photo',foto:'fiambres-quesos',tag:'Todo en un pedido',titulo:'Tu mesa completa <em>sin salir de casa</em>',
    texto:'Suma quesos maduros, mortadela, salame y más. Lo pesamos al preparar y te confirmamos el total por WhatsApp antes de pagar.',
    cta:'Armar mi pedido',accion:'menu',pic:'ve2'},
-  {tema:'s-blanco',foto:'llanero-campolac',tag:'Areperas y restaurantes',titulo:'Más margen <em>en cada arepa</em>',
-   texto:'Precio por mayor en llanero, queso de mano y más. Stock constante y entrega directa a tu negocio. Cotiza en minutos.',
+  {tema:'s-photo',foto:'mayorista-camion',tag:'Areperas y restaurantes',titulo:'Más margen <em>en cada arepa</em>',
+   texto:'Precio por mayor en llanero, queso de mano y más. Stock constante y despacho refrigerado directo a tu negocio. Cotiza en minutos.',
    cta:'Cotizar por mayor',accion:'wa',pic:'logo'},
 ] : [
   {tema:'s-yellow',tag:'Punto Queso',titulo:'Quesos y fiambres <em>a tu puerta</em>',
@@ -764,8 +764,8 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-ink',tag:'Quesos venezolanos',titulo:'El sabor de casa, <em>hecho en Chile</em>',
    texto:'Llanero, de mano, palmita, guayanés, trenza y más, elaborados artesanalmente por Campolac.',
    cta:'Ver quesos venezolanos',accion:'ve',pic:'ve'},
-  {tema:'s-blanco',foto:'llanero-campolac',tag:'Para tu negocio',titulo:'Más margen <em>en cada venta</em>',
-   texto:'¿Arepera, restaurante o minimarket? Precio por mayor, stock constante y entrega directa. Cotiza en minutos.',
+  {tema:'s-photo',foto:'mayorista-camion',tag:'Para tu negocio',titulo:'Más margen <em>en cada venta</em>',
+   texto:'¿Arepera, restaurante o minimarket? Precio por mayor, stock constante y despacho refrigerado directo. Cotiza en minutos.',
    cta:'Cotizar por mayor',accion:'wa',pic:'logo'},
 ];
 
