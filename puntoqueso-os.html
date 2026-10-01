@@ -605,7 +605,10 @@ tr:last-child td{border-bottom:none;}
         </div>
         <label class="periodo-fecha">Fecha… <input type="date" id="filtroFechaVentas" onchange="setFechaVentas(this.value)"></label>
       </div>
-      <div class="periodo-resumen" id="ventasResumen"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;">
+        <div class="periodo-resumen" id="ventasResumen"></div>
+        <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="imprimirReporteVentas()">🖨️ Imprimir reporte</button>
+      </div>
       <div class="bulk-bar" id="bulkBarventas">
         <span class="bulk-count" id="bulkCountventas">0 seleccionadas</span>
         <button class="btn danger" style="padding:8px 12px;font-size:12.5px;" onclick="bulkAnularVentas()">Anular seleccionadas</button>
@@ -1853,7 +1856,7 @@ async function cobrar(){
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
-    estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario
+    estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
   }).select();
   if(error){ toast('Error al cobrar: '+error.message,true); return; }
   const venta=ventaIns[0];
@@ -2354,7 +2357,7 @@ async function confirmarFacturarPedido(id){
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,
     ...montosPorMedio(metodo,Number(p.total)||0,null),
-    estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario
+    estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
   }).select();
   if(error){ toast('Error: '+error.message,true); console.error(error); return; }
   const venta=ventaIns[0];
@@ -4603,6 +4606,8 @@ async function exportarReporteExcel(){
 //  Conteo ciego: el cajero escribe lo que cuenta sin ver el esperado.
 // ══════════════════════════════════════════════════════════
 let CAJA_HOY=null;
+// Turnos del día (uno por cajero; solo uno abierto a la vez: hay un solo cajón)
+let CAJA_TURNOS=[], TURNO_ACTUAL=null;
 const DENOMINACIONES=[20000,10000,5000,2000,1000,500,100,50,10];
 
 async function cargarCajaHoy(){
@@ -4611,8 +4616,17 @@ async function cargarCajaHoy(){
   CAJA_HOY=(data||[])[0]||null;
   // fila vieja (del cierre anterior a este módulo) sin apertura registrada: no cuenta como caja abierta
   if(CAJA_HOY&&!CAJA_HOY.abierta_at) CAJA_HOY=null;
+  CAJA_TURNOS=[]; TURNO_ACTUAL=null;
+  if(CAJA_HOY){
+    const {data:tr,error:tErr}=await supa.from('turnos_caja').select('*').eq('cierre_id',CAJA_HOY.id).order('numero');
+    if(tErr) console.error(tErr);
+    CAJA_TURNOS=tr||[];
+    TURNO_ACTUAL=CAJA_TURNOS.find(t=>t.estado==='abierto')||null;
+  }
   return CAJA_HOY;
 }
+const horaCL=ts=>ts?new Date(ts).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'-';
+function nombreUsuario(u){ return DB.usuarios.find(x=>x.usuario===u)?.nombre||u||'-'; }
 function renderCajaBar(){
   const bar=document.getElementById('cajaBar');
   if(!bar) return;
@@ -4627,18 +4641,33 @@ function renderCajaBar(){
       ${SESSION?.rol==='admin'?`<button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="reabrirCaja()">Reabrir</button>`:''}`;
     return;
   }
-  bar.innerHTML=`<span class="caja-chip abierta"><span class="dot"></span>Caja abierta · fondo ${money(CAJA_HOY.fondo_inicial)}</span>
-    <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalMovimientoCaja()">Retiro / ingreso</button>
-    <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalCierreCaja()">Cerrar caja</button>`;
+  const b='padding:8px 12px;font-size:12.5px;';
+  if(!TURNO_ACTUAL){
+    bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Caja abierta · sin turno</span>
+      <button class="btn" style="${b}" onclick="abrirModalTurno()">Abrir mi turno</button>
+      <button class="btn secondary" style="${b}" onclick="abrirModalCierreCaja('dia')">Cerrar día</button>`;
+    return;
+  }
+  const ajeno=TURNO_ACTUAL.cajero!==SESSION?.usuario;
+  bar.innerHTML=`<span class="caja-chip ${ajeno?'cerrada':'abierta'}" title="Turno ${TURNO_ACTUAL.numero}"><span class="dot"></span>Turno ${TURNO_ACTUAL.numero} · ${escapeHtml(TURNO_ACTUAL.cajero_nombre||nombreUsuario(TURNO_ACTUAL.cajero))} desde ${horaCL(TURNO_ACTUAL.inicio_at)}</span>
+    <button class="btn secondary" style="${b}" onclick="abrirModalMovimientoCaja()">Retiro / ingreso</button>
+    <button class="btn secondary" style="${b}" onclick="menuReportesCaja()">Reportes</button>
+    <button class="btn" style="${b}" onclick="abrirModalCierreCaja('turno')">Cerrar turno</button>
+    <button class="btn secondary" style="${b}" onclick="abrirModalCierreCaja('dia')">Cerrar día</button>`;
 }
 async function verificarCajaTerminal(){
   await cargarCajaHoy();
   renderCajaBar();
   if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
+  else if(CAJA_HOY&&CAJA_HOY.estado==='abierta'&&!TURNO_ACTUAL&&currentPage==='terminal') abrirModalTurno();
 }
 async function cajaAbiertaParaVender(){
   await cargarCajaHoy(); renderCajaBar();
-  if(CAJA_HOY&&CAJA_HOY.estado==='abierta') return true;
+  if(CAJA_HOY&&CAJA_HOY.estado==='abierta'){
+    if(!TURNO_ACTUAL){ toast('Abre tu turno para vender',true); abrirModalTurno(); return false; }
+    if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return false; }
+    return true;
+  }
   if(!CAJA_HOY){ toast('Primero abre la caja del día',true); abrirModalAperturaCaja(); }
   else toast('La caja de hoy ya se cerró: no se pueden registrar más ventas',true);
   return false;
@@ -4677,8 +4706,72 @@ async function confirmarAperturaCaja(){
   }else res=await supa.from('cierres_caja').insert(row).select('id');
   btn.disabled=false;
   if(res.error){ toast('No se pudo abrir la caja: '+res.error.message,true); return; }
-  logAudit('Caja abierta','caja',`${fecha} — fondo ${money(fondo)}`);
-  closeModal(); toast(`Caja abierta con ${money(fondo)}`);
+  const cierreId=res.data?.[0]?.id||existe?.[0]?.id;
+  const {error:tErr}=await supa.from('turnos_caja').insert({cierre_id:cierreId,numero:1,cajero:SESSION.usuario,cajero_nombre:SESSION.nombre,fondo_inicial:fondo}).select('id');
+  if(tErr) console.error('No se pudo abrir el turno 1',tErr);
+  logAudit('Caja abierta','caja',`${fecha} — fondo ${money(fondo)} — turno 1 ${SESSION.nombre}`);
+  closeModal(); toast(`Caja abierta con ${money(fondo)} · turno de ${SESSION.nombre}`);
+  await cargarCajaHoy(); renderCajaBar();
+}
+
+// ── Turnos ──
+function menuReportesCaja(){
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Reportes de caja</h3>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Imprime un reporte parcial en cualquier momento, sin cerrar nada.</div>
+    ${CAJA_TURNOS.map(t=>`<div class="caja-linea"><span>Turno ${t.numero} · ${escapeHtml(t.cajero_nombre||nombreUsuario(t.cajero))} <span class="sub-xs">${horaCL(t.inicio_at)}–${t.estado==='cerrado'?horaCL(t.fin_at):'abierto'}</span></span>
+      <button class="btn secondary" style="padding:5px 10px;font-size:12px;" onclick="imprimirReporteTurno(${t.id})">Imprimir</button></div>`).join('')}
+    <div class="caja-linea"><span><b>Día completo</b> <span class="sub-xs">(todos los turnos)</span></span>
+      <button class="btn" style="padding:5px 10px;font-size:12px;" onclick="imprimirReporteCierre(${CAJA_HOY.id})">Imprimir</button></div>
+    <div class="actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function avisoTurnoAjeno(){
+  const t=TURNO_ACTUAL;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>El turno abierto es de ${escapeHtml(t.cajero_nombre||nombreUsuario(t.cajero))}</h3>
+    <div style="font-size:13.5px;color:var(--text2);line-height:1.5;">Cada cajero vende en su propio turno para que el cuadre de caja sea de cada uno.<br>
+    ${escapeHtml(t.cajero_nombre||t.cajero)} debe <b>cerrar su turno</b> (contar el cajón) y después tú abres el tuyo.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Volver</button>
+      <button class="btn secondary" onclick="closeModal();openCajeroSwitch()">Cambiar de cajero</button>
+      <button class="btn" onclick="abrirModalCierreCaja('turno')">Cerrar turno de ${escapeHtml((t.cajero_nombre||t.cajero).split(' ')[0])}</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function abrirModalTurno(){
+  if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'){ toast('La caja del día no está abierta',true); return; }
+  const ult=[...CAJA_TURNOS].reverse().find(t=>t.estado==='cerrado');
+  const sugerido=ult?Number(ult.total_contado)||0:Number(CAJA_HOY.fondo_inicial)||0;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Abrir turno de ${escapeHtml(SESSION.nombre)}</h3>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Cuenta el efectivo con que recibes el cajón y escríbelo. Desde ahora las ventas y retiros quedan en tu turno.</div>
+    ${ult?`<div class="caja-linea"><span>${escapeHtml(ult.cajero_nombre||ult.cajero)} lo dejó con</span><b>${money(ult.total_contado)}</b></div>`:''}
+    <label>Efectivo con que recibes</label>
+    <input type="number" id="turnoFondo" min="0" step="10" inputmode="numeric" value="${sugerido}">
+    <div class="sub-xs" style="margin-top:4px;">¿No eres ${escapeHtml(SESSION.nombre)}? Cambia de cajero antes de abrir.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Ahora no</button>
+      <button class="btn secondary" onclick="closeModal();openCajeroSwitch()">Cambiar de cajero</button>
+      <button class="btn" id="btnAbrirTurno" onclick="confirmarAbrirTurno()">Abrir turno</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function confirmarAbrirTurno(){
+  const v=document.getElementById('turnoFondo').value;
+  if(v===''||Number(v)<0){ toast('Escribe el efectivo con que recibes (puede ser 0)',true); return; }
+  const btn=document.getElementById('btnAbrirTurno'); btn.disabled=true;
+  await cargarCajaHoy();
+  if(TURNO_ACTUAL){ btn.disabled=false; toast('Ya hay un turno abierto',true); closeModal(); renderCajaBar(); return; }
+  const numero=(CAJA_TURNOS.reduce((m,t)=>Math.max(m,t.numero),0))+1;
+  const fondo=Number(v)||0;
+  const {error}=await supa.from('turnos_caja').insert({cierre_id:CAJA_HOY.id,numero,cajero:SESSION.usuario,cajero_nombre:SESSION.nombre,fondo_inicial:fondo}).select('id');
+  btn.disabled=false;
+  if(error){ toast('No se pudo abrir el turno: '+error.message,true); return; }
+  const ult=[...CAJA_TURNOS].reverse().find(t=>t.estado==='cerrado');
+  const dif=ult?fondo-Number(ult.total_contado||0):0;
+  logAudit('Turno abierto','caja',`Turno ${numero} — ${SESSION.nombre} recibe ${money(fondo)}${dif?` (difiere ${money(dif)} de lo que dejó el turno anterior)`:''}`);
+  closeModal(); toast(`Turno ${numero} abierto · ${SESSION.nombre}`);
   await cargarCajaHoy(); renderCajaBar();
 }
 
@@ -4726,17 +4819,22 @@ async function guardarMovimientoCaja(){
     gasto_id=g?.[0]?.id||null;
   }
   const destino=tipo==='retiro'&&!gasto_id?document.getElementById('movDestino').value:(tipo==='ingreso'?'dueno':null);
-  const {error}=await supa.from('caja_movimientos').insert({cierre_id:CAJA_HOY.id,tipo,monto,motivo,gasto_id,destino,registrado_por:SESSION.usuario}).select('id');
+  const {error}=await supa.from('caja_movimientos').insert({cierre_id:CAJA_HOY.id,turno_id:TURNO_ACTUAL?.id||null,tipo,monto,motivo,gasto_id,destino,registrado_por:SESSION.usuario}).select('id');
   btn.disabled=false;
   if(error){ toast('No se pudo registrar: '+error.message,true); return; }
   logAudit(tipo==='retiro'?'Retiro de caja':'Ingreso a caja','caja',`${money(monto)} — ${motivo}`);
   closeModal(); toast(`${tipo==='retiro'?'Retiro':'Ingreso'} de ${money(monto)} registrado`);
 }
 
-function abrirModalCierreCaja(){
+function abrirModalCierreCaja(modo='dia'){
+  // Cerrar día sin turno abierto: se usa el conteo del último turno (no se cuenta dos veces)
+  if(modo==='dia'&&!TURNO_ACTUAL&&CAJA_TURNOS.some(t=>t.estado==='cerrado')) return confirmarCierreDiaSinConteo();
+  if(modo==='turno'&&!TURNO_ACTUAL){ toast('No hay un turno abierto',true); return; }
   const fila=d=>`<div class="denom-row"><span>${money(d)}</span><input type="number" min="0" step="1" inputmode="numeric" data-d="${d}" placeholder="0" oninput="sumarConteoCaja()"></div>`;
+  const quien=TURNO_ACTUAL?(TURNO_ACTUAL.cajero_nombre||nombreUsuario(TURNO_ACTUAL.cajero)):'';
   document.getElementById('modalContent').innerHTML=`
-    <h3>Cerrar caja</h3>
+    <h3>${modo==='turno'?`Cerrar turno ${TURNO_ACTUAL.numero} · ${escapeHtml(quien)}`:'Cerrar caja del día'}</h3>
+    ${modo==='dia'&&TURNO_ACTUAL?`<div class="sub-xs" style="margin-bottom:6px;">También se cierra el turno ${TURNO_ACTUAL.numero} de ${escapeHtml(quien)} con este mismo conteo.</div>`:''}
     <div style="font-size:13px;color:var(--text2);margin-bottom:4px;">Cuenta el efectivo del cajón y escribe <b>cuántos</b> billetes y monedas hay de cada uno. Después verás si cuadra.</div>
     <div class="sub-xs" style="font-weight:700;margin-top:10px;">Billetes</div>
     <div class="denom-grid">${DENOMINACIONES.filter(d=>d>=1000).map(fila).join('')}</div>
@@ -4747,7 +4845,7 @@ function abrirModalCierreCaja(){
     <textarea id="cierreNotas" rows="2" maxlength="300" placeholder="Algo que el dueño deba saber"></textarea>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" id="btnCerrarCaja" onclick="confirmarCierreCaja()">Cerrar caja</button>
+      <button class="btn" id="btnCerrarCaja" onclick="${modo==='turno'?'confirmarCierreTurno()':'confirmarCierreCaja()'}">${modo==='turno'?'Cerrar turno':'Cerrar día'}</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
 }
@@ -4762,10 +4860,13 @@ function leerConteoCaja(){
 function sumarConteoCaja(){ document.getElementById('conteoTotal').textContent=money(leerConteoCaja().total); }
 
 // Totales de la caja: ventas desde la apertura (sin anuladas) y movimientos.
-async function calcularTotalesCaja(caja,hasta){
-  let q=supa.from('ventas').select('total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago').eq('anulada',false).gte('created_at',caja.abierta_at);
-  if(hasta) q=q.lte('created_at',hasta);
-  const [vR,mR]=await Promise.all([q,supa.from('caja_movimientos').select('*').eq('cierre_id',caja.id).order('created_at')]);
+// turno: si viene, solo las ventas y movimientos de ese turno
+async function calcularTotalesCaja(caja,hasta,turno){
+  let q=supa.from('ventas').select('id,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago,registrado_por,created_at,boleta_numero').eq('anulada',false);
+  let qm=supa.from('caja_movimientos').select('*').eq('cierre_id',caja.id).order('created_at');
+  if(turno){ q=q.eq('turno_id',turno.id); qm=qm.eq('turno_id',turno.id); }
+  else{ q=q.gte('created_at',caja.abierta_at); if(hasta) q=q.lte('created_at',hasta); }
+  const [vR,mR]=await Promise.all([q.order('created_at'),qm]);
   if(vR.error) throw vR.error;
   if(mR.error) throw mR.error;
   const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_mercadopago:0,ventas_otro_mixto:0,ventas_cantidad:0,ventas_mixtas:0,retiros:0,ingresos:0,total_vendido:0};
@@ -4782,8 +4883,9 @@ async function calcularTotalesCaja(caja,hasta){
   });
   const movs=mR.data||[];
   movs.forEach(m=>{ if(m.tipo==='retiro') t.retiros+=Number(m.monto)||0; else t.ingresos+=Number(m.monto)||0; });
-  t.esperado=Number(caja.fondo_inicial||0)+t.ventas_efectivo+t.ingresos-t.retiros;
+  t.esperado=Number((turno||caja).fondo_inicial||0)+t.ventas_efectivo+t.ingresos-t.retiros;
   t.movimientos=movs;
+  t.ventas=(vR.data||[]).filter(v=>v.estado_pago!=='pendiente');
   return t;
 }
 
@@ -4807,7 +4909,73 @@ async function confirmarCierreCaja(){
   // .eq('estado','abierta'): si otra caja la cerró mientras tanto, no se pisa
   const {data,error}=await supa.from('cierres_caja').update(row).eq('id',CAJA_HOY.id).eq('estado','abierta').select('id');
   if(error||!data||!data.length){ btn.disabled=false; btn.textContent='Cerrar caja'; toast('No se pudo cerrar la caja'+(error?': '+error.message:' (¿ya estaba cerrada?)'),true); await verificarCajaTerminal(); return; }
+  if(TURNO_ACTUAL) await guardarCierreTurno(TURNO_ACTUAL,conteo,contado,sanitize(document.getElementById('cierreNotas').value)||null,ahora);
   logAudit('Caja cerrada','caja',`${CAJA_HOY.fecha} — esperado ${money(t.esperado)}, contado ${money(contado)}, diferencia ${money(diferencia)}`);
+  const cierre={...CAJA_HOY,...row};
+  mostrarResultadoCierre(cierre,t);
+  enviarReporteCierreWhatsApp(cierre,t);
+  await cargarCajaHoy(); renderCajaBar();
+}
+// Guarda el cierre de un turno con su conteo. Devuelve {turno, t} o null.
+async function guardarCierreTurno(turno,conteo,contado,notas,ahora){
+  let t;
+  try{ t=await calcularTotalesCaja(CAJA_HOY,ahora,turno); }
+  catch(e){ toast('No se pudieron calcular las ventas del turno: '+e.message,true); return null; }
+  const row={estado:'cerrado',fin_at:ahora,cerrado_por:SESSION.usuario,
+    ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,ventas_mercadopago:t.ventas_mercadopago,
+    ventas_cantidad:t.ventas_cantidad,total_vendido:t.total_vendido,retiros:t.retiros,ingresos:t.ingresos,
+    total_esperado:t.esperado,total_contado:contado,diferencia:contado-t.esperado,conteo,notas};
+  const {data,error}=await supa.from('turnos_caja').update(row).eq('id',turno.id).eq('estado','abierto').select('*');
+  if(error||!data||!data.length){ toast('No se pudo cerrar el turno'+(error?': '+error.message:' (¿ya estaba cerrado?)'),true); return null; }
+  logAudit('Turno cerrado','caja',`Turno ${turno.numero} ${turno.cajero_nombre||turno.cajero} — esperado ${money(t.esperado)}, contado ${money(contado)}, diferencia ${money(contado-t.esperado)}`);
+  return {turno:data[0],t};
+}
+async function confirmarCierreTurno(){
+  const {conteo,total:contado}=leerConteoCaja();
+  if(!contado&&!confirm('El total contado es $0. ¿Cerrar el turno igual?')) return;
+  await cargarCajaHoy();
+  if(!TURNO_ACTUAL){ toast('No hay un turno abierto',true); closeModal(); renderCajaBar(); return; }
+  const btn=document.getElementById('btnCerrarCaja'); btn.disabled=true; btn.textContent='Cerrando…';
+  const r=await guardarCierreTurno(TURNO_ACTUAL,conteo,contado,sanitize(document.getElementById('cierreNotas').value)||null,new Date().toISOString());
+  if(!r){ btn.disabled=false; btn.textContent='Cerrar turno'; return; }
+  const e=estadoDiferencia(r.turno.diferencia);
+  const tel=(CONFIG_CACHE?.negocio_telefono||'').trim();
+  if(tel) enviarWhatsApp(tel,`*Cierre de turno ${r.turno.numero} · ${r.turno.cajero_nombre||r.turno.cajero}*\n${horaCL(r.turno.inicio_at)} a ${horaCL(r.turno.fin_at)}\n${e.clase==='cuadra'?'✅':'⚠️'} ${e.txt}\nDebía haber ${money(r.turno.total_esperado)} · contado ${money(r.turno.total_contado)}\nVendió ${money(r.turno.total_vendido)} en ${r.turno.ventas_cantidad} ventas`);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Turno ${r.turno.numero} cerrado</h3>
+    <div class="caja-resultado ${e.clase}"><div>${e.det}</div><div class="big">${e.txt}</div></div>
+    <div class="caja-linea"><span>Recibió el cajón con</span><b>${money(r.turno.fondo_inicial)}</b></div>
+    <div class="caja-linea"><span>+ Ventas en efectivo</span><b>${money(r.t.ventas_efectivo)}</b></div>
+    ${r.t.ingresos?`<div class="caja-linea"><span>+ Ingresos</span><b>${money(r.t.ingresos)}</b></div>`:''}
+    ${r.t.retiros?`<div class="caja-linea"><span>− Retiros</span><b>${money(r.t.retiros)}</b></div>`:''}
+    <div class="caja-linea"><span><b>Debía haber</b></span><b>${money(r.turno.total_esperado)}</b></div>
+    <div class="caja-linea"><span><b>Contado</b></span><b>${money(r.turno.total_contado)}</b></div>
+    <div class="caja-linea"><span><b>Total vendido</b> <span class="sub-xs">(${r.turno.ventas_cantidad} ventas)</span></span><b>${money(r.turno.total_vendido)}</b></div>
+    <div class="sub-xs" style="margin-top:10px;">Imprime el reporte y entrégalo con el cajón. El siguiente cajero abre su turno contando lo que recibe.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Listo</button>
+      <button class="btn secondary" onclick="closeModal();openCajeroSwitch()">Cambiar de cajero</button>
+      <button class="btn" onclick="imprimirReporteTurno(${r.turno.id})">Imprimir turno</button>
+    </div>`;
+  await cargarCajaHoy(); renderCajaBar();
+}
+// Día sin turno abierto: el cajón ya quedó contado en el último turno
+async function confirmarCierreDiaSinConteo(){
+  const ult=[...CAJA_TURNOS].reverse().find(t=>t.estado==='cerrado');
+  if(!confirm(`Cerrar la caja del día con el conteo del último turno (${ult.cajero_nombre||ult.cajero}: ${money(ult.total_contado)})?`)) return;
+  await cargarCajaHoy();
+  if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'||TURNO_ACTUAL){ toast('El estado de la caja cambió, revisa e intenta de nuevo',true); renderCajaBar(); return; }
+  const ahora=new Date().toISOString();
+  let t;
+  try{ t=await calcularTotalesCaja(CAJA_HOY,ahora); }catch(e){ toast('No se pudieron calcular las ventas: '+e.message,true); return; }
+  const contado=Number(ult.total_contado)||0;
+  const row={estado:'cerrada',cerrada_at:ahora,cerrada_por:SESSION.usuario,
+    ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,
+    ventas_otro_mixto:0,ventas_mercadopago:t.ventas_mercadopago,ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
+    conteo:ult.conteo,total_esperado:t.esperado,total_contado:contado,diferencia:contado-t.esperado,notas:null};
+  const {data,error}=await supa.from('cierres_caja').update(row).eq('id',CAJA_HOY.id).eq('estado','abierta').select('id');
+  if(error||!data||!data.length){ toast('No se pudo cerrar la caja'+(error?': '+error.message:''),true); return; }
+  logAudit('Caja cerrada','caja',`${CAJA_HOY.fecha} — esperado ${money(t.esperado)}, contado ${money(contado)} (último turno)`);
   const cierre={...CAJA_HOY,...row};
   mostrarResultadoCierre(cierre,t);
   enviarReporteCierreWhatsApp(cierre,t);
@@ -4845,7 +5013,7 @@ function mostrarResultadoCierre(c,t){
     <div class="sub-xs" style="margin-top:10px;">El reporte se envió al WhatsApp del negocio. Imprímelo y entrégalo junto con el efectivo.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Listo</button>
-      <button class="btn" onclick="imprimirReporteCierre(${c.id})">Imprimir reporte</button>
+      <button class="btn" onclick="imprimirReporteCierre(${c.id})">Imprimir reporte del día</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
 }
@@ -4888,65 +5056,235 @@ async function enviarReporteCierreWhatsApp(c,t){
   if(!tel){ console.warn('Sin teléfono del negocio en Configuración: no se envía el cierre por WhatsApp'); return; }
   await enviarWhatsApp(tel,textoReporteCierre(c,t));
 }
+// ══════════════════════════════════════════════════════════
+//  REPORTES IMPRESOS (impresora térmica 80 mm)
+//  Turno, cierre del día y reporte de ventas comparten formato:
+//  encabezado del negocio, secciones con título y totales en negrita.
+// ══════════════════════════════════════════════════════════
+function imprimirDocumento(titulo,cuerpo){
+  const neg=CONFIG_CACHE||{};
+  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${escapeHtml(titulo)}</title>
+<style>
+  @page{size:auto;margin:0;}
+  *{box-sizing:border-box;margin:0;padding:0;color:#000;}
+  body{font-family:Arial,Helvetica,sans-serif;padding:3mm 2mm 6mm;font-size:12.5px;font-weight:700;width:76mm;}
+  h1{font-size:17px;text-align:center;font-weight:900;letter-spacing:.02em;}
+  .c{text-align:center;} .sub{font-size:11.5px;text-align:center;margin-top:1px;font-weight:600;}
+  .doc{margin:6px 0 4px;padding:4px 0;border-top:2px solid #000;border-bottom:2px solid #000;text-align:center;font-size:14px;font-weight:900;}
+  .res{border:3px solid #000;text-align:center;padding:5px;margin:8px 0;font-size:19px;font-weight:900;}
+  .res small{display:block;font-size:11px;font-weight:700;}
+  table{width:100%;border-collapse:collapse;} td{padding:2px 0;vertical-align:top;} td.n{text-align:right;white-space:nowrap;padding-left:6px;}
+  td.q{white-space:nowrap;padding-right:5px;}
+  tr.st td{font-weight:900;font-size:13.5px;border-top:2px solid #000;padding-top:3px;}
+  tr.sm td{font-size:11px;font-weight:600;}
+  .sec{font-weight:900;margin:10px 0 3px;padding-bottom:1px;border-bottom:2px dashed #000;font-size:12.5px;letter-spacing:.03em;}
+  .blk{border:1.5px solid #000;padding:4px 5px;margin:5px 0;}
+  .blk b{font-size:13px;}
+  .firma{margin-top:26px;border-top:2px solid #000;text-align:center;padding-top:3px;font-size:11.5px;}
+  .pie{margin-top:10px;text-align:center;font-size:10.5px;font-weight:600;}
+</style></head><body>
+  <h1>${escapeHtml(nombreNegocio())}</h1>
+  ${neg.negocio_razon_social?`<div class="sub">${escapeHtml(neg.negocio_razon_social)}${neg.negocio_rut?' · RUT '+escapeHtml(neg.negocio_rut):''}</div>`:''}
+  ${neg.negocio_direccion?`<div class="sub">${escapeHtml(neg.negocio_direccion)}</div>`:''}
+  ${cuerpo}
+  <div class="pie">Impreso ${new Date().toLocaleString('es-CL')} por ${escapeHtml(SESSION?.nombre||'-')}</div>
+</body></html>`;
+  const win=window.open('','_blank','width=420,height=720');
+  if(!win){ toast('El navegador bloqueó la ventana de impresión — permite pop-ups para este sitio',true); return; }
+  win.document.open(); win.document.write(html); win.document.close();
+  win.onload=()=>{ setTimeout(()=>{ win.focus(); win.print(); },300); };
+}
+const rFila=(a,b,cls)=>`<tr${cls?` class="${cls}"`:''}><td>${a}</td><td class="n">${b}</td></tr>`;
+function rConteo(conteo){
+  return conteo?Object.entries(conteo).sort((a,b)=>b[0]-a[0]).map(([d,n])=>rFila(`${n} × ${money(d)}`,money(d*n))).join(''):'';
+}
+function rMetodos(t){
+  return ventasPorMetodo(t).map(x=>rFila(`${x.nombre} <span style="font-size:10.5px;">→ ${x.cuenta}</span>`,money(x.monto))).join('');
+}
+function rResultado(dif,etiqueta){
+  const e=estadoDiferencia(dif);
+  return `<div class="res"><small>${etiqueta}</small>${e.txt.toUpperCase()}</div>`;
+}
+// Productos vendidos en un conjunto de ventas, agrupados (los pesos van en kg)
+async function productosVendidos(ventaIds){
+  const items=[];
+  for(let i=0;i<ventaIds.length;i+=150){
+    const {data,error}=await supa.from('venta_items').select('producto_id,producto_nombre,cantidad,subtotal').in('venta_id',ventaIds.slice(i,i+150));
+    if(error) throw error;
+    items.push(...(data||[]));
+  }
+  const g={};
+  items.forEach(it=>{
+    const prod=it.producto_id?DB.productos.find(p=>p.id===it.producto_id):null;
+    const nombre=prod?.nombre||String(it.producto_nombre||'—').replace(/\s*\([^)]*\)\s*$/,'');
+    const k=it.producto_id||('n:'+nombre);
+    if(!g[k]) g[k]={nombre,peso:!!prod?.vender_por_peso,cantidad:0,monto:0};
+    g[k].cantidad+=Number(it.cantidad)||0; g[k].monto+=Number(it.subtotal)||0;
+  });
+  return Object.values(g).sort((a,b)=>b.monto-a.monto);
+}
+function rProductos(lista,max){
+  const filas=lista.slice(0,max||lista.length).map(p=>`<tr><td class="q">${p.peso?`${reciboFormatCantidad(Math.round(p.cantidad*1000)/1000)} kg`:`${reciboFormatCantidad(p.cantidad)} u`}</td><td>${escapeHtml(p.nombre)}</td><td class="n">${money(p.monto)}</td></tr>`).join('');
+  const resto=max&&lista.length>max?lista.slice(max).reduce((s,p)=>s+p.monto,0):0;
+  return `<table>${filas}${resto?`<tr class="sm"><td></td><td>Otros ${lista.length-max} productos</td><td class="n">${money(resto)}</td></tr>`:''}</table>`;
+}
+function rPorCajero(ventas){
+  const g={};
+  ventas.forEach(v=>{ const k=v.registrado_por||'-'; if(!g[k]) g[k]={n:0,m:0}; g[k].n++; g[k].m+=Number(v.total)||0; });
+  return Object.entries(g).sort((a,b)=>b[1].m-a[1].m).map(([u,x])=>rFila(`${escapeHtml(nombreUsuario(u))} <span style="font-size:10.5px;">(${x.n})</span>`,money(x.m))).join('');
+}
+
+// ── Reporte de un turno ──
+async function imprimirReporteTurno(id){
+  const {data,error}=await supa.from('turnos_caja').select('*').eq('id',id).limit(1);
+  const tu=(data||[])[0];
+  if(error||!tu){ toast('No se encontró el turno',true); return; }
+  const {data:cj}=await supa.from('cierres_caja').select('*').eq('id',tu.cierre_id).limit(1);
+  const caja=(cj||[])[0]||{};
+  let t, prods=[];
+  try{ t=await calcularTotalesCaja(caja,null,tu); prods=await productosVendidos(t.ventas.map(v=>v.id)); }
+  catch(e){ toast('Error: '+e.message,true); return; }
+  ['ventas_efectivo','ventas_transferencia','ventas_tarjeta','ventas_mercadopago','ventas_cantidad','retiros','ingresos'].forEach(k=>{ if(tu[k]!=null) t[k]=Number(tu[k]); });
+  if(tu.total_vendido!=null) t.total_vendido=Number(tu.total_vendido);
+  const abierto=tu.estado==='abierto';
+  const cuerpo=`
+  <div class="doc">CIERRE DE TURNO ${tu.numero}</div>
+  <div class="sub">${escapeHtml(caja.fecha||'')} · ${horaCL(tu.inicio_at)} a ${abierto?'(abierto)':horaCL(tu.fin_at)}</div>
+  <div class="sub">Cajero: ${escapeHtml(tu.cajero_nombre||nombreUsuario(tu.cajero))}</div>
+  ${abierto?'<div class="res"><small>TURNO</small>AÚN ABIERTO</div>':rResultado(tu.diferencia,'EFECTIVO DEL TURNO')}
+  <div class="sec">EFECTIVO</div>
+  <table>
+    ${rFila('Recibió el cajón con',money(tu.fondo_inicial))}
+    ${rFila('+ Ventas en efectivo',money(t.ventas_efectivo))}
+    ${t.ingresos?rFila('+ Ingresos',money(t.ingresos)):''}
+    ${t.retiros?rFila('− Retiros',money(t.retiros)):''}
+    ${rFila('Debía haber',money(abierto?t.esperado:tu.total_esperado),'st')}
+    ${abierto?'':rFila('Contado',money(tu.total_contado),'st')}
+    ${abierto?'':rFila('Diferencia',estadoDiferencia(tu.diferencia).txt,'st')}
+  </table>
+  ${(t.movimientos||[]).length?`<div class="sec">RETIROS / INGRESOS</div><table>${t.movimientos.map(m=>rFila(`${horaCL(m.created_at)} ${m.tipo==='retiro'?'−':'+'} ${escapeHtml(m.motivo)}`,money(m.monto))).join('')}</table>`:''}
+  ${tu.conteo?`<div class="sec">CONTEO DEL CAJÓN</div><table>${rConteo(tu.conteo)}</table>`:''}
+  <div class="sec">VENTAS POR MÉTODO DE PAGO</div>
+  <table>${rMetodos(t)}${rFila(`Total vendido (${t.ventas_cantidad})`,money(t.total_vendido),'st')}</table>
+  ${prods.length?`<div class="sec">PRODUCTOS VENDIDOS</div>${rProductos(prods,25)}`:''}
+  ${t.ventas.length?`<div class="sec">DETALLE DE VENTAS</div><table>${t.ventas.map(v=>`<tr class="sm"><td>${horaCL(v.created_at)} · N° ${v.boleta_numero||v.id} · ${escapeHtml(v.metodo_pago||'')}</td><td class="n">${money(v.total)}</td></tr>`).join('')}</table>`:''}
+  ${tu.notas?`<div class="sec">NOTAS</div><div>${escapeHtml(tu.notas)}</div>`:''}
+  <div class="firma">Firma cajero que entrega</div>
+  <div class="firma">Firma quien recibe</div>`;
+  imprimirDocumento(`Turno ${tu.numero} ${caja.fecha||''}`,cuerpo);
+}
+
+// ── Reporte del día (todos los turnos) ──
 async function imprimirReporteCierre(id){
   const {data,error}=await supa.from('cierres_caja').select('*').eq('id',id).limit(1);
   const c=(data||[])[0];
   if(error||!c){ toast('No se encontró el cierre',true); return; }
-  let t;
-  try{ t=await calcularTotalesCaja(c,c.cerrada_at||new Date().toISOString()); }catch(e){ toast('Error: '+e.message,true); return; }
+  let t, prods=[], turnos=[], anuladas=0;
+  try{
+    t=await calcularTotalesCaja(c,c.cerrada_at||new Date().toISOString());
+    const [tr,an]=await Promise.all([
+      supa.from('turnos_caja').select('*').eq('cierre_id',c.id).order('numero'),
+      supa.from('ventas').select('id',{count:'exact'}).eq('anulada',true).gte('created_at',c.abierta_at).lte('created_at',c.cerrada_at||new Date().toISOString()),
+    ]);
+    turnos=tr.data||[]; anuladas=(an.data||[]).length;
+    prods=await productosVendidos(t.ventas.map(v=>v.id));
+  }catch(e){ toast('Error: '+e.message,true); return; }
   // los montos guardados al cerrar mandan (las ventas anuladas después no cambian el reporte)
   ['ventas_efectivo','ventas_transferencia','ventas_tarjeta','ventas_mercadopago','ventas_otro_mixto','ventas_cantidad','retiros','ingresos'].forEach(k=>{ if(c[k]!=null) t[k]=Number(c[k]); });
-  const e=estadoDiferencia(c.diferencia);
-  const fila=(a,b,strong)=>`<tr${strong?' class="st"':''}><td>${a}</td><td class="n">${b}</td></tr>`;
-  const conteo=c.conteo?Object.entries(c.conteo).sort((a,b)=>b[0]-a[0]).map(([d,n])=>fila(`${n} × ${money(d)}`,money(d*n))).join(''):'';
-  const html=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cierre de caja ${escapeHtml(c.fecha)}</title>
-<style>
-  @page{size:auto;margin:0;}
-  *{box-sizing:border-box;margin:0;padding:0;color:#000;}
-  body{font-family:Arial,Helvetica,sans-serif;padding:3mm 2mm;font-size:13px;font-weight:700;}
-  h1{font-size:18px;text-align:center;font-weight:900;}
-  .c{text-align:center;} .sub{font-size:12px;text-align:center;margin-top:2px;}
-  .res{border:3px solid #000;text-align:center;padding:6px;margin:8px 0;font-size:20px;font-weight:900;}
-  table{width:100%;border-collapse:collapse;} td{padding:2px 0;vertical-align:top;} td.n{text-align:right;white-space:nowrap;}
-  tr.st td{font-weight:900;font-size:14px;border-top:2px solid #000;padding-top:4px;}
-  .sec{font-weight:900;margin:8px 0 2px;border-bottom:2px dashed #000;}
-  .firma{margin-top:24px;border-top:2px solid #000;text-align:center;padding-top:3px;font-size:12px;}
-</style></head><body>
-  <h1>${escapeHtml(nombreNegocio())}</h1>
-  <div class="sub">CIERRE DE CAJA · ${escapeHtml(c.fecha)}</div>
-  <div class="sub">Abrió: ${escapeHtml(c.abierta_por||'-')} ${c.abierta_at?new Date(c.abierta_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</div>
-  <div class="sub">Cerró: ${escapeHtml(c.cerrada_por||'-')} ${c.cerrada_at?new Date(c.cerrada_at).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</div>
-  <div class="res">${e.txt.toUpperCase()}</div>
+  const abierta=c.estado!=='cerrada';
+  const promedio=t.ventas_cantidad?t.total_vendido/t.ventas_cantidad:0;
+  const cuerpo=`
+  <div class="doc">${abierta?'REPORTE PARCIAL DEL DÍA':'CIERRE DE CAJA DEL DÍA'}</div>
+  <div class="sub">${escapeHtml(c.fecha)}</div>
+  <div class="sub">Abrió: ${escapeHtml(nombreUsuario(c.abierta_por))} ${horaCL(c.abierta_at)} · Cerró: ${abierta?'—':`${escapeHtml(nombreUsuario(c.cerrada_por))} ${horaCL(c.cerrada_at)}`}</div>
+  ${abierta?'<div class="res"><small>CAJA</small>AÚN ABIERTA</div>':rResultado(c.diferencia,'EFECTIVO DEL DÍA')}
+  <div class="sec">RESUMEN DE VENTAS</div>
+  <table>
+    ${rFila('Total vendido',money(t.total_vendido),'st')}
+    ${rFila('N° de ventas',t.ventas_cantidad)}
+    ${rFila('Ticket promedio',money(promedio))}
+    ${anuladas?rFila('Ventas anuladas',anuladas):''}
+  </table>
+  <div class="sec">POR MÉTODO DE PAGO</div>
+  <table>${rMetodos(t)}</table>
   <div class="sec">EFECTIVO EN CAJA</div>
   <table>
-    ${fila('Efectivo inicial',money(c.fondo_inicial))}
-    ${fila('+ Ventas efectivo',money(t.ventas_efectivo))}
-    ${t.ingresos?fila('+ Ingresos',money(t.ingresos)):''}
-    ${t.retiros?fila('− Retiros',money(t.retiros)):''}
-    ${fila('Debía haber',money(c.total_esperado),true)}
-    ${fila('Contado',money(c.total_contado),true)}
-    ${fila('Diferencia',money(c.diferencia),true)}
+    ${rFila('Efectivo inicial',money(c.fondo_inicial))}
+    ${rFila('+ Ventas en efectivo',money(t.ventas_efectivo))}
+    ${t.ingresos?rFila('+ Ingresos',money(t.ingresos)):''}
+    ${t.retiros?rFila('− Retiros',money(t.retiros)):''}
+    ${rFila('Debía haber',money(abierta?t.esperado:c.total_esperado),'st')}
+    ${abierta?'':rFila('Contado',money(c.total_contado),'st')}
+    ${abierta?'':rFila('Diferencia',estadoDiferencia(c.diferencia).txt,'st')}
   </table>
-  ${(t.movimientos||[]).length?`<div class="sec">RETIROS / INGRESOS</div><table>${t.movimientos.map(m=>fila(`${m.tipo==='retiro'?'−':'+'} ${escapeHtml(m.motivo)}`,money(m.monto))).join('')}</table>`:''}
-  ${conteo?`<div class="sec">CONTEO</div><table>${conteo}</table>`:''}
-  <div class="sec">VENTAS POR MÉTODO DE PAGO</div>
-  <table>
-    ${ventasPorMetodo(t).map(x=>fila(`${x.nombre}<br><span style="font-size:11px;">→ ${x.cuenta}</span>`,money(x.monto))).join('')}
-    ${fila(`Total vendido (${t.ventas_cantidad})`,money(t.total_vendido),true)}
-  </table>
+  ${turnos.length?`<div class="sec">TURNOS</div>${turnos.map(tu=>{
+    const e=tu.estado==='cerrado'?estadoDiferencia(tu.diferencia):null;
+    return `<div class="blk"><b>Turno ${tu.numero} · ${escapeHtml(tu.cajero_nombre||nombreUsuario(tu.cajero))}</b>
+      <table>
+        ${rFila('Horario',`${horaCL(tu.inicio_at)} – ${tu.estado==='cerrado'?horaCL(tu.fin_at):'abierto'}`)}
+        ${rFila(`Vendió (${tu.ventas_cantidad??'-'})`,tu.total_vendido!=null?money(tu.total_vendido):'—')}
+        ${rFila('Recibió / debía / contó',`${money(tu.fondo_inicial)} / ${tu.total_esperado!=null?money(tu.total_esperado):'—'} / ${tu.total_contado!=null?money(tu.total_contado):'—'}`)}
+        ${rFila('Resultado',e?e.txt:'Abierto','st')}
+      </table></div>`;}).join('')}`:''}
+  ${t.ventas.length?`<div class="sec">VENTAS POR CAJERO</div><table>${rPorCajero(t.ventas)}</table>`:''}
+  ${prods.length?`<div class="sec">PRODUCTOS VENDIDOS</div>${rProductos(prods,30)}`:''}
+  ${(t.movimientos||[]).length?`<div class="sec">RETIROS / INGRESOS</div><table>${t.movimientos.map(m=>rFila(`${horaCL(m.created_at)} ${m.tipo==='retiro'?'−':'+'} ${escapeHtml(m.motivo)} <span style="font-size:10.5px;">(${escapeHtml(nombreUsuario(m.registrado_por))})</span>`,money(m.monto))).join('')}</table>`:''}
+  ${c.conteo?`<div class="sec">CONTEO FINAL DEL CAJÓN</div><table>${rConteo(c.conteo)}</table>`:''}
   <div class="sec">DEBERÍA ENTRAR A</div>
   <table>
-    ${fila('Mercado Pago',money((t.ventas_transferencia||0)+(t.ventas_mercadopago||0)))}
-    ${fila('BancoEstado',money(t.ventas_tarjeta))}
+    ${rFila('Mercado Pago',money((t.ventas_transferencia||0)+(t.ventas_mercadopago||0)))}
+    ${rFila('BancoEstado',money(t.ventas_tarjeta))}
   </table>
   ${c.notas?`<div class="sec">NOTAS</div><div>${escapeHtml(c.notas)}</div>`:''}
   <div class="firma">Firma cajero</div>
-  <div class="firma">Firma recibe</div>
-</body></html>`;
-  const win=window.open('','_blank','width=420,height=680');
-  if(!win){ toast('El navegador bloqueó la ventana de impresión — permite pop-ups para este sitio',true); return; }
-  win.document.open(); win.document.write(html); win.document.close();
-  win.onload=()=>{ setTimeout(()=>{ win.focus(); win.print(); },300); };
+  <div class="firma">Firma encargado</div>`;
+  imprimirDocumento(`Cierre de caja ${c.fecha}`,cuerpo);
+}
+
+// ── Reporte de ventas del período elegido en Ventas ──
+async function imprimirReporteVentas(){
+  const rows=VENTAS_VIEW.rows||[];
+  const vig=rows.filter(v=>!v.anulada);
+  if(!vig.length){ toast('No hay ventas en este período',true); return; }
+  const r=rangoPeriodo(VENTAS_VIEW.periodo,VENTAS_VIEW.fecha);
+  const desde=r.desde?r.desde.toLocaleDateString('es-CL'):'inicio';
+  const hasta=r.hasta?new Date(r.hasta.getTime()-1).toLocaleDateString('es-CL'):new Date().toLocaleDateString('es-CL');
+  const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_mercadopago:0,ventas_otro_mixto:0};
+  let total=0, porCobrar=0;
+  vig.forEach(v=>{
+    const tot=Number(v.total)||0; total+=tot;
+    if(v.estado_pago==='pendiente'){ porCobrar+=tot; return; }
+    const m=v.monto_transferencia!=null?{monto_efectivo:Number(v.monto_efectivo)||0,monto_transferencia:Number(v.monto_transferencia)||0,monto_tarjeta:Number(v.monto_tarjeta)||0,monto_mercadopago:Number(v.monto_mercadopago)||0}
+      :montosPorMedio(v.metodo_pago||'efectivo',tot,null);
+    t.ventas_efectivo+=m.monto_efectivo; t.ventas_transferencia+=m.monto_transferencia; t.ventas_tarjeta+=m.monto_tarjeta; t.ventas_mercadopago+=m.monto_mercadopago;
+  });
+  let prods=[];
+  try{ prods=await productosVendidos(vig.map(v=>v.id)); }catch(e){ toast('Error: '+e.message,true); return; }
+  const porDia={};
+  vig.forEach(v=>{ const d=fechaLocalISO(new Date(v.created_at)); if(!porDia[d]) porDia[d]={n:0,m:0}; porDia[d].n++; porDia[d].m+=Number(v.total)||0; });
+  const dias=Object.keys(porDia).sort();
+  const origen={terminal:0,whatsapp:0}; vig.forEach(v=>{ origen[v.origen==='whatsapp'?'whatsapp':'terminal']+=Number(v.total)||0; });
+  const cuerpo=`
+  <div class="doc">REPORTE DE VENTAS</div>
+  <div class="sub">${desde===hasta?desde:`${desde} al ${hasta}`}</div>
+  <div class="sec">RESUMEN</div>
+  <table>
+    ${rFila('Total vendido',money(total),'st')}
+    ${rFila('N° de ventas',vig.length)}
+    ${rFila('Ticket promedio',money(total/vig.length))}
+    ${porCobrar?rFila('Por cobrar (pedidos)',money(porCobrar)):''}
+    ${rows.length-vig.length?rFila('Ventas anuladas',rows.length-vig.length):''}
+  </table>
+  <div class="sec">POR MÉTODO DE PAGO</div>
+  <table>${rMetodos(t)}</table>
+  <div class="sec">POR ORIGEN</div>
+  <table>${rFila('Local (terminal)',money(origen.terminal))}${rFila('Pedidos web / WhatsApp',money(origen.whatsapp))}</table>
+  <div class="sec">POR CAJERO</div>
+  <table>${rPorCajero(vig)}</table>
+  ${dias.length>1?`<div class="sec">POR DÍA</div><table>${dias.map(d=>rFila(`${d.split('-').reverse().join('-')} <span style="font-size:10.5px;">(${porDia[d].n})</span>`,money(porDia[d].m))).join('')}</table>`:''}
+  <div class="sec">PRODUCTOS VENDIDOS</div>${rProductos(prods,40)}`;
+  logAudit('Reporte de ventas impreso','ventas',`${desde} – ${hasta}: ${money(total)}`);
+  imprimirDocumento(`Reporte de ventas ${desde}`,cuerpo);
 }
 
 // ── historial para el dueño (Contabilidad) ──
@@ -5265,6 +5603,7 @@ async function confirmarCajeroPin(){
   logAudit('Cambio de cajero','usuarios',SESSION.nombre);
   toast(`Ahora operando como ${SESSION.nombre}`);
   closeCajeroSwitch();
+  renderCajaBar();
 }
 
 // ══════════════════════════════════════════════════════════
