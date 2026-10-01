@@ -75,6 +75,76 @@ language sql as $$
   insert into auditlog (usuario, accion, modulo, detalle) values ('agente', p_accion, p_modulo, left(p_detalle, 500))
 $$;
 
+-- ── emparejado automático: el servidor une lo que dice la factura con tus productos ──
+-- Alias aprendidos: cada vez que se confirma una factura, "texto de la factura" → producto
+-- queda guardado (por proveedor) y la próxima vez se reconoce solo.
+create table if not exists producto_alias (
+  id           bigserial primary key,
+  alias_norm   text not null,
+  producto_id  bigint not null references productos(id) on delete cascade,
+  proveedor_id bigint references proveedores(id) on delete cascade,
+  created_at   timestamptz default now()
+);
+create unique index if not exists producto_alias_uq on producto_alias (alias_norm, coalesce(proveedor_id, 0));
+alter table producto_alias enable row level security;
+drop policy if exists "pq_admin acceso total" on producto_alias;
+create policy "pq_admin acceso total" on producto_alias for all to pq_admin using (true) with check (true);
+grant select, insert, update, delete on producto_alias to pq_admin;
+
+create or replace function private.agente_norm(t text) returns text
+language sql immutable as $$ select btrim(regexp_replace(private.sin_tildes(t), '[^a-z0-9]+', ' ', 'g')) $$;
+
+-- Palabras con significado (sin números, medidas ni sufijos de empresa)
+create or replace function private.agente_tokens(t text) returns text[]
+language sql immutable as $$
+  select coalesce(array_agg(distinct w), '{}'::text[])
+    from unnest(regexp_split_to_array(private.agente_norm(t), ' ')) w
+   where length(w) >= 2 and w !~ '[0-9]'
+     and w <> all (array['de','del','la','el','los','las','con','sin','en','para','por','kg','kgs','kilo','kilos','gr','grs',
+                         'und','unid','unidad','unidades','caja','cajas','pack','spa','ltda','limitada','sa','eirl','cia'])
+$$;
+
+-- 0 a 1: qué tanto se parecen dos listas de palabras (media armónica de las coberturas)
+create or replace function private.agente_score(a text[], b text[]) returns numeric
+language sql immutable as $$
+  with x as (select count(*)::numeric sh from unnest(a) w
+              where exists (select 1 from unnest(b) y
+                             where y = w or (length(w) >= 3 and y like w || '%') or (length(y) >= 3 and w like y || '%')))
+  select case when cardinality(a) = 0 or cardinality(b) = 0 or x.sh = 0 then 0
+         else round(2 * (x.sh / cardinality(a)) * (x.sh / cardinality(b)) / ((x.sh / cardinality(a)) + (x.sh / cardinality(b))), 2) end
+    from x
+$$;
+
+-- Hasta 3 productos candidatos para el texto de una línea de factura. Alias aprendido = puntaje 1.
+create or replace function private.agente_candidatos(p_desc text, p_prov bigint) returns jsonb
+language plpgsql stable as $$
+declare v_dt text[] := private.agente_tokens(p_desc); v_al record;
+begin
+  select a.producto_id, p.nombre into v_al from producto_alias a join productos p on p.id = a.producto_id
+   where a.alias_norm = private.agente_norm(p_desc) and (a.proveedor_id is null or a.proveedor_id = p_prov) and p.activo
+   order by (a.proveedor_id is not null) desc limit 1;
+  if found then
+    return jsonb_build_array(jsonb_build_object('id', v_al.producto_id, 'nombre', v_al.nombre, 'score', 1, 'via', 'alias'));
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('id', id, 'nombre', nombre, 'score', sc) order by sc desc, nombre) from (
+            select p.id, p.nombre, private.agente_score(v_dt, private.agente_tokens(p.nombre)) sc
+              from productos p where p.activo order by 3 desc, p.nombre limit 3) t where sc > 0), '[]'::jsonb);
+end $$;
+
+-- Proveedor registrado que corresponde al nombre de la factura (null si no hay uno claro)
+create or replace function private.agente_proveedor_match(p_nombre text) returns bigint
+language plpgsql stable as $$
+declare v_id bigint; v_t text[] := private.agente_tokens(p_nombre); r jsonb;
+begin
+  select id into v_id from proveedores where activo and private.agente_norm(nombre) = private.agente_norm(p_nombre) limit 1;
+  if v_id is not null then return v_id; end if;
+  select jsonb_agg(jsonb_build_object('id', id, 'sc', sc) order by sc desc) into r from (
+    select id, private.agente_score(v_t, private.agente_tokens(nombre)) sc from proveedores where activo) x where sc >= 0.6;
+  if r is null then return null; end if;
+  if jsonb_array_length(r) = 1 or (r->0->>'sc')::numeric - (r->1->>'sc')::numeric >= 0.2 then return (r->0->>'id')::bigint; end if;
+  return null;
+end $$;
+
 -- ══ CONSULTAS ══════════════════════════════════════════════════════
 
 -- Ventas del período (fechas en hora de Chile). Sin p_hasta = solo ese día.
@@ -259,7 +329,7 @@ declare
   v_num  text := private.limpiar_texto(p->>'numero', 40);
   v_fecha date := coalesce(nullif(p->>'fecha', '')::date, current_date);
   v_tot  numeric := nullif(p->>'total_documento', '')::numeric;
-  it jsonb; v_pid bigint; v_pnom text; v_pcosto numeric; v_items jsonb := '[]'::jsonb; v_suma numeric := 0; v_avisos jsonb := '[]'::jsonb;
+  it jsonb; v_pid bigint; v_pnom text; v_auto boolean; v_cand jsonb; v_pcosto numeric; v_items jsonb := '[]'::jsonb; v_suma numeric := 0; v_avisos jsonb := '[]'::jsonb;
   v_cant numeric; v_costo numeric; v_dup bigint; v_id bigint; v_sin int := 0;
 begin
   if v_provid is not null then
@@ -267,6 +337,18 @@ begin
     if not found then raise exception 'Proveedor % no existe', v_provid; end if;
   end if;
   if v_prov is null then raise exception 'Falta el proveedor (usa proveedor_id o proveedor_nombre)'; end if;
+  if v_provid is null then
+    v_provid := private.agente_proveedor_match(v_prov);
+    if v_provid is not null then
+      select nombre into v_pnom from proveedores where id = v_provid;
+      if private.agente_norm(v_pnom) <> private.agente_norm(v_prov) then
+        v_avisos := v_avisos || to_jsonb('Proveedor identificado: "' || v_prov || '" → ' || v_pnom);
+      end if;
+      v_prov := v_pnom;
+    else
+      v_avisos := v_avisos || to_jsonb('Proveedor "' || v_prov || '" no está registrado: se creará al confirmar. Si es uno existente, indica cuál con proveedor_id.');
+    end if;
+  end if;
   if jsonb_typeof(p->'items') <> 'array' or jsonb_array_length(p->'items') = 0 then raise exception 'La factura no tiene productos'; end if;
   if jsonb_array_length(p->'items') > 100 then raise exception 'Demasiadas líneas'; end if;
   if v_fecha > current_date + 1 or v_fecha < current_date - 400 then raise exception 'Fecha de factura sospechosa: %', v_fecha; end if;
@@ -285,25 +367,34 @@ begin
     v_costo := (it->>'costo_unitario')::numeric;
     if v_cant is null or v_cant <= 0 then raise exception 'Cantidad inválida en "%"', it->>'descripcion'; end if;
     if v_costo is null or v_costo < 0 then raise exception 'Costo inválido en "%"', it->>'descripcion'; end if;
-    v_pid := null; v_pnom := null; v_pcosto := null;
+    v_pid := null; v_pnom := null; v_pcosto := null; v_auto := false; v_cand := '[]'::jsonb;
     if nullif(it->>'producto_id', '') is not null then
       select id, nombre, costo into v_pid, v_pnom, v_pcosto from productos where id = (it->>'producto_id')::bigint;
       if not found then raise exception 'Producto % no existe', it->>'producto_id'; end if;
-      if coalesce(v_pcosto, 0) > 0 and v_costo > v_pcosto * 1.5 then
-        v_avisos := v_avisos || to_jsonb(v_pnom || ': el costo sube más de 50% (de ' || v_pcosto || ' a ' || v_costo || '). Revisa unidad (caja/kg).');
-      end if;
     else
-      v_sin := v_sin + 1;
+      v_cand := private.agente_candidatos(it->>'descripcion', v_provid);
+      if jsonb_array_length(v_cand) > 0 and (v_cand->0->>'score')::numeric >= 0.6
+         and (jsonb_array_length(v_cand) = 1 or (v_cand->0->>'score')::numeric - (v_cand->1->>'score')::numeric >= 0.2) then
+        select id, nombre, costo into v_pid, v_pnom, v_pcosto from productos where id = (v_cand->0->>'id')::bigint;
+        v_auto := true; v_cand := '[]'::jsonb;
+        v_avisos := v_avisos || to_jsonb('Emparejado solo: "' || coalesce(it->>'descripcion', '') || '" → ' || v_pnom || '. Revisa que sea correcto.');
+      else
+        v_sin := v_sin + 1;
+      end if;
     end if;
-    v_items := v_items || jsonb_build_object('producto_id', v_pid, 'producto_nombre', coalesce(v_pnom, private.limpiar_texto(it->>'descripcion', 150)),
-                 'descripcion', private.limpiar_texto(it->>'descripcion', 150), 'cantidad', v_cant, 'costo_unitario', v_costo, 'subtotal', round(v_cant * v_costo));
+    if v_pid is not null and coalesce(v_pcosto, 0) > 0 and v_costo > v_pcosto * 1.5 then
+      v_avisos := v_avisos || to_jsonb(v_pnom || ': el costo sube más de 50% (de ' || v_pcosto || ' a ' || v_costo || '). Revisa unidad (caja/kg).');
+    end if;
+    v_items := v_items || jsonb_strip_nulls(jsonb_build_object('producto_id', v_pid, 'producto_nombre', coalesce(v_pnom, private.limpiar_texto(it->>'descripcion', 150)),
+                 'descripcion', private.limpiar_texto(it->>'descripcion', 150), 'cantidad', v_cant, 'costo_unitario', v_costo, 'subtotal', round(v_cant * v_costo),
+                 'auto', case when v_auto then true end, 'candidatos', case when jsonb_array_length(v_cand) > 0 then v_cand end));
     v_suma := v_suma + round(v_cant * v_costo);
   end loop;
 
   if v_tot is not null and abs(v_tot - v_suma) > greatest(10, v_suma * 0.01) and abs(v_tot - round(v_suma * 1.19)) > greatest(10, v_suma * 0.01) then
     v_avisos := v_avisos || to_jsonb('DESCUADRE: las líneas suman ' || v_suma || ' (neto) / ' || round(v_suma * 1.19) || ' (con IVA) y la factura dice ' || v_tot || '. Revisa que se leyó bien.');
   end if;
-  if v_sin > 0 then v_avisos := v_avisos || to_jsonb(v_sin || ' línea(s) sin producto asignado: usa agente_factura_asignar'); end if;
+  if v_sin > 0 then v_avisos := v_avisos || to_jsonb(v_sin || ' línea(s) sin producto claro: pregúntale al dueño cuál es (mira candidatos) y usa factura_asignar_producto'); end if;
 
   insert into facturas_borrador (proveedor_id, proveedor_nombre, proveedor_rut, numero_factura, fecha, total_documento, items, avisos, notas)
   values (v_provid, v_prov, private.limpiar_texto(p->>'proveedor_rut', 20), v_num, v_fecha, v_tot, v_items, v_avisos, private.limpiar_texto(p->>'notas', 300))
@@ -389,6 +480,13 @@ begin
     returning id into v_gid;
     update facturas_compra set gasto_id = v_gid where id = v_fid;
   end if;
+
+  insert into producto_alias (alias_norm, producto_id, proveedor_id)
+  select distinct on (private.agente_norm(e->>'descripcion')) private.agente_norm(e->>'descripcion'), (e->>'producto_id')::bigint, v_prov
+    from jsonb_array_elements(b.items) e
+   where length(private.agente_norm(e->>'descripcion')) between 3 and 150
+     and private.agente_norm(e->>'descripcion') <> private.agente_norm(e->>'producto_nombre')
+  on conflict (alias_norm, coalesce(proveedor_id, 0)) do update set producto_id = excluded.producto_id;
 
   update facturas_borrador set estado = 'confirmada', factura_id = v_fid, confirmada_at = now() where id = b.id;
   perform private.agente_log('Factura de compra registrada', 'proveedores', b.proveedor_nombre || ' — Factura ' || coalesce(b.numero_factura, '-') || ' — $' || v_total);
