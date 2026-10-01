@@ -4748,7 +4748,6 @@ async function eliminarProveedor(id){
 let FC_ITEMS=[];
 function openFacturaCompraModal(){
   const provOpts=DB.proveedores.filter(p=>p.activo).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
-  const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-costo="${p.costo||0}">${p.nombre}</option>`).join('');
   const hoy=new Date().toISOString().slice(0,10);
   document.getElementById('modalContent').innerHTML=`
     <h3>Nueva factura de compra</h3>
@@ -4760,13 +4759,16 @@ function openFacturaCompraModal(){
     <div id="fcProveedorHint" class="sub" style="margin-top:-8px;margin-bottom:10px;"></div>
     <label>N° de factura</label><input id="fcNumero">
     <label>Fecha</label><input id="fcFecha" type="date" value="${hoy}">
-    <label style="margin-top:14px;">Producto</label>
-    <select id="fcProducto">${prodOpts}</select>
+    <label style="margin-top:14px;">Agregar producto</label>
+    <input id="fcBuscar" placeholder="Escribe las primeras letras: queso ched..." autocomplete="off" oninput="fcBuscarProd(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();fcEnterBuscar();}">
+    <div id="fcResultados"></div>
+    <div id="fcSel" class="sub" style="margin:6px 0 0;"></div>
     <div style="display:flex;gap:8px;margin-top:8px;">
-      <input id="fcCantidad" type="number" step="0.1" min="0.1" placeholder="Cantidad" style="flex:1;">
-      <input id="fcCosto" type="number" step="1" min="0" placeholder="Costo unitario" style="flex:1;">
-      <button type="button" class="btn secondary" onclick="fcAgregarItem()">+ Agregar</button>
+      <input id="fcCantidad" type="number" step="any" min="0" inputmode="decimal" placeholder="Cantidad (kg/unid)" style="flex:1;min-width:0;" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('fcCosto').focus();}">
+      <input id="fcCosto" type="number" step="any" min="0" inputmode="decimal" placeholder="Costo neto unitario" style="flex:1;min-width:0;" onkeydown="if(event.key==='Enter'){event.preventDefault();fcAgregarItem();}">
     </div>
+    <div id="fcErr" style="color:var(--danger);font-size:13px;font-weight:600;margin-top:6px;"></div>
+    <button type="button" class="btn secondary" style="width:100%;margin-top:8px;" onclick="fcAgregarItem()">+ Agregar a la factura</button>
     <div id="fcItemsList" style="margin-top:10px;"></div>
     <div class="cart-total" style="border-top:2px solid var(--border);"><span>Total</span><b class="num" id="fcTotal">$0</b></div>
     <label>Estado de pago</label>
@@ -4780,10 +4782,46 @@ function openFacturaCompraModal(){
       <button class="btn" onclick="guardarFacturaCompra()">Guardar factura</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
-  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente';
-  const selProd=document.getElementById('fcProducto');
-  if(selProd) document.getElementById('fcCosto').value=selProd.options[selProd.selectedIndex]?.dataset.costo||0;
-  selProd?.addEventListener('change',()=>{ document.getElementById('fcCosto').value=selProd.options[selProd.selectedIndex]?.dataset.costo||0; });
+  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente'; FC_SEL=null;
+}
+// ── Buscador de productos de la factura: palabras en cualquier orden, sin tildes ──
+let FC_SEL=null;
+function fcNorm(t){ return String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function fcCoincidencias(txt,max){
+  const ws=fcNorm(txt).split(/\s+/).filter(Boolean);
+  if(!ws.length) return [];
+  return DB.productos.filter(p=>{ const n=fcNorm(p.nombre); return ws.every(w=>n.includes(w)); })
+    .sort((a,b)=>(b.activo!==false)-(a.activo!==false)||((fcNorm(a.nombre).startsWith(ws[0])?0:1)-(fcNorm(b.nombre).startsWith(ws[0])?0:1))||a.nombre.localeCompare(b.nombre))
+    .slice(0,max||8);
+}
+// Parecidos para una línea que la IA no pudo emparejar: los que comparten más palabras
+function fcParecidos(txt,max){
+  const ws=fcNorm(txt).split(/[^a-z0-9]+/).filter(w=>w.length>=3);
+  if(!ws.length) return [];
+  return DB.productos.map(p=>{ const n=fcNorm(p.nombre); return {p,sc:ws.filter(w=>n.includes(w)).length}; })
+    .filter(x=>x.sc>0).sort((a,b)=>b.sc-a.sc||a.p.nombre.localeCompare(b.p.nombre)).slice(0,max||3).map(x=>x.p);
+}
+function fcBotonesProd(lista,accion){
+  return lista.map(p=>`<button type="button" onclick="${accion.replace('{id}',p.id)}" style="display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:9px 10px;margin:0;border:1px solid var(--border);border-top:0;background:var(--card,#fff);font:inherit;font-size:13.5px;cursor:pointer;">
+    <span>${escapeHtml(p.nombre)}</span><span style="color:var(--text2);white-space:nowrap;">stock ${Number(p.stock||0)}${p.costo?` · ${money(p.costo)}`:''}</span></button>`).join('');
+}
+function fcBuscarProd(txt){
+  FC_SEL=null; document.getElementById('fcSel').textContent='';
+  const box=document.getElementById('fcResultados');
+  const r=fcCoincidencias(txt,8);
+  box.innerHTML=r.length?`<div style="border-top:1px solid var(--border);margin-top:4px;max-height:260px;overflow:auto;">${fcBotonesProd(r,'fcElegir({id})')}</div>`
+    :(String(txt||'').trim()?'<div class="sub" style="margin-top:6px;">Sin resultados: prueba con otra palabra.</div>':'');
+}
+function fcEnterBuscar(){ const r=fcCoincidencias(document.getElementById('fcBuscar').value,1); if(r[0]) fcElegir(r[0].id); }
+function fcElegir(id){
+  const p=DB.productos.find(x=>x.id==id); if(!p) return;
+  FC_SEL=p;
+  document.getElementById('fcBuscar').value=p.nombre;
+  document.getElementById('fcResultados').innerHTML='';
+  document.getElementById('fcSel').textContent=`Stock actual: ${Number(p.stock||0)}${p.unidad?' '+p.unidad:''}${p.costo?` · costo registrado: ${money(p.costo)}`:''}`;
+  document.getElementById('fcCosto').value=p.costo||'';
+  document.getElementById('fcErr').textContent='';
+  document.getElementById('fcCantidad').focus();
 }
 let FC_ESTADO_PAGO='pendiente';
 function fcSetEstadoPago(v){
@@ -4792,17 +4830,20 @@ function fcSetEstadoPago(v){
   document.querySelectorAll('#modalContent .pay-methods button').forEach(b=>b.classList.toggle('active',b.dataset.ep===v));
 }
 function fcAgregarItem(){
-  const sel=document.getElementById('fcProducto');
+  const err=document.getElementById('fcErr');
   const cantidad=parseFloat(document.getElementById('fcCantidad').value);
   const costo=Number(document.getElementById('fcCosto').value);
-  if(!cantidad||cantidad<=0){ toast('Ingresa una cantidad válida',true); return; }
-  if(!costo||costo<0){ toast('Ingresa un costo unitario válido',true); return; }
-  FC_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,costo_unitario:costo,subtotal:costo*cantidad});
-  document.getElementById('fcCantidad').value='';
+  if(!FC_SEL){ err.textContent='Busca el producto y tócalo en la lista.'; document.getElementById('fcBuscar').focus(); return; }
+  if(!cantidad||cantidad<=0){ err.textContent='Falta la cantidad.'; document.getElementById('fcCantidad').focus(); return; }
+  if(!costo||costo<0){ err.textContent='Falta el costo neto unitario (el precio por kg o unidad que dice la factura).'; document.getElementById('fcCosto').focus(); return; }
+  FC_ITEMS.push({producto_id:FC_SEL.id,producto_nombre:FC_SEL.nombre,cantidad,costo_unitario:costo,subtotal:Math.round(costo*cantidad)});
+  FC_SEL=null; err.textContent='';
+  for(const id of ['fcBuscar','fcCantidad','fcCosto']) document.getElementById(id).value='';
+  document.getElementById('fcSel').textContent=''; document.getElementById('fcResultados').innerHTML='';
   fcRenderItems();
+  document.getElementById('fcBuscar').focus();
 }
 function fcRenderItems(){
-  const prodOpts=DB.productos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
   document.getElementById('fcItemsList').innerHTML=FC_ITEMS.map((i,idx)=>{
     if(i.sin_match){
       return `<div style="display:flex;flex-direction:column;gap:4px;padding:8px;margin:4px 0;border:1.5px solid var(--warning,#e0a300);border-radius:var(--r-sm);background:rgba(224,163,0,.08);">
@@ -4810,10 +4851,10 @@ function fcRenderItems(){
           <span>⚠️ Detectado por IA: "${i.producto_nombre}" — sin coincidencia. Selecciona el producto:</span>
           <svg class="ic-sm" style="cursor:pointer;color:var(--danger);flex-shrink:0;" onclick="fcQuitarItem(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <select style="flex:1;" onchange="fcAsignarProducto(${idx},this.value)"><option value="">-- Selecciona producto --</option>${prodOpts}</select>
-          <span style="font-size:12.5px;">x${i.cantidad} @ ${money(i.costo_unitario)}</span>
-        </div>
+        <div style="font-size:12.5px;">x${i.cantidad} @ ${money(i.costo_unitario)}</div>
+        <div style="border-top:1px solid var(--border);">${fcBotonesProd(fcParecidos(i.producto_nombre,3),'fcAsignarProducto('+idx+',{id})')}</div>
+        <input placeholder="Otro producto: escribe para buscar" autocomplete="off" oninput="fcBuscarLinea(${idx},this.value)">
+        <div id="fcLin_${idx}"></div>
       </div>`;
     }
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;">
@@ -4823,6 +4864,10 @@ function fcRenderItems(){
     </div>`;
   }).join('');
   document.getElementById('fcTotal').textContent=money(FC_ITEMS.reduce((s,i)=>s+i.subtotal,0));
+}
+function fcBuscarLinea(idx,txt){
+  const r=fcCoincidencias(txt,6);
+  document.getElementById('fcLin_'+idx).innerHTML=r.length?`<div style="border-top:1px solid var(--border);">${fcBotonesProd(r,'fcAsignarProducto('+idx+',{id})')}</div>`:'';
 }
 function fcAsignarProducto(idx,prodId){
   const item=FC_ITEMS[idx];
