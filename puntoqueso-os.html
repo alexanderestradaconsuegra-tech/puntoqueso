@@ -1885,6 +1885,14 @@ function montosPorMedio(metodo,total,mixto){
   m.monto_otro=total-m.monto_efectivo;
   return m;
 }
+// Todo cambio de stock pasa por la base (mover_stock): suma/resta sobre el
+// valor real y deja el movimiento registrado en la misma operación.
+async function moverStock(productoId,delta,tipo,motivo,origen,ref,costo){
+  const {data,error}=await supa.rpc('mover_stock',{p_producto:productoId,p_delta:delta,p_tipo:tipo,p_motivo:motivo,p_origen:origen,p_ref:ref??null,p_usuario:SESSION?.usuario||null,p_costo:costo??null});
+  if(error){ console.error('mover_stock',error); return {ok:false,error}; }
+  const p=DB.productos.find(x=>x.id===productoId); if(p) p.stock=Number(data);
+  return {ok:true,stock:Number(data)};
+}
 async function cobrar(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
   if(!(await cajaAbiertaParaVender())) return;
@@ -1919,10 +1927,9 @@ async function cobrar(){
       costo_unitario:Number(prod?.costo)||0,es_mayor:!!item.es_mayor
     });
     itemsParaBoleta.push({producto_nombre,cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad});
-    if(prod){
-      const nuevoStock=Math.max(0,Number(prod.stock)-item.cantidad);
-      await supa.from('productos').update({stock:nuevoStock}).eq('id',item.producto_id);
-      await supa.from('stock_movimientos').insert({producto_id:item.producto_id,tipo:'salida',cantidad:item.cantidad,motivo:'Venta terminal',origen:'terminal',referencia_id:venta.id,registrado_por:SESSION.usuario});
+    if(item.producto_id){
+      const r=await moverStock(item.producto_id,-Number(item.cantidad),'salida',`Venta boleta ${venta.boleta_numero||venta.id}`,'terminal',venta.id);
+      if(!r.ok) toast(`Venta guardada, pero no se pudo descontar el stock de ${item.nombre}. Revísalo.`,true);
     }
   }
   logAudit('Venta registrada','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${money(total)} (${metodo})`);
@@ -2412,10 +2419,9 @@ async function confirmarFacturarPedido(id){
   for(const it of (items||[])){
     const prod=DB.productos.find(x=>x.id===it.producto_id);
     await supa.from('venta_items').insert({venta_id:venta.id,producto_id:it.producto_id,producto_nombre:it.producto_nombre,cantidad:it.cantidad,precio_unitario:it.precio_unitario,subtotal:it.subtotal,costo_unitario:Number(prod?.costo)||0});
-    if(prod){
-      const nuevoStock=Math.max(0,Number(prod.stock)-Number(it.cantidad));
-      await supa.from('productos').update({stock:nuevoStock}).eq('id',it.producto_id);
-      await supa.from('stock_movimientos').insert({producto_id:it.producto_id,tipo:'salida',cantidad:it.cantidad,motivo:'Pedido WhatsApp facturado',origen:'whatsapp',referencia_id:venta.id,registrado_por:SESSION.usuario});
+    if(it.producto_id){
+      const r=await moverStock(it.producto_id,-Number(it.cantidad),'salida',`Pedido #${p.id} facturado (boleta ${venta.boleta_numero||venta.id})`,'whatsapp',venta.id);
+      if(!r.ok) toast(`Venta guardada, pero no se pudo descontar el stock de ${it.producto_nombre}. Revísalo.`,true);
     }
   }
   // El delivery va como una línea más de la venta (sin producto ni stock), así
@@ -3298,20 +3304,12 @@ async function anularVentaCore(id,motivo){
     if(!(cantidad>0)) continue;
     const prev=yaDevuelto.findIndex(m=>Number(m.producto_id)===Number(it.producto_id)&&Math.abs(Number(m.cantidad)-cantidad)<1e-9);
     if(prev>=0){ yaDevuelto.splice(prev,1); continue; }
-    // stock leído FRESCO de la base (no de DB.productos) para no pisar ventas
-    // que otra caja haya hecho mientras tanto
-    const {data:ps,error:pErr}=await supa.from('productos').select('id,stock').eq('id',it.producto_id).limit(1);
-    if(pErr) return fail(`Boleta ${boleta}: error al leer el stock de "${it.producto_nombre}": ${pErr.message}. La venta NO quedó anulada — reintenta.`,pErr);
-    const prod=(ps||[])[0];
-    if(!prod) continue;
-    const nuevoStock=Number(prod.stock||0)+cantidad;
-    const {data:up,error:upErr}=await supa.from('productos').update({stock:nuevoStock}).eq('id',prod.id).select('id');
-    if(upErr||!up||!up.length) return fail(`Boleta ${boleta}: no se pudo devolver el stock de "${it.producto_nombre}"${upErr?': '+upErr.message:''}. La venta NO quedó anulada — reintenta.`,upErr);
-    const {error:movErr}=await supa.from('stock_movimientos').insert({
-      producto_id:prod.id,tipo:'entrada',cantidad,motivo:`Anulación venta #${boleta}`,
-      origen:'anulacion',referencia_id:id,registrado_por:SESSION.usuario
-    });
-    if(movErr) return fail(`Boleta ${boleta}: se devolvió el stock de "${it.producto_nombre}" pero falló el registro del movimiento: ${movErr.message}. Revisa ese stock antes de reintentar.`,movErr);
+    // la base suma sobre el stock real y registra el movimiento en un solo paso
+    const r=await moverStock(it.producto_id,cantidad,'entrada',`Anulación venta #${boleta}`,'anulacion',id);
+    if(!r.ok){
+      if(/no existe/i.test(r.error?.message||'')) continue;   // producto borrado
+      return fail(`Boleta ${boleta}: no se pudo devolver el stock de "${it.producto_nombre}": ${r.error.message}. La venta NO quedó anulada — reintenta.`,r.error);
+    }
   }
 
   // Si la venta vino de un pedido, se libera: su stock acaba de volver, así
@@ -3391,6 +3389,35 @@ async function guardarOrdenProducto(id,valor){
   toast(pos>0?`${p?.nombre||'Producto'} en la posición ${pos}`:`${p?.nombre||'Producto'} sin posición`);
   await loadAll(); renderProductos(document.getElementById('prodBuscar')?.value||'');
 }
+// ── Kardex: historial de movimientos de stock de un producto ──
+const ORIGEN_MOV={terminal:'Venta',whatsapp:'Pedido facturado',compra:'Compra',anulacion:'Anulación',ajuste:'Toma de inventario',manual:'Cambio manual'};
+async function verKardex(id){
+  const p=DB.productos.find(x=>x.id===id); if(!p) return;
+  const {data,error}=await supa.from('stock_movimientos').select('*').eq('producto_id',id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(300);
+  if(error){ toast('Error: '+error.message,true); return; }
+  const peso=!!p.vender_por_peso||p.unidad==='kg', u=peso?'kg':'u';
+  const fmt=n=>`${Number(n).toLocaleString('es-CL',{maximumFractionDigits:3})} ${u}`;
+  // saldo: el guardado en el movimiento, o reconstruido hacia atrás desde el stock actual
+  let saldo=Number(p.stock)||0;
+  const filas=(data||[]).map(m=>{
+    const delta=m.tipo==='salida'?-Number(m.cantidad):Number(m.cantidad);
+    const s=m.stock_resultante!=null?Number(m.stock_resultante):saldo;
+    saldo=s-delta;
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;"><b style="font-size:13px;">${escapeHtml(ORIGEN_MOV[m.origen]||m.origen||m.tipo)}</b> <span class="sub-xs">${new Date(m.created_at).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+        <div class="sub-xs">${escapeHtml(m.motivo||'')}${m.registrado_por?` · ${escapeHtml(nombreUsuario(m.registrado_por))}`:''}</div></div>
+      <div style="text-align:right;white-space:nowrap;"><div style="font-weight:800;color:${delta<0?'var(--danger)':'var(--ok)'};">${delta>0?'+':''}${fmt(delta)}</div><div class="sub-xs">queda ${fmt(s)}</div></div>
+    </div>`;
+  }).join('');
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Movimientos · ${escapeHtml(p.nombre)}</h3>
+    <div class="caja-linea"><span>Stock actual</span><b style="color:${Number(p.stock)<0?'var(--danger)':'inherit'}">${fmt(p.stock||0)}</b></div>
+    ${Number(p.stock)<0?'<div class="sub-xs" style="color:var(--danger);font-weight:700;margin-bottom:6px;">Stock negativo: se vendió más de lo que había registrado. Haz una toma de inventario de este producto.</div>':''}
+    <div style="max-height:55vh;overflow:auto;margin-top:6px;">${filas||'<div class="empty">Sin movimientos registrados</div>'}</div>
+    <div class="actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+
 // ── Valor del inventario (stock × costo) ──
 function valorInventario(){
   const act=DB.productos.filter(p=>p.activo!==false);
@@ -3708,6 +3735,7 @@ function renderProductos(filter=''){
     <td>${flagWebBtn(p,editar)}</td>
     <td>${flagFavBtn(p,editar)}</td>
     <td style="display:flex;gap:6px;">
+      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="verKardex(${p.id})" title="Historial de movimientos de stock">Movimientos</button>
       ${editar?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
     </td></tr>`;}).join('')||`<tr><td colspan="${verC?12:10}" class="empty">Sin productos</td></tr>`;
@@ -3724,6 +3752,7 @@ function renderProductos(filter=''){
           <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span>${flagWebBtn(p,editar)}${flagFavBtn(p,editar)}<label class="sub-xs" style="display:inline-flex;align-items:center;gap:4px;">Orden ${ordenInput(p,editar)}</label></div>
         </div>
         ${canDo('editarInventario')?`<div class="lc-actions">
+          <button class="lc-more" onclick="verKardex(${p.id})" title="Movimientos" aria-label="Movimientos de stock"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
           <button class="lc-more" onclick="openProductoModal(${p.id})"><svg class="ic" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>
           <button class="lc-more" onclick="eliminarProducto(${p.id})"><svg class="ic" viewBox="0 0 24 24" style="color:var(--danger);"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>
         </div>`:''}
@@ -3795,7 +3824,7 @@ function openProductoModal(id){
     <input id="prPrecioMayor" type="number" step="1" placeholder="Sin precio mayorista" value="${p.precio_mayor||''}">
     ${canDo('verCostos')?`<label>Costo unitario</label><input id="prCosto" type="number" step="1" value="${p.costo||0}" oninput="actualizarMargenProducto()">
     <div id="prMargen" style="font-size:12.5px;color:var(--text2);margin-top:-4px;margin-bottom:8px;"></div>`:''}
-    <label>Stock actual</label><input id="prStock" type="number" step="0.1" value="${p.stock||0}">
+    <label>Stock actual</label><input id="prStock" type="number" step="0.1" value="${p.stock||0}" data-inicial="${p.stock||0}">
     <label>Stock mínimo (alerta)</label><input id="prStockMin" type="number" step="0.1" value="${p.stock_minimo||0}">
     <label>SKU / código de barras</label><input id="prSku" value="${p.sku||''}">
     <label>Descripción</label><textarea id="prDescripcion" rows="3" placeholder="Descripción breve para el catálogo público">${p.descripcion||''}</textarea>
@@ -3846,7 +3875,6 @@ async function guardarProducto(id){
     // vacío => null (este producto no tiene precio mayorista y no mostrará la opción en caja)
     precio_mayor:Number(document.getElementById('prPrecioMayor').value)||null,
     ...(document.getElementById('prCosto')?{costo:Number(document.getElementById('prCosto').value)||0}:{}),
-    stock:Number(document.getElementById('prStock').value)||0,
     stock_minimo:Number(document.getElementById('prStockMin').value)||0,
     sku:sanitize(document.getElementById('prSku').value)||null,
     descripcion:sanitize(document.getElementById('prDescripcion').value)||null,
@@ -3856,9 +3884,13 @@ async function guardarProducto(id){
     imagen_b64:_prodImagenB64||null,
     updated_at:new Date().toISOString()
   };
+  // El stock solo se guarda si se cambió en esta ventana: así editar el precio
+  // no pisa el stock real con el valor que la pantalla tenía guardado.
+  const stEl=document.getElementById('prStock');
+  if(!id||stEl.value!==stEl.dataset.inicial) row.stock=Number(stEl.value)||0;
   const {error}=id?await supa.from('productos').update(row).eq('id',id):await supa.from('productos').insert(row);
   if(error){ toast('Error: '+error.message,true); return; }
-  logAudit(id?'Producto editado':'Producto creado','productos',nombre);
+  logAudit(id?'Producto editado':'Producto creado','productos',nombre+(row.stock!==undefined&&id?` (stock → ${row.stock})`:''));
   toast('Producto guardado'); closeModal(); await loadAll(); renderProductos();
 }
 async function eliminarProducto(id){
@@ -4710,11 +4742,9 @@ async function guardarFacturaCompra(){
   const factura=fac[0];
   for(const item of FC_ITEMS){
     await supa.from('factura_compra_items').insert({...item,factura_id:factura.id});
-    const prod=DB.productos.find(p=>p.id===item.producto_id);
-    if(prod){
-      const nuevoStock=Number(prod.stock)+Number(item.cantidad);
-      await supa.from('productos').update({stock:nuevoStock,costo:item.costo_unitario}).eq('id',item.producto_id);
-      await supa.from('stock_movimientos').insert({producto_id:item.producto_id,tipo:'entrada',cantidad:item.cantidad,motivo:`Factura de compra #${numero||factura.id}`,origen:'compra',referencia_id:factura.id,registrado_por:SESSION.usuario});
+    if(item.producto_id){
+      const r=await moverStock(item.producto_id,Number(item.cantidad),'entrada',`Factura de compra ${numero?'N° '+numero:'#'+factura.id} · ${proveedor.nombre}`,'compra',factura.id,Number(item.costo_unitario)||null);
+      if(!r.ok) toast(`Factura guardada, pero no se pudo sumar el stock de un producto. Revísalo.`,true);
     }
   }
   if(FC_ESTADO_PAGO==='pagada') await generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,document.getElementById('fcCuenta')?.value);
