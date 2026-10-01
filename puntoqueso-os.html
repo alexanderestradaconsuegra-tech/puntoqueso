@@ -486,7 +486,7 @@ tr:last-child td{border-bottom:none;}
       <svg class="ic" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Usuarios
     </div>
-    <div class="nav-item" data-view="config" onclick="nav('config')">
+    <div class="nav-item" data-view="config" id="navConfig" style="display:none;" onclick="nav('config')">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Configuración
     </div>
@@ -1239,7 +1239,10 @@ function closeSheet(){ document.getElementById('sheetBg')?.classList.remove('ope
 // ══════════════════════════════════════════════════════════
 //  NAVEGACIÓN
 // ══════════════════════════════════════════════════════════
+// Cuentas y Configuración son solo del dueño (rol Admin)
+function esDueno(){ return SESSION?.rol==='admin'; }
 function nav(view){
+  if((view==='config'||view==='cuentas')&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
   currentPage=view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
   syncMobileNav(view);
@@ -1358,7 +1361,8 @@ async function iniciarApp(){
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
-  document.getElementById('navCuentas').style.display=canDo('verReportes')?'flex':'none';
+  document.getElementById('navCuentas').style.display=esDueno()?'flex':'none';
+  document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -4155,7 +4159,8 @@ function openUsuarioModal(id){
     <h3>${id?'Editar':'Nuevo'} usuario</h3>
     <label>Nombre</label><input id="usNombre" value="${u?.nombre||''}">
     <label>Usuario (login)</label><input id="usUsuario" value="${u?.usuario||''}" ${id?'disabled':''}>
-    ${id?'':'<label>Contraseña</label><input id="usPassword" type="password" placeholder="Contraseña inicial">'}
+    ${id?'':`<label>Contraseña (para entrar al sistema)</label><input id="usPassword" type="password" placeholder="Mínimo 4 caracteres" autocomplete="new-password">
+    <label>PIN de 4 dígitos (para "Cambiar de cajero")</label><input id="usPin" type="password" inputmode="numeric" maxlength="4" placeholder="Ej: 4821" autocomplete="off">`}
     <label>Rol</label>
     <select id="usRol">
       <option value="vendedor" ${u&&u.rol==='vendedor'?'selected':''}>Vendedor</option>
@@ -4174,37 +4179,65 @@ function openUsuarioModal(id){
     </div>`:''}
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" onclick="guardarUsuario(${id||'null'})">Guardar</button>
-    </div>`;
+      <button class="btn" id="btnGuardarUsuario" onclick="guardarUsuario(${id||'null'})">Guardar</button>
+    </div>
+    <div id="usError" style="display:none;margin-top:10px;padding:10px 12px;border-radius:var(--r-sm);background:#fdecea;color:var(--danger);font-size:13px;font-weight:600;"></div>`;
   document.getElementById('modalBg').style.display='flex';
 }
+function errorUsuario(msg){
+  const el=document.getElementById('usError');
+  if(el){ el.textContent=msg; el.style.display='block'; }
+  toast(msg,true);
+}
 async function guardarUsuario(id){
+  const btn=document.getElementById('btnGuardarUsuario');
+  const err=document.getElementById('usError'); if(err) err.style.display='none';
   const nombre=sanitize(document.getElementById('usNombre').value);
   const rol=document.getElementById('usRol').value;
   const activo=document.getElementById('usActivo').checked;
-  if(!nombre){ toast('El nombre es obligatorio',true); return; }
+  if(!nombre){ errorUsuario('Escribe el nombre'); return; }
   const permisos={};
-  PERM_KEYS.forEach(([k])=>{ permisos[k]=document.getElementById('usPerm_'+k).checked; });
-  if(id){
-    const {error}=await supa.from('usuarios').update({nombre,rol,activo,permisos}).eq('id',id).select('id');
-    if(error){ toast('Error: '+error.message,true); return; }
-    logAudit('Usuario editado','usuarios',nombre);
-    toast('Usuario actualizado');
-  }else{
-    const usuario=sanitize(document.getElementById('usUsuario').value);
-    const password=document.getElementById('usPassword').value;
-    if(!usuario||!password){ toast('Usuario y contraseña son obligatorios',true); return; }
-    // password_hash es not null en el esquema: se inserta con un placeholder y de
-    // inmediato se fija la contraseña real vía RPC (crypt), igual patrón que el PIN.
-    const {data:ins,error}=await supa.from('usuarios').insert({usuario,nombre,rol,activo,permisos,password_hash:'x'}).select('id');
-    if(error){ toast('Error: '+error.message,true); return; }
-    const nuevo=ins[0];
-    const {error:errPass}=await supa.rpc('set_password_hash',{p_usuario_id:nuevo.id,p_password:password});
-    if(errPass){ toast('Usuario creado pero falló fijar la contraseña: '+errPass.message,true); }
-    logAudit('Usuario creado','usuarios',nombre);
-    toast('Usuario creado');
+  PERM_KEYS.forEach(([k])=>{ permisos[k]=!!document.getElementById('usPerm_'+k)?.checked; });
+  if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  try{
+    if(id){
+      const {data,error}=await supa.from('usuarios').update({nombre,rol,activo,permisos}).eq('id',id).select('id');
+      if(error||!data||!data.length){ errorUsuario('No se pudo guardar: '+(error?.message||'sin respuesta del servidor')); return; }
+      logAudit('Usuario editado','usuarios',nombre);
+      toast('Usuario actualizado');
+    }else{
+      const usuario=sanitize(document.getElementById('usUsuario').value).toLowerCase().replace(/\s+/g,'');
+      const password=document.getElementById('usPassword').value;
+      const pin=(document.getElementById('usPin')?.value||'').trim();
+      if(!usuario){ errorUsuario('Escribe el usuario (con eso entra al sistema)'); return; }
+      if(password.length<4){ errorUsuario('La contraseña debe tener al menos 4 caracteres'); return; }
+      if(pin&&!/^\d{4}$/.test(pin)){ errorUsuario('El PIN debe ser de 4 números'); return; }
+      if(DB.usuarios.some(u=>(u.usuario||'').toLowerCase()===usuario)){ errorUsuario(`Ya existe un usuario "${usuario}". Elige otro.`); return; }
+      // password_hash es not null en el esquema: se inserta con un placeholder y de
+      // inmediato se fija la contraseña real vía RPC (crypt), igual patrón que el PIN.
+      const {data:ins,error}=await supa.from('usuarios').insert({usuario,nombre,rol,activo,permisos,password_hash:'x'}).select('id');
+      if(error||!ins||!ins.length){
+        const dup=/duplicate|unique/i.test(error?.message||'');
+        errorUsuario(dup?`Ya existe un usuario "${usuario}". Elige otro.`:'No se pudo crear el usuario: '+(error?.message||'sin respuesta del servidor'));
+        return;
+      }
+      const nuevo=ins[0];
+      const {error:errPass}=await supa.rpc('set_password_hash',{p_usuario_id:nuevo.id,p_password:password});
+      if(errPass){ errorUsuario('Usuario creado, pero falló fijar la contraseña: '+errPass.message); return; }
+      if(pin){
+        const {error:errPin}=await supa.rpc('set_pin_hash',{p_usuario_id:nuevo.id,p_pin:pin});
+        if(errPin){ errorUsuario('Usuario creado, pero falló fijar el PIN: '+errPin.message+'. Ponlo desde Editar.'); return; }
+      }
+      logAudit('Usuario creado','usuarios',`${nombre} (${usuario})`);
+      toast(`Usuario ${usuario} creado${pin?' con PIN':''}`);
+    }
+    closeModal(); await loadAll(); renderUsuariosPage();
+  }catch(e){
+    console.error(e);
+    errorUsuario('Error de conexión: '+(e.message||e)+'. Intenta de nuevo.');
+  }finally{
+    if(btn&&document.body.contains(btn)){ btn.disabled=false; btn.textContent='Guardar'; }
   }
-  closeModal(); await loadAll(); renderUsuariosPage();
 }
 async function toggleActivoUsuario(id,nuevoActivo){
   const u=DB.usuarios.find(x=>x.id===id);
@@ -5596,7 +5629,8 @@ async function confirmarCajeroPin(){
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
-  document.getElementById('navCuentas').style.display=canDo('verReportes')?'flex':'none';
+  document.getElementById('navCuentas').style.display=esDueno()?'flex':'none';
+  document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -5604,6 +5638,7 @@ async function confirmarCajeroPin(){
   toast(`Ahora operando como ${SESSION.nombre}`);
   closeCajeroSwitch();
   renderCajaBar();
+  if((currentPage==='config'||currentPage==='cuentas')&&!esDueno()) nav('terminal');
 }
 
 // ══════════════════════════════════════════════════════════
