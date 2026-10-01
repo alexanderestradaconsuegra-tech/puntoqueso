@@ -141,6 +141,16 @@ tr:last-child td{border-bottom:none;}
 .costo-inline{width:92px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r-sm);font-family:inherit;
   font-size:13px;font-weight:600;text-align:right;background:#fff;color:var(--text);}
 .orden-inline{width:58px;text-align:center;}
+.inv-valor{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 14px;}
+.inv-valor .kpi-mini{flex:1;min-width:150px;background:#fff;border:1.5px solid var(--border);border-radius:var(--r);padding:12px 14px;}
+.inv-valor .kpi-mini small{display:block;font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+.inv-valor .kpi-mini b{font-size:20px;font-variant-numeric:tabular-nums;}
+.inv-valor .kpi-mini.dest{border-color:var(--brand);background:var(--mint);}
+.toma-in{width:96px;padding:7px 8px;border:1.5px solid var(--border);border-radius:8px;text-align:right;font-variant-numeric:tabular-nums;}
+.toma-in.lleno{border-color:var(--ok);background:#f0f9f2;}
+tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
+.toma-bar{position:sticky;bottom:0;z-index:5;margin-top:14px;background:var(--mate);color:#fff;border-radius:var(--r);padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;box-shadow:var(--sh-md);}
+.toma-bar b{font-size:18px;color:var(--brand);font-variant-numeric:tabular-nums;}
 .costo-inline:disabled{background:var(--mint);color:var(--muted);}
 .pos-prod .pp-mayor{font-size:11px;font-weight:700;color:var(--text2);background:var(--mint);border:1px solid var(--border2);border-radius:99px;padding:1px 7px;display:inline-block;margin-top:3px;}
 .pos-prod .pp-stock{font-size:11px;color:var(--muted);margin-top:3px;}
@@ -627,8 +637,10 @@ tr:last-child td{border-bottom:none;}
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn secondary" id="btnListaCompra" onclick="exportarListaCompra()">🛒 Lista de compra<span id="btnListaCompraN" class="badge" style="margin-left:6px;"></span></button>
           <button class="btn secondary" id="btnMasVendidos" onclick="marcarFavoritosMasVendidos()">★ Marcar los más vendidos</button>
+          <button class="btn secondary" id="btnTomaInv" onclick="nav('toma')">📋 Toma de inventario</button>
           <button class="btn" id="btnNuevoProducto" onclick="openProductoModal()">+ Nuevo producto</button>
         </div></div>
+      <div class="inv-valor" id="invValor"></div>
       <div class="toolbar">
         <input id="prodBuscar" placeholder="Buscar..." oninput="renderProductos(this.value)">
         <div class="cat-chips" id="prodCatChips"></div>
@@ -648,6 +660,36 @@ tr:last-child td{border-bottom:none;}
         <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th title="1 sale primero en la Terminal y en la tienda web. Vacío = después, por nombre">Orden</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
+      </div>
+    </div>
+
+    <!-- TOMA DE INVENTARIO -->
+    <div class="view" id="view-toma">
+      <div class="topbar"><div><h2>Toma de inventario</h2><div class="sub">Cuenta lo que tienes y escríbelo. No es una compra: no genera gastos ni mueve las cuentas.</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="nav('productos')">← Productos</button>
+          <button class="btn secondary" onclick="tomaBorrar()">Borrar lo escrito</button>
+        </div></div>
+      <div class="card" style="padding:14px 16px;margin-bottom:12px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:13.5px;font-weight:600;">
+          <input type="checkbox" id="tomaCero" checked style="width:17px;height:17px;margin-top:1px;" onchange="tomaGuardarBorrador();pintarTomaResumen()">
+          <span>Los productos que <u>no</u> cuente quedan en 0<br><span class="sub-xs" style="font-weight:500;">Úsalo para empezar de cero: solo queda en inventario lo que escribas aquí.</span></span>
+        </label>
+      </div>
+      <div class="toolbar">
+        <input id="tomaBuscar" placeholder="Buscar producto..." oninput="pintarToma()">
+        <div class="cat-chips" id="tomaFiltro"></div>
+      </div>
+      <div class="list-wrap"><div class="table-scroll"><table>
+        <thead><tr><th>Producto</th><th class="num">En sistema</th><th class="num">Contado</th><th class="num toma-costo">Costo unitario</th><th class="num toma-costo">Valor</th></tr></thead>
+        <tbody id="tomaBody"></tbody></table></div></div>
+      <div class="toma-bar">
+        <div><div id="tomaResumen" style="font-size:13px;"></div></div>
+        <button class="btn" id="btnAplicarToma" onclick="aplicarToma()">Aplicar toma de inventario</button>
+      </div>
+      <div class="card" style="padding:16px;margin-top:18px;">
+        <h3 style="margin-bottom:8px;">Tomas anteriores</h3>
+        <div id="tomasHist"></div>
       </div>
     </div>
 
@@ -1243,6 +1285,7 @@ function closeSheet(){ document.getElementById('sheetBg')?.classList.remove('ope
 function esDueno(){ return SESSION?.rol==='admin'; }
 function nav(view){
   if((view==='config'||view==='cuentas')&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
+  if(view==='toma'&&!canDo('editarInventario')){ toast('No tienes permiso para el inventario',true); view='productos'; }
   currentPage=view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
   syncMobileNav(view);
@@ -1255,6 +1298,7 @@ function nav(view){
   if(view==='referidos') renderReferidos();
   if(view==='ventas') renderVentas();
   if(view==='productos') renderProductos();
+  if(view==='toma') renderToma();
   if(view==='clientes') renderClientes();
   if(view==='gastos') renderGastos();
   if(view==='config'){ cargarConfigForm(); }
@@ -3347,6 +3391,152 @@ async function guardarOrdenProducto(id,valor){
   toast(pos>0?`${p?.nombre||'Producto'} en la posición ${pos}`:`${p?.nombre||'Producto'} sin posición`);
   await loadAll(); renderProductos(document.getElementById('prodBuscar')?.value||'');
 }
+// ── Valor del inventario (stock × costo) ──
+function valorInventario(){
+  const act=DB.productos.filter(p=>p.activo!==false);
+  const conStock=act.filter(p=>Number(p.stock)>0);
+  return {
+    costo:conStock.reduce((s,p)=>s+Number(p.stock)*(Number(p.costo)||0),0),
+    venta:conStock.reduce((s,p)=>s+Number(p.stock)*(Number(p.precio)||0),0),
+    conStock:conStock.length,
+    sinCosto:conStock.filter(p=>!(Number(p.costo)>0)).length,
+  };
+}
+function pintarValorInventario(){
+  const el=document.getElementById('invValor'); if(!el) return;
+  if(!canDo('verCostos')){ el.innerHTML=''; return; }
+  const v=valorInventario();
+  el.innerHTML=`<div class="kpi-mini dest"><small>Inventario a costo</small><b>${money(v.costo)}</b></div>
+    <div class="kpi-mini"><small>A precio de venta</small><b>${money(v.venta)}</b></div>
+    <div class="kpi-mini"><small>Ganancia posible</small><b style="color:var(--ok);">${money(v.venta-v.costo)}</b></div>
+    <div class="kpi-mini"><small>Productos con stock</small><b>${v.conStock}</b>${v.sinCosto?`<div class="sub-xs" style="color:var(--warn);font-weight:700;">${v.sinCosto} sin costo cargado</div>`:''}</div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  TOMA DE INVENTARIO — se escribe lo contado (queda guardado como
+//  borrador en este navegador hasta aplicarlo) y se aplica todo junto.
+// ══════════════════════════════════════════════════════════
+let TOMA={cant:{},costo:{},filtro:'todos'};
+function tomaCargarBorrador(){
+  try{ const b=JSON.parse(localStorage.getItem('pq_toma')||'null'); if(b&&b.cant) TOMA={...TOMA,cant:b.cant||{},costo:b.costo||{}}; if(b&&typeof b.cero==='boolean') document.getElementById('tomaCero').checked=b.cero; }catch(e){}
+}
+function tomaGuardarBorrador(){
+  try{ localStorage.setItem('pq_toma',JSON.stringify({cant:TOMA.cant,costo:TOMA.costo,cero:document.getElementById('tomaCero').checked})); }catch(e){}
+}
+function tomaBorrar(){
+  if(!confirm('¿Borrar todo lo que escribiste en esta toma?')) return;
+  TOMA.cant={}; TOMA.costo={}; tomaGuardarBorrador(); pintarToma();
+}
+const esCatQueso=c=>/queso/i.test(c||'');
+function tomaProductos(){ return DB.productos.filter(p=>p.activo!==false).sort((a,b)=>(esCatQueso(b.categoria)-esCatQueso(a.categoria))||String(a.categoria||'').localeCompare(String(b.categoria||''),'es')||String(a.nombre).localeCompare(String(b.nombre),'es')); }
+function tomaValor(p){
+  const c=TOMA.cant[p.id]; if(c===undefined||c==='') return 0;
+  const costo=TOMA.costo[p.id]!==undefined&&TOMA.costo[p.id]!==''?Number(TOMA.costo[p.id]):Number(p.costo)||0;
+  return (Number(c)||0)*costo;
+}
+function renderToma(){ tomaCargarBorrador(); pintarToma(); renderTomasHist(); }
+function setTomaFiltro(f){ TOMA.filtro=f; pintarToma(); }
+function pintarToma(){
+  const verC=canDo('verCostos');
+  document.querySelectorAll('#view-toma .toma-costo').forEach(el=>el.style.display=verC?'':'none');
+  const q=(document.getElementById('tomaBuscar').value||'').toLowerCase();
+  const todos=tomaProductos();
+  const contados=todos.filter(p=>TOMA.cant[p.id]!==undefined&&TOMA.cant[p.id]!=='');
+  document.getElementById('tomaFiltro').innerHTML=[['todos',`Todos (${todos.length})`],['sin',`Sin contar (${todos.length-contados.length})`],['con',`Contados (${contados.length})`]]
+    .map(([k,t])=>`<button type="button" class="cat-chip${TOMA.filtro===k?' active':''}" onclick="setTomaFiltro('${k}')">${t}</button>`).join('');
+  const rows=todos.filter(p=>(p.nombre||'').toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q))
+    .filter(p=>{ const c=TOMA.cant[p.id]!==undefined&&TOMA.cant[p.id]!==''; return TOMA.filtro==='todos'||(TOMA.filtro==='con'?c:!c); });
+  let cat=null;
+  document.getElementById('tomaBody').innerHTML=rows.map(p=>{
+    const peso=!!p.vender_por_peso||p.unidad==='kg';
+    const c=TOMA.cant[p.id]??'';
+    const head=p.categoria!==cat?(cat=p.categoria,`<tr><td colspan="5" style="background:var(--mint);font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.04em;">${escapeHtml(p.categoria||'Sin categoría')}</td></tr>`):'';
+    return head+`<tr id="tomaRow${p.id}" class="${c!==''?'toma-cont':''}">
+      <td><b>${escapeHtml(p.nombre)}</b><div class="sub-xs">${peso?'en kilos':'en unidades'}</div></td>
+      <td class="num">${Number(p.stock||0).toLocaleString('es-CL')} ${peso?'kg':'u'}</td>
+      <td class="num"><input class="toma-in${c!==''?' lleno':''}" type="number" inputmode="decimal" min="0" step="${peso?'0.001':'1'}" placeholder="—" value="${c}" oninput="tomaSet(${p.id},'cant',this)"></td>
+      ${verC?`<td class="num"><input class="toma-in" type="number" inputmode="numeric" min="0" step="1" placeholder="${Number(p.costo)||0}" value="${TOMA.costo[p.id]??''}" oninput="tomaSet(${p.id},'costo',this)" title="Vacío = se mantiene ${money(p.costo||0)}"></td>
+      <td class="num" id="tomaVal${p.id}">${c!==''?money(tomaValor(p)):'—'}</td>`:''}
+    </tr>`;
+  }).join('')||`<tr><td colspan="5" class="empty">Sin productos</td></tr>`;
+  pintarTomaResumen();
+}
+function tomaSet(id,campo,inp){
+  const v=inp.value.trim();
+  if(v===''){ delete TOMA[campo][id]; } else TOMA[campo][id]=v;
+  if(campo==='cant'){ inp.classList.toggle('lleno',v!==''); document.getElementById('tomaRow'+id)?.classList.toggle('toma-cont',v!==''); }
+  const p=DB.productos.find(x=>x.id===id);
+  const cel=document.getElementById('tomaVal'+id);
+  if(cel&&p) cel.textContent=TOMA.cant[id]!==undefined?money(tomaValor(p)):'—';
+  tomaGuardarBorrador(); pintarTomaResumen();
+}
+function pintarTomaResumen(){
+  const todos=tomaProductos();
+  const contados=todos.filter(p=>TOMA.cant[p.id]!==undefined&&TOMA.cant[p.id]!=='');
+  const valor=contados.reduce((s,p)=>s+tomaValor(p),0);
+  const cero=document.getElementById('tomaCero')?.checked;
+  const quedanCero=cero?todos.filter(p=>!(TOMA.cant[p.id]!==undefined&&TOMA.cant[p.id]!=='')&&Number(p.stock)!==0).length:0;
+  document.getElementById('tomaResumen').innerHTML=`<div><b>${contados.length}</b> de ${todos.length} productos contados${canDo('verCostos')?` · valor <b>${money(valor)}</b>`:''}</div>
+    <div style="opacity:.8;">${cero?(quedanCero?`${quedanCero} producto${quedanCero===1?'':'s'} sin contar quedará${quedanCero===1?'':'n'} en 0`:'Los no contados ya están en 0'):'Los no contados mantienen su stock actual'}</div>`;
+}
+async function aplicarToma(){
+  if(!canDo('editarInventario')){ toast('No tienes permiso',true); return; }
+  const todos=tomaProductos();
+  const items=todos.filter(p=>TOMA.cant[p.id]!==undefined&&TOMA.cant[p.id]!=='').map(p=>({producto_id:p.id,cantidad:Number(TOMA.cant[p.id])||0,costo:TOMA.costo[p.id]!==undefined&&TOMA.costo[p.id]!==''?Number(TOMA.costo[p.id]):null}));
+  const cero=document.getElementById('tomaCero').checked;
+  if(!items.length&&!cero){ toast('Escribe al menos una cantidad contada',true); return; }
+  const quedanCero=cero?todos.filter(p=>!items.some(i=>i.producto_id===p.id)&&Number(p.stock)!==0).length:0;
+  const valor=todos.reduce((s,p)=>s+tomaValor(p),0);
+  if(!confirm(`Se aplicará la toma de inventario:\n\n• ${items.length} productos con lo contado${canDo('verCostos')?` (valor ${money(valor)})`:''}\n• ${cero?`${quedanCero} productos no contados quedarán en 0`:'Los no contados no cambian'}\n\nNo genera gastos. ¿Continuar?`)) return;
+  const btn=document.getElementById('btnAplicarToma'); btn.disabled=true; btn.textContent='Aplicando…';
+  const {data,error}=await supa.rpc('aplicar_toma_inventario',{p_items:items,p_cero_resto:cero,p_usuario:SESSION.usuario,p_notas:null});
+  btn.disabled=false; btn.textContent='Aplicar toma de inventario';
+  if(error||!data){ toast('No se pudo aplicar: '+(error?.message||'sin respuesta'),true); return; }
+  logAudit('Toma de inventario','productos',`#${data.id}: ${data.productos} contados, ${data.puestos_en_cero} en 0, valor ${money(data.valor_costo)}`);
+  TOMA.cant={}; TOMA.costo={}; tomaGuardarBorrador();
+  await loadAll();
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Inventario actualizado</h3>
+    <div class="caja-resultado cuadra"><div>Valor del inventario contado (a costo)</div><div class="big">${money(data.valor_costo)}</div></div>
+    <div class="caja-linea"><span>Productos contados</span><b>${data.productos}</b></div>
+    <div class="caja-linea"><span>Puestos en 0 (no contados)</span><b>${data.puestos_en_cero}</b></div>
+    <div class="caja-linea"><span>A precio de venta</span><b>${money(data.valor_venta)}</b></div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal();nav('productos')">Ver productos</button>
+      <button class="btn" onclick="imprimirToma(${data.id})">Imprimir toma</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  pintarToma(); renderTomasHist();
+}
+async function renderTomasHist(){
+  const el=document.getElementById('tomasHist'); if(!el) return;
+  const {data,error}=await supa.from('tomas_inventario').select('id,fecha,registrado_por,productos,valor_costo,puestos_en_cero').order('fecha',{ascending:false}).limit(12);
+  if(error){ el.innerHTML='<div class="sub-xs">Aún no disponible (falta instalar la actualización de la base de datos).</div>'; return; }
+  el.innerHTML=(data||[]).map(t=>`<div class="caja-linea"><span>#${t.id} · ${new Date(t.fecha).toLocaleString('es-CL')} · ${escapeHtml(nombreUsuario(t.registrado_por))} <span class="sub-xs">${t.productos} contados${t.puestos_en_cero?`, ${t.puestos_en_cero} en 0`:''}</span></span>
+    <span style="display:flex;gap:8px;align-items:center;">${canDo('verCostos')?`<b>${money(t.valor_costo)}</b>`:''}<button class="btn secondary" style="padding:5px 10px;font-size:12px;" onclick="imprimirToma(${t.id})">Imprimir</button></span></div>`).join('')||'<div class="sub-xs">Todavía no hay tomas de inventario.</div>';
+}
+async function imprimirToma(id){
+  const {data,error}=await supa.from('tomas_inventario').select('*').eq('id',id).limit(1);
+  const t=(data||[])[0];
+  if(error||!t){ toast('No se encontró la toma',true); return; }
+  const verC=canDo('verCostos');
+  const det=(t.detalle||[]).slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'));
+  const cuerpo=`
+  <div class="doc">TOMA DE INVENTARIO #${t.id}</div>
+  <div class="sub">${new Date(t.fecha).toLocaleString('es-CL')} · ${escapeHtml(nombreUsuario(t.registrado_por))}</div>
+  <div class="sec">RESUMEN</div>
+  <table>
+    ${rFila('Productos contados',t.productos)}
+    ${t.cero_resto?rFila('No contados puestos en 0',t.puestos_en_cero||0):''}
+    ${verC?rFila('Valor a costo',money(t.valor_costo),'st'):''}
+    ${verC?rFila('Valor a precio de venta',money(t.valor_venta)):''}
+  </table>
+  <div class="sec">DETALLE</div>
+  <table>${det.map(d=>{ const peso=d.unidad==='kg'; return `<tr><td class="q">${reciboFormatCantidad(Number(d.cantidad))} ${peso?'kg':'u'}</td><td>${escapeHtml(d.nombre)}${verC?`<br><span style="font-size:10.5px;">× ${money(d.costo)}</span>`:''}</td>${verC?`<td class="n">${money(Number(d.cantidad)*Number(d.costo))}</td>`:''}</tr>`; }).join('')}</table>
+  <div class="firma">Firma quien contó</div>`;
+  imprimirDocumento(`Toma de inventario #${t.id}`,cuerpo);
+}
+
 function renderVisChipsProductos(){
   const cont=document.getElementById('prodVisChips');
   if(!cont) return;
@@ -3491,6 +3681,9 @@ function renderProductos(filter=''){
   if(btnNuevo) btnNuevo.style.display=canDo('editarInventario')?'inline-flex':'none';
   const btnMV=document.getElementById('btnMasVendidos');
   if(btnMV) btnMV.style.display=canDo('editarInventario')?'inline-flex':'none';
+  const btnTI=document.getElementById('btnTomaInv');
+  if(btnTI) btnTI.style.display=canDo('editarInventario')?'inline-flex':'none';
+  pintarValorInventario();
   document.querySelectorAll('#bulkBarproductos .bulk-inv').forEach(b=>b.style.display=canDo('editarInventario')?'':'none');
   // Las columnas de costo/margen solo existen si el usuario puede ver costos:
   // se ocultan los encabezados y tampoco se emiten las celdas (el dato no llega al DOM).
