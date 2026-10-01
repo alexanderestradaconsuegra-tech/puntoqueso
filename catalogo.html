@@ -387,6 +387,15 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 .resumen div{display:flex;justify-content:space-between;padding:3px 0;}
 .resumen .tot{font-weight:800;font-size:16px;}
 .resumen .gratis{color:var(--ok);font-weight:800;}
+.chk-row{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:13.5px;line-height:1.4;color:var(--text2);cursor:pointer;}
+.chk-row input{width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--ink);}
+.chk-row b{color:var(--text);}
+.repetir-bar{display:none;margin:12px 0 0;padding:12px 14px;border-radius:14px;background:var(--paper);border:1.5px solid var(--line-2);align-items:center;gap:12px;box-shadow:var(--sh);}
+.repetir-bar.show{display:flex;}
+.repetir-bar .rb-txt{flex:1;min-width:0;font-size:13.5px;}
+.repetir-bar .rb-txt b{display:block;font-size:14.5px;}
+.repetir-bar .rb-txt small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.repetir-bar button{height:42px;padding:0 16px;border-radius:99px;border:none;background:var(--ink);color:#fff;font-weight:800;font-size:13px;white-space:nowrap;}
 .ref-bar{display:none;margin:12px 0 0;padding:10px 14px;border-radius:12px;background:var(--yellow-soft);border:1px solid var(--line-2);font-size:13.5px;font-weight:600;}
 .ref-bar.show{display:block;}
 .tramos{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -483,6 +492,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 
 <main class="wrap">
   <div class="ref-bar" id="refTop"></div>
+  <div class="repetir-bar" id="repetirBar"></div>
 
   <section class="hero" aria-label="Destacados">
     <div class="car" id="car">
@@ -661,6 +671,8 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
         <div class="quote" id="bloqueRetiro" style="display:none;">Retiras en <b>Arturo Prat 2045, Santiago</b>. Te avisamos por WhatsApp cuando esté listo. Sin costo de delivery.</div>
         <label for="pedidoNotas">Observaciones</label>
         <textarea id="pedidoNotas" placeholder="Horario preferido, instrucciones…"></textarea>
+        <label class="chk-row"><input type="checkbox" id="chkPromos"><span><b>Quiero recibir ofertas por WhatsApp</b><br>Promos y novedades de Punto Queso. Te puedes dar de baja cuando quieras respondiendo BAJA.</span></label>
+        <label class="chk-row"><input type="checkbox" id="chkRecordar" checked><span>Recordar mis datos en este celular para mi próximo pedido</span></label>
         <div class="resumen" id="checkoutResumen"></div>
         <button type="submit" class="btn dark block" id="btnEnviarPedido" style="margin-top:18px;height:54px;">Enviar pedido</button>
       </form>
@@ -1223,6 +1235,7 @@ function renderCartBar(){
   const hay=CARRITO.length>0;
   document.getElementById('cartBar').classList.toggle('show',hay);
   document.getElementById('btnComenzar').style.display=hay?'none':'flex';
+  pintarRepetir();
   document.getElementById('cbCount').textContent=cantidadCarrito();
   document.getElementById('cbTotal').textContent=money(totalCarrito());
   document.getElementById('hdrCartBadge').textContent=cantidadCarrito();
@@ -1486,9 +1499,50 @@ function pintarResumen(){
     <div class="tot"><span>Total estimado</span><span class="num">${money(sub+(ref?0:delVal))}</span></div>
     ${ref?`<div style="font-size:12px;color:var(--muted);display:block;">*Si es tu primera compra. Lo confirmamos al enviar.</div>`:''}`;
 }
+// ── Cliente recordado en este celular (sin cuentas ni contraseñas) ──
+function leerLS(k){ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } }
+function guardarLS(k,v){ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+function prellenarCliente(){
+  const c=leerLS('pq_cliente'); if(!c) return;
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el&&!el.value&&v) el.value=v; };
+  set('pedidoNombre',c.nombre); set('pedidoTelefono',c.telefono);
+  set('pedidoCalle',c.calle); set('pedidoDepto',c.depto); set('pedidoComuna',c.comuna);
+  if(c.entrega==='retiro') setEntrega('retiro');
+  // la ubicación guardada se vuelve a cotizar (el precio puede haber cambiado)
+  if(c.entrega!=='retiro'&&c.punto&&!DELIV.punto&&document.getElementById('pedidoCalle').value===(c.calle||'')){
+    const seq=++_geoSeq; cotizarPunto(c.punto,seq);
+  }
+}
+function recordarCliente(datos){
+  if(!document.getElementById('chkRecordar')?.checked){ guardarLS('pq_cliente',null); return; }
+  guardarLS('pq_cliente',datos);
+}
+function pintarRepetir(){
+  const el=document.getElementById('repetirBar'); if(!el) return;
+  const u=leerLS('pq_ultimo_pedido');
+  if(!u||!Array.isArray(u.items)||!u.items.length||CARRITO.length||!PRODUCTOS.length){ el.classList.remove('show'); return; }
+  const disp=u.items.filter(i=>{ const p=PRODUCTOS.find(x=>x.id===i.producto_id); return p&&!p.agotado; });
+  if(!disp.length){ el.classList.remove('show'); return; }
+  const c=leerLS('pq_cliente');
+  el.innerHTML=`<div class="rb-txt"><b>${c?.nombre?`¡Hola ${esc(c.nombre.split(' ')[0])}! `:''}¿Repetir tu último pedido?</b><small>${esc(disp.map(i=>i.nombre+(i.qtyLabel?' '+i.qtyLabel:'')).join(', '))}</small></div><button type="button" onclick="repetirUltimoPedido()">Repetir</button>`;
+  el.classList.add('show');
+}
+function repetirUltimoPedido(){
+  const u=leerLS('pq_ultimo_pedido'); if(!u) return;
+  let faltan=0;
+  u.items.forEach(i=>{
+    const p=PRODUCTOS.find(x=>x.id===i.producto_id);
+    if(!p||p.agotado){ faltan++; return; }
+    CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:Number(i.cantidad),unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel:i.qtyLabel??null,imagen_b64:p.imagen_b64||null});
+  });
+  renderCartBar(); renderGrid(); pintarRepetir();
+  toast(faltan?`Agregamos tu pedido. ${faltan} producto${faltan===1?'':'s'} no está${faltan===1?'':'n'} disponible${faltan===1?'':'s'} hoy.`:'Agregamos tu último pedido. Revísalo y continúa.');
+  abrirCarrito();
+}
 function abrirCheckout(){
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
   cerrarCarrito();
+  prellenarCliente();
   pintarRef(); pintarResumen();
   document.getElementById('checkoutOverlay').classList.add('open');
 }
@@ -1520,10 +1574,13 @@ async function enviarPedido(){
     const {data:r,error}=await supa.rpc('crear_pedido_web',{p:{
       nombre,telefono,calle:calle||null,depto:depto||null,comuna:comuna||null,notas:notas||null,
       entrega:ENTREGA,lat:punto?punto.lat:null,lng:punto?punto.lng:null,ref,
+      promos:!!document.getElementById('chkPromos')?.checked,
       items:CARRITO.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad}))
     }});
     if(error||!r||!r.id){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
     if(ref) olvidarRef();
+    recordarCliente({nombre,telefono,calle,depto,comuna,entrega:ENTREGA,punto:ENTREGA==='delivery'&&DELIV.punto?DELIV.punto:null});
+    guardarLS('pq_ultimo_pedido',{fecha:Date.now(),items:CARRITO.map(i=>({producto_id:i.producto_id,nombre:i.nombre,cantidad:i.cantidad,qtyLabel:i.qtyLabel??null}))});
     document.getElementById('successOrderNum').textContent='#'+String(r.id).padStart(4,'0');
     const lejos=r.tipo==='coordinar'&&r.km!=null;
     const delTxt=r.tipo==='retiro'?'Retiro en tienda':Number(r.delivery)===0&&r.delivery!=null?'<span class="gratis">Gratis 🎁</span>':r.delivery==null?(lejos?'Por coordinar':'Según distancia'):money(r.delivery);
