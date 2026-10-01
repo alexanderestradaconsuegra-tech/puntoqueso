@@ -59,6 +59,7 @@ create table if not exists facturas_borrador (
   created_at       timestamptz default now(),
   confirmada_at    timestamptz
 );
+alter table facturas_borrador add column if not exists proveedor_id bigint references proveedores(id) on delete set null;
 alter table facturas_borrador enable row level security;
 drop policy if exists "pq_admin acceso total" on facturas_borrador;
 create policy "pq_admin acceso total" on facturas_borrador for all to pq_admin using (true) with check (true);
@@ -163,6 +164,17 @@ returns jsonb language sql security definer set search_path = public, private, p
   ) x
 $$;
 
+create or replace function public.agente_proveedores(p_texto text default null)
+returns jsonb language sql security definer set search_path = public, private, pg_temp as $$
+  select coalesce(jsonb_agg(row_to_json(x)), '[]'::jsonb) from (
+    select id, nombre, telefono, contacto from proveedores
+     where activo and (p_texto is null or btrim(p_texto) = '' or not exists (
+             select 1 from unnest(string_to_array(btrim(p_texto), ' ')) w
+              where w <> '' and private.sin_tildes(nombre) not like '%' || private.sin_tildes(w) || '%'))
+     order by nombre limit 50
+  ) x
+$$;
+
 -- ══ PEDIDOS ════════════════════════════════════════════════════════
 
 -- p: {nombre, telefono, entrega: retiro|delivery, calle, depto, comuna, notas,
@@ -243,13 +255,18 @@ create or replace function public.agente_factura_borrador(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public, private, pg_temp as $$
 declare
   v_prov text := private.limpiar_texto(p->>'proveedor_nombre', 120);
+  v_provid bigint := nullif(p->>'proveedor_id', '')::bigint;
   v_num  text := private.limpiar_texto(p->>'numero', 40);
   v_fecha date := coalesce(nullif(p->>'fecha', '')::date, current_date);
   v_tot  numeric := nullif(p->>'total_documento', '')::numeric;
   it jsonb; v_pid bigint; v_pnom text; v_pcosto numeric; v_items jsonb := '[]'::jsonb; v_suma numeric := 0; v_avisos jsonb := '[]'::jsonb;
   v_cant numeric; v_costo numeric; v_dup bigint; v_id bigint; v_sin int := 0;
 begin
-  if v_prov is null then raise exception 'Falta el nombre del proveedor'; end if;
+  if v_provid is not null then
+    select nombre into v_prov from proveedores where id = v_provid;
+    if not found then raise exception 'Proveedor % no existe', v_provid; end if;
+  end if;
+  if v_prov is null then raise exception 'Falta el proveedor (usa proveedor_id o proveedor_nombre)'; end if;
   if jsonb_typeof(p->'items') <> 'array' or jsonb_array_length(p->'items') = 0 then raise exception 'La factura no tiene productos'; end if;
   if jsonb_array_length(p->'items') > 100 then raise exception 'Demasiadas líneas'; end if;
   if v_fecha > current_date + 1 or v_fecha < current_date - 400 then raise exception 'Fecha de factura sospechosa: %', v_fecha; end if;
@@ -288,8 +305,8 @@ begin
   end if;
   if v_sin > 0 then v_avisos := v_avisos || to_jsonb(v_sin || ' línea(s) sin producto asignado: usa agente_factura_asignar'); end if;
 
-  insert into facturas_borrador (proveedor_nombre, proveedor_rut, numero_factura, fecha, total_documento, items, avisos, notas)
-  values (v_prov, private.limpiar_texto(p->>'proveedor_rut', 20), v_num, v_fecha, v_tot, v_items, v_avisos, private.limpiar_texto(p->>'notas', 300))
+  insert into facturas_borrador (proveedor_id, proveedor_nombre, proveedor_rut, numero_factura, fecha, total_documento, items, avisos, notas)
+  values (v_provid, v_prov, private.limpiar_texto(p->>'proveedor_rut', 20), v_num, v_fecha, v_tot, v_items, v_avisos, private.limpiar_texto(p->>'notas', 300))
   returning id into v_id;
   perform private.agente_log('Borrador de factura', 'proveedores', 'Borrador #' || v_id || ' · ' || v_prov || ' · N° ' || coalesce(v_num, '-'));
   return jsonb_build_object('borrador_id', v_id, 'proveedor', v_prov, 'numero', v_num, 'fecha', v_fecha, 'suma_lineas', v_suma,
@@ -341,7 +358,10 @@ begin
     raise exception 'Esta factura ya está registrada';
   end if;
 
-  select id into v_prov from proveedores where activo and private.sin_tildes(nombre) = private.sin_tildes(b.proveedor_nombre) limit 1;
+  v_prov := b.proveedor_id;
+  if v_prov is null then
+    select id into v_prov from proveedores where activo and private.sin_tildes(nombre) = private.sin_tildes(b.proveedor_nombre) limit 1;
+  end if;
   if v_prov is null then
     insert into proveedores (nombre, notas) values (b.proveedor_nombre, nullif('RUT ' || coalesce(b.proveedor_rut, ''), 'RUT ')) returning id into v_prov;
   end if;
