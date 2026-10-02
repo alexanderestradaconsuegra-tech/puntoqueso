@@ -4,7 +4,7 @@
 //
 // VERSIONING: bump CACHE_NAME (e.g. pq-shell-v2) on every deploy that changes
 // puntoqueso-os.html, so old clients pick up the new shell instead of a stale cache.
-const CACHE_NAME = 'pq-shell-v20';
+const CACHE_NAME = 'pq-shell-v21';
 const SHELL_URLS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {

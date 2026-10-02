@@ -1532,9 +1532,10 @@ async function renderDashboard(){
   const hoy=fechaLocalISO(hoyD);
   const monthISO=fechaLocalISO(mesD);
 
-  const [ventR,gasR]=await Promise.all([
+  const [ventR,gasR,pendR]=await Promise.all([
     supa.from('ventas').select('total,created_at').eq('anulada',false).gte('created_at',desdeVentas.toISOString()),
-    supa.from('gastos').select('monto,categoria,fecha').gte('fecha',monthISO),
+    supa.from('gastos').select('monto,categoria,fecha,fecha_pago,estado_pago').or(`(fecha.gte.${monthISO},fecha_pago.gte.${monthISO})`),
+    supa.from('gastos').select('monto').eq('estado_pago','pendiente'),
   ]);
   if(ventR.error){ console.error(ventR.error); toast('Error cargando ventas del Dashboard: '+ventR.error.message,true); }
   if(gasR.error){ console.error(gasR.error); toast('Error cargando gastos del Dashboard: '+gasR.error.message,true); }
@@ -1545,9 +1546,16 @@ async function renderDashboard(){
   const totalSemana=ventasSemana.reduce((s,v)=>s+Number(v.total||0),0);
   const ventasMes=ventasRango.filter(v=>new Date(v.created_at)>=mesD);
   const totalVentasMes=ventasMes.reduce((s,v)=>s+Number(v.total||0),0);
-  const gastosMes=gasR.data||[];
+  // Gastos PAGADOS este mes (por fecha de pago). Lo por pagar va aparte y no se cuenta dos veces:
+  // cuando se paga, pasa de "por pagar" a "pagado".
+  const gastosRows=gasR.data||[];
+  const gastosMes=gastosRows.filter(g=>g.estado_pago!=='pendiente'&&String(g.fecha_pago||g.fecha)>=monthISO);
   const totalGastosMes=gastosMes.reduce((s,g)=>s+Number(g.monto||0),0);
-  const ganancia=totalVentasMes-totalGastosMes;
+  const porPagar=(pendR.data||[]).reduce((s,g)=>s+Number(g.monto||0),0);
+  // Gastos de operación del mes (arriendo, luz, sueldos…; pagados o por pagar, por la fecha del gasto).
+  // No entran: mercadería (ya está en el costo de lo vendido) ni delivery (se traspasa al motorizado).
+  const gastosOperacion=gastosRows.filter(g=>String(g.fecha)>=monthISO&&!['mercaderia','delivery'].includes(g.categoria))
+    .reduce((s,g)=>s+Number(g.monto||0),0);
   const bajoStock=DB.productos.filter(p=>Number(p.stock)<=Number(p.stock_minimo||0));
   const pendientes=DB.pedidos.filter(p=>p.estado==='pendiente');
 
@@ -1555,8 +1563,8 @@ async function renderDashboard(){
     <div class="kpi-card"><div class="kpi-label">Ventas hoy</div><div class="kpi-value num">${money(totalHoy)}</div><div class="kpi-sub">${ventasHoy.length} boleta${ventasHoy.length===1?'':'s'}</div></div>
     <div class="kpi-card"><div class="kpi-label">Ventas esta semana</div><div class="kpi-value num">${money(totalSemana)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Ventas este mes</div><div class="kpi-value num">${money(totalVentasMes)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Gastos este mes</div><div class="kpi-value num">${money(totalGastosMes)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">Ganancia neta (ventas - gastos)</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Gastos pagados este mes</div><div class="kpi-value num">${money(totalGastosMes)}</div><div class="kpi-sub">${porPagar>0?`Por pagar: ${money(porPagar)}`:'Nada por pagar'}</div></div>
+    ${canDo('verCostos')?`<div class="kpi-card" id="kpiGananciaMes" title="Margen bruto (ventas − costo de lo vendido) − gastos de operación del mes (sin mercadería ni delivery)"><div class="kpi-label">Ganancia del mes</div><div class="kpi-value num">…</div><div class="kpi-sub">margen − gastos de operación</div></div>`:''}
     ${canDo('verCostos')?'<div class="kpi-card" id="kpiMargenBrutoMes"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num">…</div></div>':''}
     <div class="kpi-card"><div class="kpi-label">Pedidos pendientes</div><div class="kpi-value num">${pendientes.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Stock bajo</div><div class="kpi-value num" style="color:${bajoStock.length?'var(--danger)':'inherit'}">${bajoStock.length}</div></div>
@@ -1569,7 +1577,7 @@ async function renderDashboard(){
   renderChartVentas14d(ventasRango);
   renderChartPedidosEstado();
   renderChartGastosCategoria(gastosMes);
-  await renderChartTopProductos(mesD,ganancia);
+  await renderChartTopProductos(mesD,gastosOperacion);
 }
 
 // ── Gráfico de barras (inline SVG) — ventas de los últimos 14 días ──
@@ -1642,7 +1650,7 @@ function renderChartGastosCategoria(gastosMes){
 }
 
 // ── Top 5 productos por monto vendido (venta_items del mes en curso) ──
-async function renderChartTopProductos(mesD,ganancia){
+async function renderChartTopProductos(mesD,gastosOperacion){
   const el=document.getElementById('chartTopProductos');
   // Las anuladas son pocas: se traen sus ids (con un día de holgura por si los
   // items se grabaron segundos después de la medianoche) y se excluyen acá.
@@ -1662,6 +1670,13 @@ async function renderChartTopProductos(mesD,ganancia){
     const margenBruto=items.filter(it=>it.producto_nombre!=='Delivery').reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
     kpiMargen.querySelector('.kpi-value').textContent=money(margenBruto);
     kpiMargen.querySelector('.kpi-value').style.color=margenBruto<0?'var(--danger)':'var(--ok)';
+    const kg=document.getElementById('kpiGananciaMes');
+    if(kg){
+      const g=margenBruto-(Number(gastosOperacion)||0);
+      kg.querySelector('.kpi-value').textContent=money(g);
+      kg.querySelector('.kpi-value').style.color=g<0?'var(--danger)':'var(--ok)';
+      kg.querySelector('.kpi-sub').textContent=`margen ${money(margenBruto)} − gastos ${money(gastosOperacion)}`;
+    }
   }
   if(!items.length){ el.innerHTML='<p class="empty">Aún no hay ventas este mes</p>'; return; }
   const byProd={};
@@ -5572,7 +5587,7 @@ async function eliminarFacturaCompra(id){
 // ══════════════════════════════════════════════════════════
 //  CONTABILIDAD — reporte por rango de fechas + cierre de caja
 // ══════════════════════════════════════════════════════════
-let REP_VENTAS=[],REP_GASTOS=[];
+let REP_VENTAS=[],REP_GASTOS=[],REP_RESULTADO=null;
 async function generarReporteRango(){
   const desde=document.getElementById('repDesde').value;
   const hasta=document.getElementById('repHasta').value;
@@ -5585,7 +5600,9 @@ async function generarReporteRango(){
   REP_VENTAS=ventasR.data||[]; REP_GASTOS=gastosR.data||[];
   const totalVentas=REP_VENTAS.reduce((s,v)=>s+Number(v.total||0),0);
   const totalGastos=REP_GASTOS.reduce((s,g)=>s+Number(g.monto||0),0);
-  const ganancia=totalVentas-totalGastos;
+  const gastosPend=REP_GASTOS.filter(g=>g.estado_pago==='pendiente').reduce((s,g)=>s+Number(g.monto||0),0);
+  // gastos de operación: sin mercadería (ya está en el costo de lo vendido) ni delivery (se traspasa)
+  const gastosOper=REP_GASTOS.filter(g=>!['mercaderia','delivery'].includes(g.categoria)).reduce((s,g)=>s+Number(g.monto||0),0);
   const porMetodo={};
   REP_VENTAS.forEach(v=>{ const m=v.metodo_pago||'efectivo'; porMetodo[m]=(porMetodo[m]||0)+Number(v.total||0); });
   let margenTile='';
@@ -5593,16 +5610,20 @@ async function generarReporteRango(){
     const ventaIds=REP_VENTAS.map(v=>v.id);
     let margenBruto=0;
     if(ventaIds.length){
-      const {data:itemsR}=await supa.from('venta_items').select('cantidad,subtotal,costo_unitario').in('venta_id',ventaIds);
-      margenBruto=(itemsR||[]).reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
+      for(let i=0;i<ventaIds.length;i+=150){
+        const {data:itemsR}=await supa.from('venta_items').select('producto_nombre,cantidad,subtotal,costo_unitario').in('venta_id',ventaIds.slice(i,i+150));
+        margenBruto+=(itemsR||[]).filter(it=>it.producto_nombre!=='Delivery').reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
+      }
     }
-    margenTile=`<div class="kpi-card"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num" style="color:${margenBruto<0?'var(--danger)':'var(--ok)'}">${money(margenBruto)}</div></div>`;
+    const ganancia=margenBruto-gastosOper;
+    REP_RESULTADO={margenBruto,gastosOper,ganancia};
+    margenTile=`<div class="kpi-card"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num" style="color:${margenBruto<0?'var(--danger)':'var(--ok)'}">${money(margenBruto)}</div></div>
+      <div class="kpi-card" title="Margen bruto − gastos de operación del período (sin mercadería ni delivery), pagados o por pagar"><div class="kpi-label">Ganancia del período</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div><div class="kpi-sub">margen − gastos de operación ${money(gastosOper)}</div></div>`;
   }
   document.getElementById('repResultado').innerHTML=`
     <div class="kpi-grid" style="margin-top:16px;">
       <div class="kpi-card"><div class="kpi-label">Total ventas</div><div class="kpi-value num">${money(totalVentas)}</div><div class="kpi-sub">${REP_VENTAS.length} boletas</div></div>
-      <div class="kpi-card"><div class="kpi-label">Total gastos</div><div class="kpi-value num">${money(totalGastos)}</div><div class="kpi-sub">${REP_GASTOS.length} gastos</div></div>
-      <div class="kpi-card"><div class="kpi-label">Ganancia neta (ventas - gastos)</div><div class="kpi-value num" style="color:${ganancia<0?'var(--danger)':'var(--ok)'}">${money(ganancia)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Gastos del período</div><div class="kpi-value num">${money(totalGastos)}</div><div class="kpi-sub">${REP_GASTOS.length} gastos${gastosPend>0?` · por pagar ${money(gastosPend)}`:''}</div></div>
       ${margenTile}
     </div>
     <h4 style="margin:10px 0;font-size:13px;">Ventas por método de pago</h4>
@@ -5619,7 +5640,9 @@ async function exportarReporteExcel(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(REP_VENTAS),'Ventas');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(REP_GASTOS),'Gastos');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([
-    {rango_desde:desde,rango_hasta:hasta,total_ventas:totalVentas,total_gastos:totalGastos,ganancia_neta:totalVentas-totalGastos}
+    {rango_desde:desde,rango_hasta:hasta,total_ventas:totalVentas,total_gastos:totalGastos,
+     gastos_por_pagar:REP_GASTOS.filter(g=>g.estado_pago==='pendiente').reduce((s,g)=>s+Number(g.monto||0),0),
+     ...(REP_RESULTADO?{margen_bruto:REP_RESULTADO.margenBruto,gastos_operacion:REP_RESULTADO.gastosOper,ganancia:REP_RESULTADO.ganancia}:{})}
   ]),'Resumen');
   XLSX.writeFile(wb,`puntoqueso-reporte-${desde}_a_${hasta}.xlsx`);
   logAudit('Exportación de reporte','contabilidad',`${desde} a ${hasta}`);
