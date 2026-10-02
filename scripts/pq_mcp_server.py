@@ -130,7 +130,7 @@ TOOLS = [
     tool("factura_crear_borrador",
          "PASO 1 de una factura de proveedor leída desde una foto. Guarda un BORRADOR: no mueve stock ni dinero. Hazla UNA sola vez con todo lo que leíste de la foto: NO busques proveedor ni productos antes, el sistema los empareja solo (lo que no está claro vuelve en 'candidatos'). En cada línea manda la descripción tal cual aparece en la factura. Convierte cantidades a la unidad del sistema (kg/unid) y usa el costo NETO por unidad. Muéstrale al dueño un resumen breve: proveedor, N°, líneas y total, más los 'avisos'. Si hay líneas sin producto claro, pregúntale cuál de los candidatos es y usa factura_asignar_producto.",
          {"proveedor_id": {"type": "integer", "description": "solo si ya conoces el id; normalmente no lo mandes"}, "proveedor_nombre": {"type": "string", "description": "solo si el proveedor no está registrado"}, "proveedor_rut": {"type": "string"}, "numero": {"type": "string", "description": "N° de factura"},
-          "fecha": {"type": "string", "description": "YYYY-MM-DD"}, "total_documento": {"type": "number", "description": "total final de la factura (con IVA) tal como está impreso"},
+          "fecha": {"type": "string", "description": "fecha impresa en la factura (YYYY-MM-DD). Solo referencia: el sistema registra la factura con la fecha de hoy"}, "total_documento": {"type": "number", "description": "total final de la factura (con IVA) tal como está impreso"},
           "notas": {"type": "string"}, "items": {"type": "array", "items": ITEM_FACTURA}}, ["items"],
          lambda a: rpc("agente_factura_borrador", {"p": a})),
     tool("factura_asignar_producto", "Asigna o corrige el producto de una línea del borrador (línea numerada desde 1).",

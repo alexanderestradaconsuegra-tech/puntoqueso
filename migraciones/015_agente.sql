@@ -327,7 +327,8 @@ declare
   v_prov text := private.limpiar_texto(p->>'proveedor_nombre', 120);
   v_provid bigint := nullif(p->>'proveedor_id', '')::bigint;
   v_num  text := private.limpiar_texto(p->>'numero', 40);
-  v_fecha date := coalesce(nullif(p->>'fecha', '')::date, current_date);
+  v_fecha date := (now() at time zone 'America/Santiago')::date;  -- se registra con la fecha de HOY (Chile)
+  v_fdoc text := left(nullif(btrim(coalesce(p->>'fecha', '')), ''), 10);
   v_tot  numeric := nullif(p->>'total_documento', '')::numeric;
   it jsonb; v_pid bigint; v_pnom text; v_auto boolean; v_cand jsonb; v_pcosto numeric; v_items jsonb := '[]'::jsonb; v_suma numeric := 0; v_avisos jsonb := '[]'::jsonb;
   v_cant numeric; v_costo numeric; v_dup bigint; v_id bigint; v_sin int := 0;
@@ -351,7 +352,6 @@ begin
   end if;
   if jsonb_typeof(p->'items') <> 'array' or jsonb_array_length(p->'items') = 0 then raise exception 'La factura no tiene productos'; end if;
   if jsonb_array_length(p->'items') > 100 then raise exception 'Demasiadas líneas'; end if;
-  if v_fecha > current_date + 1 or v_fecha < current_date - 400 then raise exception 'Fecha de factura sospechosa: %', v_fecha; end if;
 
   if v_num is not null then
     select id into v_dup from facturas_compra
@@ -397,7 +397,8 @@ begin
   if v_sin > 0 then v_avisos := v_avisos || to_jsonb(v_sin || ' línea(s) sin producto claro: pregúntale al dueño cuál es (mira candidatos) y usa factura_asignar_producto'); end if;
 
   insert into facturas_borrador (proveedor_id, proveedor_nombre, proveedor_rut, numero_factura, fecha, total_documento, items, avisos, notas)
-  values (v_provid, v_prov, private.limpiar_texto(p->>'proveedor_rut', 20), v_num, v_fecha, v_tot, v_items, v_avisos, private.limpiar_texto(p->>'notas', 300))
+  values (v_provid, v_prov, private.limpiar_texto(p->>'proveedor_rut', 20), v_num, v_fecha, v_tot, v_items, v_avisos,
+          private.limpiar_texto(concat_ws(' · ', case when v_fdoc is not null then 'Fecha en la factura: ' || v_fdoc end, p->>'notas'), 300))
   returning id into v_id;
   perform private.agente_log('Borrador de factura', 'proveedores', 'Borrador #' || v_id || ' · ' || v_prov || ' · N° ' || coalesce(v_num, '-'));
   return jsonb_build_object('borrador_id', v_id, 'proveedor', v_prov, 'numero', v_num, 'fecha', v_fecha, 'suma_lineas', v_suma,
@@ -461,7 +462,7 @@ begin
 
   insert into facturas_compra (proveedor_id, proveedor_nombre, numero_factura, fecha, total, estado_pago, notas)
   values (v_prov, b.proveedor_nombre, b.numero_factura, b.fecha, v_total, case when p_pagada then 'pagada' else 'pendiente' end,
-          'Ingresada por agente (borrador #' || b.id || ')')
+          'Ingresada por agente (borrador #' || b.id || ')' || coalesce(' · ' || b.notas, ''))
   returning id into v_fid;
 
   for it in select * from jsonb_array_elements(b.items) loop

@@ -4732,6 +4732,7 @@ function renderProveedores(){
     <td>${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td class="num">${money(f.total)}</td>
     <td><span class="badge ${f.estado_pago==='pagada'?'pagado':'pendiente'}">${f.estado_pago==='pagada'?'Pagada':'Pendiente'}</span></td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openFacturaCompraModal(${f.id})">Editar</button>
       ${f.estado_pago!=='pagada'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="marcarFacturaPagada(${f.id})">Marcar pagada</button>`:''}
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarFacturaCompra(${f.id})">Eliminar</button>
     </td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin facturas de compra</td></tr>';
@@ -4778,19 +4779,26 @@ async function eliminarProveedor(id){
 }
 
 let FC_ITEMS=[];
-function openFacturaCompraModal(){
-  const provOpts=DB.proveedores.filter(p=>p.activo).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
-  const hoy=new Date().toISOString().slice(0,10);
+let FC_EDIT=null; // factura que se está editando (null = factura nueva)
+let FC_TOTAL_MODE='suma'; // 'suma' = total igual a la suma | 'iva' = suma × 1,19 | 'manual' = el valor que escribió el dueño
+async function openFacturaCompraModal(editId){
+  const f=editId?DB.facturasCompra.find(x=>x.id===editId):null;
+  FC_EDIT=f||null;
+  let provList=DB.proveedores.filter(p=>p.activo);
+  if(f&&f.proveedor_id&&!provList.some(p=>p.id===f.proveedor_id)){ const pp=DB.proveedores.find(p=>p.id===f.proveedor_id); if(pp) provList=[pp,...provList]; }
+  const provOpts=provList.map(p=>`<option value="${p.id}"${f&&f.proveedor_id===p.id?' selected':''}>${escapeHtml(p.nombre)}</option>`).join('');
+  const hoy=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
   document.getElementById('modalContent').innerHTML=`
-    <h3>Nueva factura de compra</h3>
+    <h3>${f?'Editar factura de compra':'Nueva factura de compra'}</h3>
+    ${f?`<div class="sub" style="margin-bottom:8px;">Al guardar, el stock se corrige por la diferencia y, si estaba pagada, el gasto se actualiza.</div>`:`
     <label>Subir foto de factura</label>
     <input type="file" id="fcFotoInput" accept="image/*" onchange="onFacturaFotoChange(this)">
     <div class="sub" style="margin:4px 0 10px;">La IA puede cometer errores — revisa los datos antes de guardar.</div>
-    <div id="fcOcrStatus"></div>
+    <div id="fcOcrStatus"></div>`}
     <label>Proveedor</label><select id="fcProveedor">${provOpts}</select>
     <div id="fcProveedorHint" class="sub" style="margin-top:-8px;margin-bottom:10px;"></div>
-    <label>N° de factura</label><input id="fcNumero">
-    <label>Fecha</label><input id="fcFecha" type="date" value="${hoy}">
+    <label>N° de factura</label><input id="fcNumero" value="${f?escapeHtml(f.numero_factura||''):''}">
+    <label>Fecha</label><input id="fcFecha" type="date" value="${f?f.fecha:hoy}">
     <label style="margin-top:14px;">Agregar producto</label>
     <input id="fcBuscar" placeholder="Escribe las primeras letras: queso ched..." autocomplete="off" oninput="fcBuscarProd(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();fcEnterBuscar();}">
     <div id="fcResultados"></div>
@@ -4802,19 +4810,31 @@ function openFacturaCompraModal(){
     <div id="fcErr" style="color:var(--danger);font-size:13px;font-weight:600;margin-top:6px;"></div>
     <button type="button" class="btn secondary" style="width:100%;margin-top:8px;" onclick="fcAgregarItem()">+ Agregar a la factura</button>
     <div id="fcItemsList" style="margin-top:10px;"></div>
-    <div class="cart-total" style="border-top:2px solid var(--border);"><span>Total</span><b class="num" id="fcTotal">$0</b></div>
+    <div class="cart-total" style="border-top:2px solid var(--border);"><span>Suma de productos</span><b class="num" id="fcTotal">$0</b></div>
+    ${f?`<label>Total de la factura (lo que se paga, con IVA)</label><input id="fcTotalEdit" type="number" step="any" min="0" inputmode="decimal" oninput="FC_TOTAL_MODE='manual';fcHintTotal()">
+    <div id="fcTotalHint" class="sub" style="margin-top:4px;"></div>`:`
     <label>Estado de pago</label>
     <div class="pay-methods">
       <button type="button" class="active" data-ep="pendiente" onclick="fcSetEstadoPago('pendiente')">Pendiente</button>
       <button type="button" data-ep="pagada" onclick="fcSetEstadoPago('pagada')">Pagada</button>
     </div>
-    <div id="fcCuentaWrap" style="display:none;"><label>Pagada desde</label>${selectCuentaPago('fcCuenta','bancoestado')}</div>
+    <div id="fcCuentaWrap" style="display:none;"><label>Pagada desde</label>${selectCuentaPago('fcCuenta','bancoestado')}</div>`}
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" onclick="guardarFacturaCompra()">Guardar factura</button>
+      <button class="btn" onclick="guardarFacturaCompra()">${f?'Guardar cambios':'Guardar factura'}</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
-  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente'; FC_SEL=null;
+  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente'; FC_SEL=null; FC_TOTAL_MODE='suma';
+  if(f){
+    const {data,error}=await supa.from('factura_compra_items').select('*').eq('factura_id',f.id).order('id');
+    if(error){ toast('No se pudieron cargar los productos de la factura: '+error.message,true); closeModal(); return; }
+    FC_ITEMS=(data||[]).map(i=>({producto_id:i.producto_id,producto_nombre:i.producto_nombre,cantidad:Number(i.cantidad),costo_unitario:Number(i.costo_unitario),subtotal:Math.round(Number(i.cantidad)*Number(i.costo_unitario)),sin_match:!i.producto_id}));
+    const suma=FC_ITEMS.reduce((a,i)=>a+i.subtotal,0);
+    const tol=Math.max(10,suma*0.01), tot=Number(f.total);
+    FC_TOTAL_MODE=Math.abs(tot-suma)<=tol?'suma':(Math.abs(tot-Math.round(suma*1.19))<=tol?'iva':'manual');
+    document.getElementById('fcTotalEdit').value=tot;
+    fcRenderItems();
+  }
 }
 // ── Buscador de productos de la factura: palabras en cualquier orden, sin tildes ──
 let FC_SEL=null;
@@ -4889,13 +4909,38 @@ function fcRenderItems(){
         <div id="fcLin_${idx}"></div>
       </div>`;
     }
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;">
-      <span>${i.producto_nombre} x${i.cantidad} @ ${money(i.costo_unitario)}</span>
-      <span style="display:flex;align-items:center;gap:8px;"><b>${money(i.subtotal)}</b>
-      <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="fcQuitarItem(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+    return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span style="font-weight:600;">${escapeHtml(i.producto_nombre)}</span>
+        <svg class="ic-sm" style="cursor:pointer;color:var(--danger);flex-shrink:0;" onclick="fcQuitarItem(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+        <input type="number" step="any" min="0" inputmode="decimal" value="${i.cantidad}" onchange="fcEditarLinea(${idx},'cantidad',this.value)" style="flex:1;min-width:0;padding:6px 8px;" aria-label="Cantidad">
+        <span>×</span>
+        <input type="number" step="any" min="0" inputmode="decimal" value="${i.costo_unitario}" onchange="fcEditarLinea(${idx},'costo_unitario',this.value)" style="flex:1;min-width:0;padding:6px 8px;" aria-label="Costo unitario">
+        <b style="min-width:72px;text-align:right;">${money(i.subtotal)}</b>
+      </div>
     </div>`;
   }).join('');
-  document.getElementById('fcTotal').textContent=money(FC_ITEMS.reduce((s,i)=>s+i.subtotal,0));
+  fcActualizarTotal();
+}
+function fcActualizarTotal(){
+  const suma=FC_ITEMS.reduce((s,i)=>s+i.subtotal,0);
+  document.getElementById('fcTotal').textContent=money(suma);
+  const te=document.getElementById('fcTotalEdit');
+  if(te&&FC_TOTAL_MODE==='suma') te.value=suma;
+  if(te&&FC_TOTAL_MODE==='iva') te.value=Math.round(suma*1.19);
+  fcHintTotal();
+}
+function fcHintTotal(){
+  const h=document.getElementById('fcTotalHint'); if(!h) return;
+  h.textContent={suma:'Se recalcula solo con la suma de los productos.',iva:'Se recalcula solo: suma de los productos + IVA 19%. Escribe otro monto para fijarlo.',manual:'Monto fijo: si cambias precios o cantidades, ajústalo a mano.'}[FC_TOTAL_MODE];
+}
+function fcEditarLinea(idx,campo,valor){
+  const i=FC_ITEMS[idx]; const n=parseFloat(valor);
+  if(!i||!(n>=0)) { fcRenderItems(); return; }
+  i[campo]=n; i.subtotal=Math.round(i.cantidad*i.costo_unitario);
+  fcRenderItems();
 }
 function fcBuscarLinea(idx,txt){
   const r=fcCoincidencias(txt,6);
@@ -5002,6 +5047,18 @@ async function guardarFacturaCompra(){
   const numero=sanitize(document.getElementById('fcNumero').value);
   const fecha=document.getElementById('fcFecha').value;
   const total=FC_ITEMS.reduce((s,i)=>s+i.subtotal,0);
+  if(FC_EDIT){
+    if(FC_ITEMS.some(i=>!(i.cantidad>0))){ toast('Hay una cantidad en 0: corrígela o quita la línea',true); return; }
+    const totalFactura=Number(document.getElementById('fcTotalEdit')?.value)||total;
+    const {data,error}=await supa.rpc('editar_factura_compra',{p_id:FC_EDIT.id,p_usuario:SESSION.usuario,p:{
+      proveedor_id:proveedor.id,numero,fecha,total:totalFactura,
+      items:FC_ITEMS.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad,costo_unitario:i.costo_unitario}))}});
+    if(error){ toast('Error: '+error.message,true); return; }
+    logAudit('Factura de compra editada','proveedores',`${proveedor.nombre} — Factura ${numero||'#'+FC_EDIT.id} — ${money(totalFactura)}`);
+    toast('Factura actualizada'); FC_EDIT=null; closeModal(); await loadAll(); renderProveedores(); renderProductos();
+    if(typeof renderGastos==='function') renderGastos();
+    return;
+  }
   const {data:fac,error}=await supa.from('facturas_compra').insert({
     proveedor_id:proveedor.id,proveedor_nombre:proveedor.nombre,numero_factura:numero,fecha,total,estado_pago:FC_ESTADO_PAGO
   }).select();
