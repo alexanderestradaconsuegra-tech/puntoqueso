@@ -5,7 +5,7 @@
 //
 // VERSIONING: bump CACHE_NAME (e.g. pq-catalogo-shell-v3) on every deploy that changes
 // catalogo.html, so old clients pick up the new shell instead of a stale cache.
-const CACHE_NAME = 'pq-catalogo-shell-v13';
+const CACHE_NAME = 'pq-catalogo-shell-v14';
 const SHELL_URLS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {

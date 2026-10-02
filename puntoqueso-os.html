@@ -165,7 +165,9 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
 .flag-web.on{background:#e8f5ec;border-color:var(--ok);color:var(--ok);}
 .flag-fav{border:none;background:none;cursor:pointer;font-size:22px;line-height:1;padding:2px 6px;color:#d6cfb8;}
 .flag-fav.on{color:var(--brand-dark);}
-.flag-web:disabled,.flag-fav:disabled{cursor:default;}
+.flag-web:disabled,.flag-fav:disabled,.flag-top:disabled{cursor:default;}
+.flag-top{border:1.5px solid var(--border);background:#fff;border-radius:99px;padding:4px 6px;font-size:12px;font-weight:700;color:var(--muted);width:auto;min-width:58px;}
+.flag-top.on{background:#e8f5ec;border-color:var(--ok);color:var(--ok);}
 .pos-tabs{margin-bottom:10px;}
 .pos-prod-ph{width:100%;height:80px;border-radius:8px;margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;}
 .prod-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;background:var(--mint);}
@@ -661,7 +663,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th title="1 sale primero en la Terminal y en la tienda web. Vacío = después, por nombre">Orden</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th title="1 sale primero en la Terminal y en la tienda web. Vacío = después, por nombre">Orden</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th title="Los que salen en Lo más pedido de la tienda web (máx. 6)">Más pedido</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
       </div>
@@ -3763,6 +3765,7 @@ function renderVisChipsProductos(){
     ['web',`En la web (${n(p=>p.en_catalogo)})`],
     ['oculto',`Ocultos de la web (${n(p=>!p.en_catalogo)})`],
     ['fav',`★ Favoritos (${n(p=>p.favorito)})`],
+    ['top',`Más pedido en la web (${n(p=>p.destacado_web!=null)})`],
   ];
   cont.innerHTML=ops.map(([k,t])=>`<button type="button" class="cat-chip${PROD_VIS_FILTER===k?' active':''}" onclick="filtrarVisProductos('${k}')">${t}</button>`).join('');
 }
@@ -3774,6 +3777,7 @@ function pasaFiltroVis(p){
   if(PROD_VIS_FILTER==='web') return !!p.en_catalogo;
   if(PROD_VIS_FILTER==='oculto') return !p.en_catalogo;
   if(PROD_VIS_FILTER==='fav') return !!p.favorito;
+  if(PROD_VIS_FILTER==='top') return p.destacado_web!=null;
   return true;
 }
 function flagWebBtn(p,editar){
@@ -3781,6 +3785,33 @@ function flagWebBtn(p,editar){
 }
 function flagFavBtn(p,editar){
   return `<button type="button" class="flag-fav${p.favorito?' on':''}" ${editar?'':'disabled'} onclick="toggleFlagProducto(${p.id},'favorito')" title="${p.favorito?'Favorito: aparece primero en la Terminal. Toca para quitarlo':'Toca para marcarlo como favorito'}" aria-label="Favorito">${p.favorito?'★':'☆'}</button>`;
+}
+function flagTopBtn(p,editar){
+  const opts=['<option value="">No</option>'].concat([1,2,3,4,5,6].map(n=>`<option value="${n}"${p.destacado_web===n?' selected':''}>#${n}</option>`)).join('');
+  return `<select class="flag-top${p.destacado_web!=null?' on':''}" ${editar?'':'disabled'} onchange="setMasPedido(${p.id},this.value)" title="Posición en Lo más pedido de la tienda web (#1 sale primero). No = no sale ahí">${opts}</select>`;
+}
+// Lo más pedido de la tienda web: el producto se pone en la posición elegida y los demás se acomodan.
+async function setMasPedido(id,val){
+  if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
+  const p=DB.productos.find(x=>x.id===id); if(!p) return;
+  const lista=DB.productos.filter(x=>x.destacado_web!=null&&x.id!==id).sort((a,b)=>a.destacado_web-b.destacado_web);
+  const volver=()=>renderProductos(document.getElementById('prodBuscar')?.value||'');
+  if(val!==''){
+    if(!p.en_catalogo){ toast('Primero muéstralo en la web (botón "Oculto")',true); volver(); return; }
+    if(lista.length>=6){ toast('Lo más pedido muestra máximo 6. Quita uno primero',true); volver(); return; }
+    lista.splice(Math.min(Number(val)-1,lista.length),0,p);
+  }
+  const nuevo=new Map(lista.map((x,i)=>[x.id,i+1]));
+  const cambios=DB.productos.map(x=>[x,nuevo.has(x.id)?nuevo.get(x.id):null]).filter(([x,v])=>(x.destacado_web??null)!==v);
+  for(const [x,v] of cambios){
+    const {error}=await supa.from('productos').update({destacado_web:v}).eq('id',x.id);
+    if(error){ toast('Error: '+error.message,true); await loadAll(); volver(); return; }
+    x.destacado_web=v;
+  }
+  const on=p.destacado_web!=null;
+  logAudit(on?'Lo más pedido (web): posición '+p.destacado_web:'Quitado de Lo más pedido (web)','productos',p.nombre);
+  toast(`${p.nombre}: ${on?'Lo más pedido #'+p.destacado_web:'ya no sale en Lo más pedido'}`);
+  volver();
 }
 const FLAG_TXT={
   en_catalogo:[ 'Oculto de la web','Visible en la web' ],
@@ -3924,6 +3955,7 @@ function renderProductos(filter=''){
     <td>${ordenInput(p,editar)}</td>
     <td>${flagWebBtn(p,editar)}</td>
     <td>${flagFavBtn(p,editar)}</td>
+    <td>${flagTopBtn(p,editar)}</td>
     <td style="display:flex;gap:6px;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="verKardex(${p.id})" title="Historial de movimientos de stock">Movimientos</button>
       ${editar?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openProductoModal(${p.id})">Editar</button>
@@ -3939,7 +3971,7 @@ function renderProductos(filter=''){
           <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
           <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
           ${canDo('verCostos')?(()=>{const m=margenProducto(p);return `<div class="lc-meta">Costo: ${Number(p.costo)?money(p.costo):'—'}${m?` · Margen: <b style="color:${m.monto<0?'var(--danger)':'var(--ok)'}">${money(m.monto)}${m.pct!==null?` (${m.pct.toFixed(0)}%)`:''}</b>`:''}</div>`;})():''}
-          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span>${flagWebBtn(p,editar)}${flagFavBtn(p,editar)}<label class="sub-xs" style="display:inline-flex;align-items:center;gap:4px;">Orden ${ordenInput(p,editar)}</label></div>
+          <div class="lc-badges"><span class="badge" style="display:inline-flex;align-items:center;gap:5px;"><span class="stock-dot" style="background:${stockDotColor(p)};"></span>${Number(p.stock).toLocaleString('es-CL')} ${p.unidad}</span>${flagWebBtn(p,editar)}${flagFavBtn(p,editar)}${flagTopBtn(p,editar)}<label class="sub-xs" style="display:inline-flex;align-items:center;gap:4px;">Orden ${ordenInput(p,editar)}</label></div>
         </div>
         ${canDo('editarInventario')?`<div class="lc-actions">
           <button class="lc-more" onclick="verKardex(${p.id})" title="Movimientos" aria-label="Movimientos de stock"><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
