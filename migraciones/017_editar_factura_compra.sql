@@ -10,7 +10,12 @@
 --     factura que lo trae (una factura vieja no pisa un costo más nuevo).
 --   · gasto: si la factura estaba pagada, el gasto toma el nuevo total
 --     y la nueva fecha.
---  p: {proveedor_id, numero, fecha, total, items:[{producto_id, cantidad, costo_unitario}]}
+--   · pago: también se puede cambiar el estado (pagada ↔ pendiente) y la
+--     cuenta desde la que se pagó. Pasar a pendiente borra el gasto; pasar
+--     a pagada lo crea. Si ese pago salió de la caja (retiro de caja) no se
+--     toca desde aquí.
+--  p: {proveedor_id, numero, fecha, total, estado_pago, cuenta, items:[{producto_id, cantidad, costo_unitario}]}
+--     (estado_pago y cuenta son opcionales: si no vienen, se mantienen)
 --  Idempotente.
 -- ══════════════════════════════════════════════════════════════════
 begin;
@@ -22,7 +27,7 @@ declare
   f record; prov record; it jsonb; r record;
   v_fecha date; v_num text; v_total numeric; v_suma numeric := 0; v_ajustes int := 0;
   v_nom text; v_cant numeric; v_costo numeric;
-  v_ultima boolean;
+  v_ultima boolean; v_estado text; v_cuenta text; v_gid bigint;
 begin
   select * into f from facturas_compra where id = p_id for update;
   if not found then raise exception 'La factura % no existe', p_id; end if;
@@ -77,14 +82,38 @@ begin
     join productos pr on pr.id = (t.e->>'producto_id')::bigint
    order by t.linea;
 
-  update facturas_compra set proveedor_id = prov.id, proveedor_nombre = prov.nombre, numero_factura = v_num, fecha = v_fecha, total = v_total
-   where id = p_id;
-  if f.gasto_id is not null then
-    update gastos set monto = v_total, fecha = v_fecha,
-           descripcion = 'Factura de compra ' || coalesce('#' || v_num, '#' || p_id) || ' — ' || prov.nombre
-     where id = f.gasto_id;
+  -- pago: estado y cuenta
+  v_estado := coalesce(nullif(p->>'estado_pago', ''), f.estado_pago);
+  if v_estado not in ('pendiente','pagada') then raise exception 'Estado de pago inválido'; end if;
+  v_gid := f.gasto_id;
+  if v_estado = 'pagada' then
+    v_cuenta := nullif(p->>'cuenta', '');
+    if v_cuenta is null and v_gid is not null then select cuenta into v_cuenta from gastos where id = v_gid; end if;
+    v_cuenta := coalesce(v_cuenta, 'bancoestado');
+    if v_cuenta not in ('efectivo','bancoestado','mercadopago') then raise exception 'Cuenta inválida'; end if;
+    if v_gid is null then
+      insert into gastos (fecha, descripcion, categoria, monto, cuenta, notas)
+      values (v_fecha, 'Factura de compra ' || coalesce('#' || v_num, '#' || p_id) || ' — ' || prov.nombre,
+              'mercaderia', v_total, v_cuenta, 'Generado al marcar pagada la factura de compra #' || p_id)
+      returning id into v_gid;
+    else
+      update gastos set monto = v_total, fecha = v_fecha, cuenta = v_cuenta,
+             descripcion = 'Factura de compra ' || coalesce('#' || v_num, '#' || p_id) || ' — ' || prov.nombre
+       where id = v_gid;
+    end if;
+  elsif v_gid is not null then
+    if exists (select 1 from caja_movimientos where gasto_id = v_gid) then
+      raise exception 'Este pago salió de la caja (retiro de efectivo). Anúlalo desde Caja antes de pasar la factura a pendiente';
+    end if;
+    delete from gastos where id = v_gid;   -- facturas_compra.gasto_id queda en null
+    v_gid := null;
   end if;
-  return jsonb_build_object('factura_id', p_id, 'total', v_total, 'productos_con_stock_ajustado', v_ajustes);
+
+  update facturas_compra set proveedor_id = prov.id, proveedor_nombre = prov.nombre, numero_factura = v_num, fecha = v_fecha, total = v_total,
+         estado_pago = v_estado, gasto_id = v_gid
+   where id = p_id;
+  return jsonb_build_object('factura_id', p_id, 'total', v_total, 'productos_con_stock_ajustado', v_ajustes,
+                            'estado_pago', v_estado, 'cuenta', v_cuenta);
 end $$;
 revoke all on function public.editar_factura_compra(bigint, jsonb, text) from public;
 grant execute on function public.editar_factura_compra(bigint, jsonb, text) to pq_admin;
