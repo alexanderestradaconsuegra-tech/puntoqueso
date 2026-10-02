@@ -470,6 +470,10 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       <svg class="ic" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
       Clientes web
     </div>
+    <div class="nav-item" data-view="delivery" id="navDelivery" style="display:none;" onclick="nav('delivery')">
+      <svg class="ic" viewBox="0 0 24 24"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6h-3l-3 6.5M5.5 17.5L9 12h6l3.5 5.5M15 6l1 3h3"/></svg>
+      Delivery
+    </div>
     <div class="nav-item" data-view="ventas" onclick="nav('ventas')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       Ventas
@@ -559,6 +563,15 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <div class="pos-cart card" style="padding:16px;">
           <h3 style="margin-bottom:6px;">Carrito</h3>
           <div id="posCarrito"><p class="empty" style="padding:16px 0;">Vacío</p></div>
+          <button type="button" class="btn secondary" style="width:100%;padding:8px;margin-top:8px;font-size:13px;" onclick="toggleDeliveryBox()" id="btnPosDelivery">+ Delivery</button>
+          <div id="posDeliveryBox" style="display:none;margin-top:8px;">
+            <div id="posDeliveryChips" class="cat-chips" style="margin-bottom:8px;"></div>
+            <div style="display:flex;gap:6px;">
+              <input id="posDeliveryMonto" type="number" min="0" step="100" inputmode="numeric" placeholder="Otro monto" style="flex:1;min-width:0;padding:9px;border:1.5px solid var(--border);border-radius:var(--r-sm);" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarDeliveryCarrito(this.value);}">
+              <button type="button" class="btn" onclick="agregarDeliveryCarrito(document.getElementById('posDeliveryMonto').value)">Agregar</button>
+            </div>
+            <div class="sub-xs" style="margin-top:4px;">Es plata que se traspasa al motorizado: no descuenta inventario ni es ganancia.</div>
+          </div>
           <div class="cart-total"><span>Total</span><b class="num" id="posTotal">$0</b></div>
           <label style="display:block;font-size:12.5px;font-weight:600;margin:12px 0 5px;">Cliente (opcional)</label>
           <select id="posCliente" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);"><option value="">Sin cliente</option></select>
@@ -828,6 +841,27 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <h3 style="margin-bottom:8px;">Promos enviadas</h3>
         <div id="cwEnvios"></div>
       </div>
+    </div>
+
+    <!-- DELIVERY: lo que se cobra a los clientes y se traspasa al motorizado -->
+    <div class="view" id="view-delivery">
+      <div class="topbar"><div><h2>Delivery</h2><div class="sub">El cliente paga el delivery con su compra; aquí ves lo que le debes al motorizado y registras el pago.</div></div></div>
+      <div class="inv-valor" id="dvKpis"></div>
+      <div class="card" style="padding:16px;margin-bottom:18px;">
+        <h3 style="margin-bottom:10px;">Entregas por pagar</h3>
+        <div class="list-wrap"><div class="table-scroll"><table>
+          <thead><tr><th><input type="checkbox" id="dvTodas" onchange="dvMarcarTodas(this.checked)"></th><th>Fecha</th><th>Boleta</th><th>Cliente</th><th class="num">Delivery</th></tr></thead>
+          <tbody id="dvPendBody"></tbody></table></div></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-top:12px;">
+          <div style="flex:1;min-width:160px;"><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Motorizado (opcional)</label>
+            <input id="dvMotorizado" maxlength="60" placeholder="Nombre" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);"></div>
+          <div style="min-width:180px;"><label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Pagas desde</label>
+            <select id="dvCuenta" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);"><option value="efectivo">Efectivo (cajón)</option><option value="bancoestado">BancoEstado</option><option value="mercadopago">Mercado Pago</option></select></div>
+          <button class="btn" id="dvBtnPagar" onclick="pagarMotorizado()">Pagar</button>
+        </div>
+        <div class="sub-xs" style="margin-top:6px;">Si pagas en efectivo se registra como retiro de la caja abierta. Queda como gasto "delivery".</div>
+      </div>
+      <div class="card" style="padding:16px;"><h3 style="margin-bottom:10px;">Pagos anteriores</h3><div id="dvPagos"></div></div>
     </div>
 
     <!-- CONFIG -->
@@ -1309,7 +1343,7 @@ function closeSheet(){ document.getElementById('sheetBg')?.classList.remove('ope
 // Cuentas y Configuración son solo del dueño (rol Admin)
 function esDueno(){ return SESSION?.rol==='admin'; }
 function nav(view){
-  if((view==='config'||view==='cuentas'||view==='clientesweb')&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
+  if((view==='config'||view==='cuentas'||view==='clientesweb'||view==='delivery')&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
   if(view==='toma'&&!canDo('editarInventario')){ toast('No tienes permiso para el inventario',true); view='productos'; }
   currentPage=view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
@@ -1322,6 +1356,7 @@ function nav(view){
   if(view==='pedidos') renderPedidos();
   if(view==='referidos') renderReferidos();
   if(view==='clientesweb') renderClientesWeb();
+  if(view==='delivery') renderDelivery();
   if(view==='ventas') renderVentas();
   if(view==='productos') renderProductos();
   if(view==='toma') renderToma();
@@ -1434,6 +1469,7 @@ async function iniciarApp(){
   document.getElementById('navCuentas').style.display=esDueno()?'flex':'none';
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navClientesWeb').style.display=esDueno()?'flex':'none';
+  document.getElementById('navDelivery').style.display=esDueno()?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -1693,7 +1729,13 @@ function toggleMayorCarrito(idx){
 function renderCarrito(){
   const el=document.getElementById('posCarrito');
   if(!CARRITO.length){ el.innerHTML='<p class="empty" style="padding:16px 0;">Vacío</p>'; document.getElementById('posTotal').textContent=money(0); return; }
-  el.innerHTML=CARRITO.map((i,idx)=>`
+  el.innerHTML=CARRITO.map((i,idx)=>i.es_delivery?`
+    <div class="cart-item">
+      <span class="ci-name">Delivery <span style="color:var(--muted);font-weight:500;">(al motorizado)</span></span>
+      <span class="ci-qty"></span>
+      <span class="ci-sub num">${money(i.precio)}</span>
+      <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="quitarDelCarrito(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>`:`
     <div class="cart-item">
       <span class="ci-name">${i.nombre}${i.qtyLabel?` <span style="color:var(--muted);font-weight:500;">(${i.qtyLabel})</span>`:''}
         ${Number(i.precio_mayor)>0?`<button type="button" class="ci-mayor${i.es_mayor?' on':''}" onclick="toggleMayorCarrito(${idx})" title="Cambiar entre precio normal y mayorista">${i.es_mayor?`Mayor ${money(i.precio_mayor)}`:`Normal ${money(i.precio_normal)}`}</button>`:''}</span>
@@ -1703,6 +1745,26 @@ function renderCarrito(){
     </div>`).join('');
   const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
   document.getElementById('posTotal').textContent=money(total);
+}
+// Delivery en la Terminal: una línea más de la boleta (sin producto ni stock). El monto se traspasa al motorizado.
+function toggleDeliveryBox(){
+  const box=document.getElementById('posDeliveryBox');
+  const abrir=box.style.display==='none';
+  box.style.display=abrir?'block':'none';
+  if(abrir){
+    const precios=[...new Set(tramosConfig(CONFIG_CACHE||{}).map(t=>Number(t.precio)).filter(n=>n>0))];
+    document.getElementById('posDeliveryChips').innerHTML=precios.map(n=>`<button type="button" class="cat-chip" onclick="agregarDeliveryCarrito(${n})">${money(n)}</button>`).join('');
+    document.getElementById('posDeliveryMonto').focus();
+  }
+}
+function agregarDeliveryCarrito(val){
+  const monto=Math.round(Number(val)||0);
+  if(!(monto>0)){ toast('Escribe el monto del delivery',true); return; }
+  CARRITO=CARRITO.filter(i=>!i.es_delivery);
+  CARRITO.push({producto_id:null,nombre:'Delivery',precio:monto,cantidad:1,es_delivery:true});
+  document.getElementById('posDeliveryMonto').value='';
+  document.getElementById('posDeliveryBox').style.display='none';
+  renderCarrito();
 }
 function actualizarCantidad(idx,val){ CARRITO[idx].cantidad=Math.max(0.1,parseFloat(val)||1); renderCarrito(); }
 function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCarrito(); }
@@ -1922,6 +1984,7 @@ async function moverStock(productoId,delta,tipo,motivo,origen,ref,costo){
 }
 async function cobrar(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
+  if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega al menos un producto: el delivery solo no se cobra',true); return; }
   if(!(await cajaAbiertaParaVender())) return;
   const clienteId=document.getElementById('posCliente').value||null;
   const cliente=clienteId?DB.clientes.find(c=>c.id==clienteId):null;
@@ -1939,6 +2002,7 @@ async function cobrar(){
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
+    delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),
     estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
   }).select();
   if(error){ toast('Error al cobrar: '+error.message,true); return; }
@@ -2437,7 +2501,7 @@ async function confirmarFacturarPedido(id){
   const {data:items,error:itErr}=await supa.from('pedido_items').select('*').eq('pedido_id',id);
   if(itErr){ toast('Error al leer el detalle del pedido: '+itErr.message,true); console.error(itErr); return; }
   const {data:ventaIns,error}=await supa.from('ventas').insert({
-    cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,
+    cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,delivery_monto:costoDelivery(p),
     ...montosPorMedio(metodo,Number(p.total)||0,null),
     estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
   }).select();
@@ -3127,6 +3191,54 @@ async function enviarPromo(){
   document.getElementById('promoEstado').innerHTML=`<b>${run.parar?'Detenido':'Terminado'}:</b> ${ok} enviados${fail?`, ${fail} fallaron`:''}.`;
   btnC.textContent='Cerrar'; btnC.onclick=()=>closeModal();
   renderPromosEnvios();
+}
+
+// ── Delivery: lo que se cobra a los clientes y se traspasa al motorizado ──
+let DV={pend:[]};
+async function renderDelivery(){
+  const [pend,pagos]=await Promise.all([
+    supa.from('ventas').select('id,boleta_numero,cliente_nombre,created_at,delivery_monto').gt('delivery_monto',0).or('(delivery_pago_id.is.null)').eq('anulada',false).order('created_at'),
+    supa.from('pagos_motorizado').select('*').order('id',{ascending:false}).limit(30)
+  ]);
+  if(pend.error||pagos.error){ const m=(pend.error||pagos.error).message; document.getElementById('dvPendBody').innerHTML=`<tr><td colspan="5" class="empty">No disponible: ${escapeHtml(m)}</td></tr>`; return; }
+  DV.pend=pend.data||[];
+  const total=DV.pend.reduce((s,v)=>s+Number(v.delivery_monto),0);
+  const mes=new Date().toISOString().slice(0,7);
+  const pagadoMes=(pagos.data||[]).filter(p=>String(p.fecha).startsWith(mes)).reduce((s,p)=>s+Number(p.monto),0);
+  document.getElementById('dvKpis').innerHTML=`
+    <div class="kpi-mini dest"><small>Por pagar al motorizado</small><b>${money(total)}</b></div>
+    <div class="kpi-mini"><small>Entregas pendientes</small><b>${DV.pend.length}</b></div>
+    <div class="kpi-mini"><small>Pagado este mes</small><b>${money(pagadoMes)}</b></div>`;
+  document.getElementById('dvPendBody').innerHTML=DV.pend.map(v=>`
+    <tr><td><input type="checkbox" class="dv-chk" value="${v.id}" checked onchange="dvActualizarBoton()"></td>
+    <td>${new Date(v.created_at).toLocaleDateString('es-CL')}</td><td>${v.boleta_numero||v.id}</td><td>${escapeHtml(v.cliente_nombre||'-')}</td>
+    <td class="num">${money(v.delivery_monto)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No le debes nada al motorizado</td></tr>';
+  document.getElementById('dvTodas').checked=true;
+  document.getElementById('dvPagos').innerHTML=(pagos.data||[]).map(p=>`
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px;">
+      <span>${new Date(p.fecha+'T12:00:00').toLocaleDateString('es-CL')} · ${escapeHtml(p.motorizado||'Motorizado')} <span style="color:var(--muted);">· ${p.entregas} entrega${p.entregas==1?'':'s'} · ${escapeHtml(p.cuenta)}</span></span>
+      <b>${money(p.monto)}</b></div>`).join('')||'<p class="empty">Todavía no registras pagos.</p>';
+  dvActualizarBoton();
+}
+function dvSeleccion(){ return [...document.querySelectorAll('.dv-chk:checked')].map(c=>Number(c.value)); }
+function dvMarcarTodas(on){ document.querySelectorAll('.dv-chk').forEach(c=>c.checked=on); dvActualizarBoton(); }
+function dvActualizarBoton(){
+  const ids=new Set(dvSeleccion());
+  const monto=DV.pend.filter(v=>ids.has(v.id)).reduce((s,v)=>s+Number(v.delivery_monto),0);
+  const b=document.getElementById('dvBtnPagar'); b.textContent=ids.size?`Pagar ${money(monto)}`:'Pagar'; b.disabled=!ids.size;
+}
+async function pagarMotorizado(){
+  const ids=dvSeleccion(); if(!ids.length){ toast('Marca al menos una entrega',true); return; }
+  const monto=DV.pend.filter(v=>ids.includes(v.id)).reduce((s,v)=>s+Number(v.delivery_monto),0);
+  const cuenta=document.getElementById('dvCuenta').value, mot=document.getElementById('dvMotorizado').value.trim();
+  if(!confirm(`¿Registrar el pago de ${money(monto)} al motorizado (${ids.length} entrega${ids.length==1?'':'s'}) desde ${cuenta==='efectivo'?'el cajón':cuenta}?`)) return;
+  const btn=document.getElementById('dvBtnPagar'); btn.disabled=true;
+  const {data,error}=await supa.rpc('pagar_motorizado',{p_ventas:ids,p_cuenta:cuenta,p_motorizado:mot||null,p_usuario:SESSION.usuario});
+  if(error){ toast(error.message,true); btn.disabled=false; return; }
+  logAudit('Pago a motorizado','delivery',`${money(monto)} · ${ids.length} entrega(s) · ${cuenta}${mot?' · '+mot:''}`);
+  toast(`Pago de ${money(monto)} registrado`);
+  document.getElementById('dvMotorizado').value='';
+  await loadAll(); renderDelivery();
 }
 
 // ── Configuración: delivery y referidos ──
@@ -4238,7 +4350,7 @@ function openGastoModal(){
     <label>Fecha</label><input id="gaFecha" type="date" value="${hoy}">
     <label>Descripción</label><input id="gaDescripcion">
     <label>Categoría</label>
-    <select id="gaCategoria"><option value="servicios">Servicios</option><option value="mercaderia">Mercadería</option><option value="arriendo">Arriendo</option><option value="personal">Personal</option><option value="iva">IVA</option><option value="contador">Contador</option><option value="otros">Otros</option></select>
+    <select id="gaCategoria"><option value="servicios">Servicios</option><option value="mercaderia">Mercadería</option><option value="delivery">Delivery (motorizado)</option><option value="arriendo">Arriendo</option><option value="personal">Personal</option><option value="iva">IVA</option><option value="contador">Contador</option><option value="otros">Otros</option></select>
     <label>Monto</label><input id="gaMonto" type="number" step="1">
     <label>Pagado desde</label>${selectCuentaPago('gaCuenta','bancoestado')}
     <div class="sub-xs" style="margin-top:4px;">Si lo pagaste con plata de la caja durante el día, mejor regístralo en la Terminal con "Retiro / ingreso": así también cuadra el cierre.</div>
@@ -5370,7 +5482,7 @@ function abrirModalMovimientoCaja(){
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
         <input type="checkbox" id="movEsGasto" style="width:16px;height:16px;" checked onchange="document.getElementById('movDestinoBox').style.display=this.checked?'none':'block';document.getElementById('movGastoCat').style.display=this.checked?'':'none'"> Es un gasto del negocio (se registra también en Gastos)
       </label>
-      <select id="movGastoCat" style="margin-top:6px;"><option value="mercaderia">Mercadería</option><option value="servicios">Servicios</option><option value="personal">Personal</option><option value="otros" selected>Otros</option></select>
+      <select id="movGastoCat" style="margin-top:6px;"><option value="mercaderia">Mercadería</option><option value="servicios">Servicios</option><option value="personal">Personal</option><option value="delivery">Delivery (motorizado)</option><option value="otros" selected>Otros</option></select>
       <div class="sub-xs" style="margin-top:4px;">Desmarca si es un depósito al banco o un retiro del dueño (no es gasto).</div>
       <div id="movDestinoBox" style="display:none;">
         <label>¿A dónde fue la plata?</label>
@@ -6179,6 +6291,7 @@ async function confirmarCajeroPin(){
   document.getElementById('navCuentas').style.display=esDueno()?'flex':'none';
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navClientesWeb').style.display=esDueno()?'flex':'none';
+  document.getElementById('navDelivery').style.display=esDueno()?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -6186,7 +6299,7 @@ async function confirmarCajeroPin(){
   toast(`Ahora operando como ${SESSION.nombre}`);
   closeCajeroSwitch();
   renderCajaBar();
-  if((currentPage==='config'||currentPage==='cuentas'||currentPage==='clientesweb')&&!esDueno()) nav('terminal');
+  if((currentPage==='config'||currentPage==='cuentas'||currentPage==='clientesweb'||currentPage==='delivery')&&!esDueno()) nav('terminal');
 }
 
 // ══════════════════════════════════════════════════════════
