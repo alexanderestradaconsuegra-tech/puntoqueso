@@ -169,6 +169,8 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
 .flag-top{border:1.5px solid var(--border);background:#fff;border-radius:99px;padding:4px 6px;font-size:12px;font-weight:700;color:var(--muted);width:auto;min-width:58px;}
 .flag-top.on{background:#e8f5ec;border-color:var(--ok);color:var(--ok);}
 .pos-tabs{margin-bottom:10px;}
+.pos-cat-pc{display:inline-flex;}
+@media(max-width:1023px){ .pos-cat-pc{display:none !important;} }
 .pos-prod-ph{width:100%;height:80px;border-radius:8px;margin-bottom:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;}
 .prod-thumb{width:40px;height:40px;object-fit:cover;border-radius:8px;background:var(--mint);}
 .prod-thumb-ph{width:40px;height:40px;border-radius:8px;background:var(--mint);color:var(--brand-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;}
@@ -1689,16 +1691,24 @@ function renderPosProductos(filter=''){
   const nFav=DB.productos.filter(p=>p.favorito).length;
   // Se decide la pestaña inicial recién cuando ya cargaron los productos.
   if(POS_TAB===null&&DB.productos.length) POS_TAB=nFav?'favoritos':'todos';
-  const tab=POS_TAB||'todos';
+  let tab=POS_TAB||'todos';
+  // Las categorías solo se muestran en PC; en el celular se vuelve a "Todos".
+  if(tab.startsWith('cat:')&&window.matchMedia('(max-width:1023px)').matches) tab='todos';
   const buscando=!!filter.trim();
   // Al buscar se busca en todo el inventario, no solo en la pestaña.
   const enFav=tab==='favoritos'&&!buscando;
+  const enCat=tab.startsWith('cat:')&&!buscando?tab.slice(4):null;
+  const ORDEN_CAT=['Quesos','Embutidos','Jamones','Congelados','Bebidas','Golosinas','Otros'];
+  const cats=[...new Set(DB.productos.map(p=>p.categoria||'Otros'))]
+    .sort((a,b)=>((ORDEN_CAT.indexOf(a)+1||99)-(ORDEN_CAT.indexOf(b)+1||99))||a.localeCompare(b));
   const tabs=document.getElementById('posTabs');
   if(tabs) tabs.innerHTML=[['favoritos',`★ Favoritos (${nFav})`],['todos',`Todos (${DB.productos.length})`]]
     .map(([k,t])=>`<button type="button" class="cat-chip${!buscando&&tab===k?' active':''}" onclick="setPosTab('${k}')">${t}</button>`).join('')
+    +cats.map(c=>`<button type="button" class="cat-chip pos-cat-pc${enCat===c?' active':''}" onclick="setPosTab(${JSON.stringify('cat:'+c).replace(/"/g,'&quot;')})">${escapeHtml(c)}</button>`).join('')
     +(buscando?'<span class="sub-xs" style="align-self:center;">Buscando en todos los productos</span>':'');
   const rows=DB.productos
     .filter(p=>!enFav||p.favorito)
+    .filter(p=>!enCat||(p.categoria||'Otros')===enCat)
     .filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()))
     .sort(compararOrden);
   const vacio=enFav
@@ -2558,7 +2568,8 @@ function pintarPedidos(){
     <td>${new Date(p.created_at).toLocaleDateString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
-      <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / preparar</button>
+      <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / editar</button>
+      ${puedeEliminarPedido(p)?`<button class="btn danger" style="padding:6px 9px;font-size:12px;" title="Eliminar pedido (no se avisa al cliente)" aria-label="Eliminar pedido" onclick="eliminarPedido(${p.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>`:''}
     </td></tr>`;
   }).join('')||`<tr><td colspan="7" class="empty">${vacio}</td></tr>`;
 
@@ -2579,8 +2590,9 @@ function pintarPedidos(){
         </div>
       </div></div>
       <div class="lc-row" style="gap:8px;">
-        <button class="btn" style="flex:1;" onclick="abrirPedidoDetalle(${p.id})">Ver / preparar</button>
+        <button class="btn" style="flex:1;" onclick="abrirPedidoDetalle(${p.id})">Ver / editar</button>
         ${siguiente?`<button class="btn secondary" style="flex:1;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
+        ${puedeEliminarPedido(p)?`<button class="btn danger" style="padding:8px 11px;" title="Eliminar pedido (no se avisa al cliente)" aria-label="Eliminar pedido" onclick="eliminarPedido(${p.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>`:''}
       </div>
     </div>`;
   }).join('')||`<p class="empty">${vacio}</p>`;
@@ -2839,7 +2851,7 @@ async function abrirPedidoDetalle(id){
     </div>
     <div class="actions">
       ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" onclick="anularPedido(${p.id})">Anular</button>`:''}
-      <button class="btn danger" onclick="eliminarPedido(${p.id})">Eliminar</button>
+      ${puedeEliminarPedido(p)?`<button class="btn danger" onclick="eliminarPedido(${p.id})">Eliminar</button>`:''}
       <button class="btn secondary" onclick="closeModal()">Cerrar</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
@@ -3623,10 +3635,23 @@ async function copiarMensajeModal(){
   try{ await navigator.clipboard.writeText(val); toast('Mensaje copiado'); }
   catch(e){ toast('No se pudo copiar automáticamente — selecciona y copia manualmente',true); }
 }
+// Eliminar = el pedido desaparece sin avisarle nada al cliente (para pedidos de
+// prueba o que no van). Uno ya facturado no se elimina: su venta descontó stock
+// y entró a caja; eso se corrige anulando la venta en Ventas.
+function puedeEliminarPedido(p){ return !!p&&!pedidoFacturado(p)&&canDo('eliminarVentas'); }
 async function eliminarPedido(id){
-  if(!confirm('¿Eliminar este pedido?')) return;
-  await supa.from('pedido_items').delete().eq('pedido_id',id);
-  await supa.from('pedidos').delete().eq('id',id);
+  const p=pedidoPorId(id);
+  if(!canDo('eliminarVentas')){ toast('No tienes permiso para eliminar pedidos',true); return; }
+  if(p&&pedidoFacturado(p)){ toast('Este pedido ya está facturado: anula la venta en Ventas',true); return; }
+  if(!confirm(`¿Eliminar el pedido #${id}${p?.cliente_nombre?' de '+p.cliente_nombre:''}?\n\nSe borra del sistema y NO se le envía ningún mensaje al cliente.`)) return;
+  // se vuelve a revisar en la base: pudo facturarse desde otra caja
+  const {data:fr}=await supa.from('pedidos').select('id,venta_id').eq('id',id).limit(1);
+  if(fr&&fr[0]&&fr[0].venta_id){ toast('Este pedido ya está facturado: anula la venta en Ventas',true); await loadAll(); renderPedidos(); return; }
+  const {error:e1}=await supa.from('pedido_items').delete().eq('pedido_id',id);
+  if(e1){ toast('No se pudo eliminar: '+e1.message,true); return; }
+  const {error:e2}=await supa.from('pedidos').delete().eq('id',id);
+  if(e2){ toast('No se pudo eliminar: '+e2.message,true); return; }
+  logAudit('Pedido eliminado','pedidos',`Pedido #${id}${p?` · ${p.cliente_nombre||''} · ${money(p.total)}`:''}`);
   toast('Pedido eliminado'); closeModal(); await loadAll(); renderPedidos();
 }
 
