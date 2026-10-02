@@ -563,7 +563,10 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <div class="pos-cart card" style="padding:16px;">
           <h3 style="margin-bottom:6px;">Carrito</h3>
           <div id="posCarrito"><p class="empty" style="padding:16px 0;">Vacío</p></div>
-          <button type="button" class="btn secondary" style="width:100%;padding:8px;margin-top:8px;font-size:13px;" onclick="toggleDeliveryBox()" id="btnPosDelivery">+ Delivery</button>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button type="button" class="btn secondary" style="flex:1;padding:8px;font-size:13px;" onclick="toggleDeliveryBox()" id="btnPosDelivery">+ Delivery</button>
+            <button type="button" class="btn secondary" style="flex:1;padding:8px;font-size:13px;display:none;" onclick="abrirModalDescuentoVenta()" id="btnPosDescuento">Descuento</button>
+          </div>
           <div id="posDeliveryBox" style="display:none;margin-top:8px;">
             <div id="posDeliveryChips" class="cat-chips" style="margin-bottom:8px;"></div>
             <div style="display:flex;gap:6px;">
@@ -1642,7 +1645,7 @@ async function renderChartTopProductos(mesD,ganancia){
   // usando el costo_unitario congelado en cada venta_item, no productos.costo actual.
   const kpiMargen=document.getElementById('kpiMargenBrutoMes');
   if(kpiMargen){
-    const margenBruto=items.reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
+    const margenBruto=items.filter(it=>it.producto_nombre!=='Delivery').reduce((s,it)=>s+Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0),0);
     kpiMargen.querySelector('.kpi-value').textContent=money(margenBruto);
     kpiMargen.querySelector('.kpi-value').style.color=margenBruto<0?'var(--danger)':'var(--ok)';
   }
@@ -1650,6 +1653,7 @@ async function renderChartTopProductos(mesD,ganancia){
   const byProd={};
   items.forEach(it=>{
     const n=it.producto_nombre||'—';
+    if(n==='Delivery'||n.startsWith('Descuento')) return;   // no son productos
     if(!byProd[n]) byProd[n]={monto:0,margen:0};
     byProd[n].monto+=Number(it.subtotal||0);
     byProd[n].margen+=Number(it.subtotal||0)-Number(it.cantidad||0)*Number(it.costo_unitario||0);
@@ -1726,29 +1730,145 @@ function toggleMayorCarrito(idx){
   const i=CARRITO[idx];
   if(!i||!(Number(i.precio_mayor)>0)) return;
   i.es_mayor=!i.es_mayor;
+  i.precio_manual=false; i.precio_lista=null;
   i.precio=i.es_mayor?Number(i.precio_mayor):Number(i.precio_normal);
   renderCarrito();
 }
 function renderCarrito(){
   const el=document.getElementById('posCarrito');
-  if(!CARRITO.length){ el.innerHTML='<p class="empty" style="padding:16px 0;">Vacío</p>'; document.getElementById('posTotal').textContent=money(0); return; }
+  const bd=document.getElementById('btnPosDescuento'); if(bd) bd.style.display=puedeDescontar()?'block':'none';
+  if(!CARRITO.length){ DESCUENTO_VENTA=null; el.innerHTML='<p class="empty" style="padding:16px 0;">Vacío</p>'; document.getElementById('posTotal').textContent=money(0); return; }
   el.innerHTML=CARRITO.map((i,idx)=>i.es_delivery?`
     <div class="cart-item">
       <span class="ci-name">Delivery <span style="color:var(--muted);font-weight:500;">(al motorizado)</span></span>
-      <span class="ci-qty"></span>
+      <span class="ci-qty" style="visibility:hidden;border:0;"></span>
       <span class="ci-sub num">${money(i.precio)}</span>
       <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="quitarDelCarrito(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </div>`:`
     <div class="cart-item">
       <span class="ci-name">${i.nombre}${i.qtyLabel?` <span style="color:var(--muted);font-weight:500;">(${i.qtyLabel})</span>`:''}
-        ${Number(i.precio_mayor)>0?`<button type="button" class="ci-mayor${i.es_mayor?' on':''}" onclick="toggleMayorCarrito(${idx})" title="Cambiar entre precio normal y mayorista">${i.es_mayor?`Mayor ${money(i.precio_mayor)}`:`Normal ${money(i.precio_normal)}`}</button>`:''}</span>
+        ${Number(i.precio_mayor)>0?`<button type="button" class="ci-mayor${i.es_mayor?' on':''}" onclick="toggleMayorCarrito(${idx})" title="Cambiar entre precio normal y mayorista">${i.es_mayor?`Mayor ${money(i.precio_mayor)}`:`Normal ${money(i.precio_normal)}`}</button>`:''}
+        ${puedeDescontar()?`<button type="button" class="ci-mayor${i.precio_manual?' on':''}" onclick="editarPrecioLinea(${idx})" title="Cambiar el precio en esta venta">${i.precio_manual?`${money(i.precio)} · −${Math.round((1-i.precio/precioLista(i))*100)}%`:'Precio'}</button>`:''}</span>
       <input class="ci-qty num" type="number" step="0.1" min="0.1" value="${i.cantidad}" onchange="actualizarCantidad(${idx},this.value)">
       <span class="ci-sub num">${money(i.precio*i.cantidad)}</span>
       <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="quitarDelCarrito(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </div>`).join('');
-  const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
-  document.getElementById('posTotal').textContent=money(total);
+  const dv=descuentoVentaMonto();
+  if(dv>0) el.innerHTML+=`
+    <div class="cart-item">
+      <span class="ci-name">Descuento <span style="color:var(--muted);font-weight:500;">(${DESCUENTO_VENTA.tipo==='%'?DESCUENTO_VENTA.valor+'%':'monto'})</span></span>
+      <span class="ci-qty" style="visibility:hidden;border:0;"></span>
+      <span class="ci-sub num" style="color:var(--ok);">-${money(dv)}</span>
+      <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="quitarDescuentoVenta()" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>`;
+  document.getElementById('posTotal').textContent=money(carritoTotal());
 }
+// ── Descuentos en la venta ──
+// Por línea: se cambia el precio de ese producto SOLO en esta venta (el producto conserva su precio).
+// General: % o monto sobre los productos (no sobre el delivery); queda como línea "Descuento" negativa.
+let DESCUENTO_VENTA=null;   // {tipo:'%'|'$', valor}
+function puedeDescontar(){ return canDo('aplicarDescuentos'); }
+function precioLista(i){ return Number(i.precio_lista!=null?i.precio_lista:(i.es_mayor?i.precio_mayor:(i.precio_normal!=null?i.precio_normal:i.precio))); }
+function baseDescuento(){ return CARRITO.filter(i=>!i.es_delivery).reduce((s,i)=>s+i.precio*i.cantidad,0); }
+function descuentoVentaMonto(){
+  if(!DESCUENTO_VENTA) return 0;
+  const base=baseDescuento(), v=Number(DESCUENTO_VENTA.valor)||0;
+  const m=DESCUENTO_VENTA.tipo==='%'?Math.round(base*v/100):Math.round(v);
+  return Math.max(0,Math.min(m,base));
+}
+function carritoTotal(){ return CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0)-descuentoVentaMonto(); }
+// Total descontado: diferencia contra el precio de lista en cada línea + el descuento general
+function descuentoTotalVenta(){
+  return CARRITO.filter(i=>!i.es_delivery).reduce((s,i)=>s+Math.max(0,precioLista(i)-i.precio)*i.cantidad,0)+descuentoVentaMonto();
+}
+function editarPrecioLinea(idx){
+  if(!puedeDescontar()){ toast('No tienes permiso para hacer descuentos',true); return; }
+  const i=CARRITO[idx]; if(!i||i.es_delivery) return;
+  const lista=precioLista(i), prod=DB.productos.find(p=>p.id===i.producto_id);
+  const unidad=i.unidad||'kg';
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Cambiar precio</h3>
+    <div style="font-size:13px;color:var(--text2);">${escapeHtml(i.nombre)}${i.qtyLabel?` (${escapeHtml(i.qtyLabel)})`:''} — precio normal <b>${money(lista)}</b>/${unidad}</div>
+    <div class="sub-xs" style="margin-top:2px;">Solo cambia en esta venta: el producto sigue con su precio.</div>
+    <label>Precio por ${unidad}</label>
+    <input type="number" id="dpPrecio" min="0" step="1" inputmode="numeric" value="${Math.round(i.precio)}" oninput="dpDesdePrecio(${idx})">
+    <label>o descuento en %</label>
+    <input type="number" id="dpPct" min="0" max="100" step="0.5" inputmode="decimal" placeholder="Ej: 10" oninput="dpDesdePct(${idx})">
+    <div id="dpInfo" style="margin-top:8px;font-weight:700;"></div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      ${i.precio_manual?`<button class="btn secondary" onclick="restaurarPrecioLinea(${idx})">Precio normal</button>`:''}
+      <button class="btn" onclick="confirmarPrecioLinea(${idx})">Aplicar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  dpInfo(idx);
+  setTimeout(()=>{ const e=document.getElementById('dpPrecio'); e&&e.focus(); e&&e.select(); },50);
+}
+function dpDesdePrecio(idx){ document.getElementById('dpPct').value=''; dpInfo(idx); }
+function dpDesdePct(idx){
+  const i=CARRITO[idx], pct=parseFloat(document.getElementById('dpPct').value);
+  if(pct>=0&&pct<=100) document.getElementById('dpPrecio').value=Math.round(precioLista(i)*(1-pct/100));
+  dpInfo(idx);
+}
+function dpInfo(idx){
+  const i=CARRITO[idx], el=document.getElementById('dpInfo'); if(!el) return;
+  const lista=precioLista(i), nuevo=Number(document.getElementById('dpPrecio').value)||0;
+  const pct=lista>0?Math.round((1-nuevo/lista)*1000)/10:0;
+  const prod=DB.productos.find(p=>p.id===i.producto_id);
+  const bajoCosto=canDo('verCostos')&&prod&&Number(prod.costo)>0&&nuevo<Number(prod.costo);
+  el.innerHTML=`${money(nuevo*i.cantidad)} por ${i.cantidad} ${i.unidad||'kg'}${nuevo<lista?` <span style="color:var(--ok);">· ${pct}% menos (−${money((lista-nuevo)*i.cantidad)})</span>`:(nuevo>lista?` <span style="color:var(--danger);">· sobre el precio normal</span>`:'')}${bajoCosto?`<div style="color:var(--danger);font-size:12.5px;margin-top:4px;">Ojo: queda bajo el costo (${money(prod.costo)}).</div>`:''}`;
+}
+function confirmarPrecioLinea(idx){
+  const i=CARRITO[idx]; if(!i) return;
+  const nuevo=Math.round(Number(document.getElementById('dpPrecio').value));
+  if(!(nuevo>=0)||document.getElementById('dpPrecio').value===''){ toast('Escribe el precio',true); return; }
+  if(i.precio_lista==null) i.precio_lista=precioLista(i);
+  i.precio=nuevo; i.precio_manual=nuevo!==precioLista(i);
+  closeModal(); renderCarrito();
+}
+function restaurarPrecioLinea(idx){
+  const i=CARRITO[idx]; if(!i) return;
+  i.precio=precioLista(i); i.precio_manual=false;
+  closeModal(); renderCarrito();
+}
+function abrirModalDescuentoVenta(){
+  if(!puedeDescontar()){ toast('No tienes permiso para hacer descuentos',true); return; }
+  if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega productos primero',true); return; }
+  const base=baseDescuento();
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Descuento a la venta</h3>
+    <div style="font-size:13px;color:var(--text2);">Productos: <b>${money(base)}</b> (el delivery no se descuenta)</div>
+    <label>Descuento en %</label>
+    <input type="number" id="dvPct" min="0" max="100" step="0.5" inputmode="decimal" placeholder="Ej: 10" value="${DESCUENTO_VENTA&&DESCUENTO_VENTA.tipo==='%'?DESCUENTO_VENTA.valor:''}" oninput="document.getElementById('dvMonto').value='';dvVista()">
+    <label>o monto en pesos</label>
+    <input type="number" id="dvMonto" min="0" step="100" inputmode="numeric" placeholder="Ej: 2000" value="${DESCUENTO_VENTA&&DESCUENTO_VENTA.tipo==='$'?DESCUENTO_VENTA.valor:''}" oninput="document.getElementById('dvPct').value='';dvVista()">
+    <div id="dvVista" style="margin-top:8px;font-weight:700;"></div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      ${DESCUENTO_VENTA?`<button class="btn secondary" onclick="quitarDescuentoVenta();closeModal()">Quitar descuento</button>`:''}
+      <button class="btn" onclick="confirmarDescuentoVenta()">Aplicar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  dvVista();
+  setTimeout(()=>document.getElementById('dvPct')?.focus(),50);
+}
+function dvLeer(){
+  const pct=parseFloat(document.getElementById('dvPct').value), monto=parseFloat(document.getElementById('dvMonto').value);
+  if(pct>0) return {tipo:'%',valor:Math.min(pct,100)};
+  if(monto>0) return {tipo:'$',valor:monto};
+  return null;
+}
+function dvVista(){
+  const d=dvLeer(), base=baseDescuento(), el=document.getElementById('dvVista'); if(!el) return;
+  if(!d){ el.textContent=''; return; }
+  const m=Math.max(0,Math.min(d.tipo==='%'?Math.round(base*d.valor/100):Math.round(d.valor),base));
+  el.innerHTML=`Descuento <span style="color:var(--ok);">−${money(m)}</span> · queda ${money(base-m)} en productos`;
+}
+function confirmarDescuentoVenta(){
+  const d=dvLeer(); if(!d){ toast('Escribe el % o el monto',true); return; }
+  DESCUENTO_VENTA=d; closeModal(); renderCarrito();
+}
+function quitarDescuentoVenta(){ DESCUENTO_VENTA=null; renderCarrito(); }
 // Delivery en la Terminal: una línea más de la boleta (sin producto ni stock). El monto se traspasa al motorizado.
 function toggleDeliveryBox(){
   const box=document.getElementById('posDeliveryBox');
@@ -1771,7 +1891,7 @@ function agregarDeliveryCarrito(val){
 }
 function actualizarCantidad(idx,val){ CARRITO[idx].cantidad=Math.max(0.1,parseFloat(val)||1); renderCarrito(); }
 function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCarrito(); }
-function vaciarCarrito(){ CARRITO=[]; renderCarrito(); }
+function vaciarCarrito(){ CARRITO=[]; DESCUENTO_VENTA=null; renderCarrito(); }
 
 function agregarPesoAlCarrito(p,kg,label){
   CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:kg,qtyLabel:label,unidad:p.unidad||'kg',
@@ -1953,7 +2073,7 @@ function setMetodoPago(m){
   if(m==='mixto') calcMixed(); else document.getElementById('btnCobrar').disabled=false;
 }
 function calcMixed(){
-  const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
+  const total=carritoTotal();
   const {efectivo:ef,transferencia:tr,tarjeta:tj}=leerMixto();
   const diff=total-(ef+tr+tj);
   const diffEl=document.getElementById('mixtoDiff');
@@ -1992,7 +2112,9 @@ async function cobrar(){
   const clienteId=document.getElementById('posCliente').value||null;
   const cliente=clienteId?DB.clientes.find(c=>c.id==clienteId):null;
   const metodo=METODO_PAGO;
-  const total=CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0);
+  const total=carritoTotal();
+  const descVenta=descuentoVentaMonto(), descTotal=Math.round(descuentoTotalVenta());
+  if(descTotal>0&&!puedeDescontar()){ toast('No tienes permiso para hacer descuentos',true); return; }
 
   let metodoDetalle=null, mixto=null;
   if(metodo==='mixto'){
@@ -2005,7 +2127,7 @@ async function cobrar(){
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
-    delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),
+    delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),descuento:descTotal,
     estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
   }).select();
   if(error){ toast('Error al cobrar: '+error.message,true); return; }
@@ -2018,7 +2140,8 @@ async function cobrar(){
     await supa.from('venta_items').insert({
       venta_id:venta.id,producto_id:item.producto_id,producto_nombre,
       cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad,
-      costo_unitario:Number(prod?.costo)||0,es_mayor:!!item.es_mayor
+      costo_unitario:Number(prod?.costo)||0,es_mayor:!!item.es_mayor,
+      precio_original:item.es_delivery?null:precioLista(item)
     });
     itemsParaBoleta.push({producto_nombre,cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad});
     if(item.producto_id){
@@ -2026,7 +2149,13 @@ async function cobrar(){
       if(!r.ok) toast(`Venta guardada, pero no se pudo descontar el stock de ${item.nombre}. Revísalo.`,true);
     }
   }
+  if(descVenta>0){
+    const nombreDesc='Descuento'+(DESCUENTO_VENTA.tipo==='%'?` ${DESCUENTO_VENTA.valor}%`:'');
+    await supa.from('venta_items').insert({venta_id:venta.id,producto_id:null,producto_nombre:nombreDesc,cantidad:1,precio_unitario:-descVenta,subtotal:-descVenta,costo_unitario:0});
+    itemsParaBoleta.push({producto_nombre:nombreDesc,cantidad:1,precio_unitario:-descVenta,subtotal:-descVenta});
+  }
   logAudit('Venta registrada','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${money(total)} (${metodo})`);
+  if(descTotal>0) logAudit('Descuento en venta','ventas',`Boleta ${venta.boleta_numero||venta.id} — descuento ${money(descTotal)} (${CARRITO.filter(i=>i.precio_manual).map(i=>i.nombre+' '+money(i.precio)).join(', ')||'general'}${descVenta>0?' + descuento general':''})`);
   toast(`Venta registrada — ${money(total)}`);
   LAST_VENTA=venta; LAST_VENTA_ITEMS=itemsParaBoleta;
   const btnImp=document.getElementById('btnImprimirUltimaBoleta');
@@ -4695,7 +4824,7 @@ async function renderAuditoria(){
 //  USUARIOS Y PERMISOS (admin-only)
 // ══════════════════════════════════════════════════════════
 const PERM_KEYS=[
-  ['verCostos','Ver costos'],['editarInventario','Editar inventario'],['eliminarVentas','Anular ventas'],
+  ['verCostos','Ver costos'],['editarInventario','Editar inventario'],['eliminarVentas','Anular ventas'],['aplicarDescuentos','Hacer descuentos'],
   ['verReportes','Ver reportes'],['verGastos','Ver gastos'],['gestionarUsuarios','Gestionar usuarios']
 ];
 // ══════════════════════════════════════════════════════════
@@ -5816,6 +5945,7 @@ async function productosVendidos(ventaIds){
   }
   const g={};
   items.forEach(it=>{
+    if(!it.producto_id&&(it.producto_nombre==='Delivery'||String(it.producto_nombre||'').startsWith('Descuento'))) return;   // no son productos
     const prod=it.producto_id?DB.productos.find(p=>p.id===it.producto_id):null;
     const nombre=prod?.nombre||String(it.producto_nombre||'—').replace(/\s*\([^)]*\)\s*$/,'');
     const k=it.producto_id||('n:'+nombre);
