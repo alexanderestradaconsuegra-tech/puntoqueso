@@ -585,6 +585,12 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
             <button type="button" data-m="tarjeta" onclick="setMetodoPago('tarjeta')">Tarjeta</button>
             <button type="button" data-m="mixto" onclick="setMetodoPago('mixto')">Mixto</button>
           </div>
+          <div id="efectivoBox" style="margin-top:8px;display:none;">
+            <label style="display:block;font-size:12.5px;font-weight:600;margin:0 0 5px;">Efectivo recibido <span style="font-weight:500;color:var(--muted);">(opcional, para el vuelto)</span></label>
+            <input type="number" id="efRecibido" min="0" step="10" inputmode="numeric" placeholder="Con cuánto paga el cliente" oninput="efActualizar()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
+            <div id="efChips" class="cat-chips" style="margin-top:6px;"></div>
+            <div id="efVuelto" style="margin-top:6px;font-weight:800;font-size:16px;"></div>
+          </div>
           <div class="mixto-box" id="mixtoBox" style="display:none;">
             <label>Efectivo</label><input type="number" id="mixtoEfectivo" min="0" step="1" oninput="calcMixed()">
             <label>Transferencia <span style="font-weight:500;color:var(--muted);">(Mercado Pago)</span></label><input type="number" id="mixtoTransf" min="0" step="1" oninput="calcMixed()">
@@ -593,7 +599,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
           </div>
           <button class="btn" id="btnCobrar" style="width:100%;justify-content:center;margin-top:14px;" onclick="cobrar()">Cobrar</button>
           <button class="btn secondary" style="width:100%;justify-content:center;margin-top:8px;" onclick="vaciarCarrito()">Vaciar carrito</button>
-          <button class="btn secondary" id="btnImprimirUltimaBoleta" style="display:none;width:100%;justify-content:center;margin-top:8px;" onclick="abrirReciboImprimir(LAST_VENTA,LAST_VENTA_ITEMS)">🖨️ Imprimir boleta</button>
+          <button class="btn secondary" id="btnImprimirUltimaBoleta" style="width:100%;justify-content:center;margin-top:8px;" onclick="reimprimirUltimo()">🖨️ Reimprimir último ticket</button>
         </div>
       </div>
     </div>
@@ -1737,7 +1743,7 @@ function toggleMayorCarrito(idx){
 function renderCarrito(){
   const el=document.getElementById('posCarrito');
   const bd=document.getElementById('btnPosDescuento'); if(bd) bd.style.display=puedeDescontar()?'block':'none';
-  if(!CARRITO.length){ DESCUENTO_VENTA=null; el.innerHTML='<p class="empty" style="padding:16px 0;">Vacío</p>'; document.getElementById('posTotal').textContent=money(0); return; }
+  if(!CARRITO.length){ DESCUENTO_VENTA=null; el.innerHTML='<p class="empty" style="padding:16px 0;">Vacío</p>'; document.getElementById('posTotal').textContent=money(0); efActualizar(); return; }
   el.innerHTML=CARRITO.map((i,idx)=>i.es_delivery?`
     <div class="cart-item">
       <span class="ci-name">Delivery <span style="color:var(--muted);font-weight:500;">(al motorizado)</span></span>
@@ -1762,6 +1768,7 @@ function renderCarrito(){
       <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="quitarDescuentoVenta()" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </div>`;
   document.getElementById('posTotal').textContent=money(carritoTotal());
+  efActualizar();
 }
 // ── Descuentos en la venta ──
 // Por línea: se cambia el precio de ese producto SOLO en esta venta (el producto conserva su precio).
@@ -2071,6 +2078,36 @@ function setMetodoPago(m){
   document.querySelectorAll('#posPayMethods button').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
   document.getElementById('mixtoBox').style.display=m==='mixto'?'block':'none';
   if(m==='mixto') calcMixed(); else document.getElementById('btnCobrar').disabled=false;
+  efActualizar();
+}
+// Efectivo: se escribe con cuánto paga el cliente y se muestra el vuelto
+function efectivoRecibido(){ const v=document.getElementById('efRecibido')?.value; return (v===''||v==null)?null:Math.round(Number(v)); }
+function efSet(n){ document.getElementById('efRecibido').value=n; efActualizar(); }
+function efActualizar(){
+  const box=document.getElementById('efectivoBox'); if(!box) return;
+  const total=carritoTotal(), activo=METODO_PAGO==='efectivo'&&CARRITO.length>0&&total>0;
+  box.style.display=activo?'block':'none';
+  if(!activo){ if(METODO_PAGO==='efectivo') document.getElementById('btnCobrar').disabled=false; return; }
+  const opts=[['Exacto',total]];
+  for(const paso of [1000,5000,10000,20000]){ const m=Math.ceil(total/paso)*paso; if(m>total&&!opts.some(o=>o[1]===m)) opts.push([money(m),m]); }
+  document.getElementById('efChips').innerHTML=opts.slice(0,4).map(([t,n])=>`<button type="button" class="cat-chip" onclick="efSet(${n})">${t}</button>`).join('');
+  const rec=efectivoRecibido(), el=document.getElementById('efVuelto'), btn=document.getElementById('btnCobrar');
+  if(rec==null){ el.textContent=''; btn.disabled=false; }
+  else if(rec<total){ el.innerHTML=`<span style="color:var(--danger);">Falta ${money(total-rec)}</span>`; btn.disabled=true; }
+  else{ el.innerHTML=rec===total?'<span style="color:var(--ok);">Pago exacto</span>':`Vuelto: <span style="color:var(--ok);font-size:20px;">${money(rec-total)}</span>`; btn.disabled=false; }
+}
+function mostrarVuelto(total,recibido,vuelto){
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Venta registrada</h3>
+    <div style="text-align:center;margin:10px 0 4px;color:var(--text2);font-size:14px;">Entrega de vuelto</div>
+    <div style="text-align:center;font-size:44px;font-weight:900;color:var(--ok);line-height:1.1;">${money(vuelto)}</div>
+    <div style="text-align:center;margin-top:8px;font-size:13px;color:var(--text2);">Total ${money(total)} · Recibido ${money(recibido)}</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal();reimprimirUltimo()">Imprimir ticket</button>
+      <button class="btn" id="btnVueltoListo" onclick="closeModal()">Listo</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  setTimeout(()=>document.getElementById('btnVueltoListo')?.focus(),50);
 }
 function calcMixed(){
   const total=carritoTotal();
@@ -2114,6 +2151,9 @@ async function cobrar(){
   const metodo=METODO_PAGO;
   const total=carritoTotal();
   const descVenta=descuentoVentaMonto(), descTotal=Math.round(descuentoTotalVenta());
+  const recibido=metodo==='efectivo'?efectivoRecibido():null;
+  if(recibido!=null&&recibido<total){ toast('El efectivo recibido es menor al total',true); return; }
+  const vuelto=recibido!=null?recibido-total:null;
   if(descTotal>0&&!puedeDescontar()){ toast('No tienes permiso para hacer descuentos',true); return; }
 
   let metodoDetalle=null, mixto=null;
@@ -2127,7 +2167,7 @@ async function cobrar(){
   const {data:ventaIns,error}=await supa.from('ventas').insert({
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
-    delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),descuento:descTotal,
+    delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),descuento:descTotal,efectivo_recibido:recibido,vuelto,
     estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
   }).select();
   if(error){ toast('Error al cobrar: '+error.message,true); return; }
@@ -2158,10 +2198,10 @@ async function cobrar(){
   if(descTotal>0) logAudit('Descuento en venta','ventas',`Boleta ${venta.boleta_numero||venta.id} — descuento ${money(descTotal)} (${CARRITO.filter(i=>i.precio_manual).map(i=>i.nombre+' '+money(i.precio)).join(', ')||'general'}${descVenta>0?' + descuento general':''})`);
   toast(`Venta registrada — ${money(total)}`);
   LAST_VENTA=venta; LAST_VENTA_ITEMS=itemsParaBoleta;
-  const btnImp=document.getElementById('btnImprimirUltimaBoleta');
-  if(btnImp) btnImp.style.display='flex';
   vaciarCarrito();
+  document.getElementById('efRecibido').value='';
   setMetodoPago('efectivo');
+  if(recibido!=null&&vuelto>0) mostrarVuelto(total,recibido,vuelto);
   ['mixtoEfectivo','mixtoTransf','mixtoTarjeta'].forEach(id=>document.getElementById(id).value='');
   await loadAll();
   renderPosProductos();
@@ -2319,6 +2359,7 @@ function generarReciboHTML(venta,items){
       <div class="r-anulada-det">${venta.anulada_at?escapeHtml(new Date(venta.anulada_at).toLocaleString('es-CL')):''}${venta.anulada_por?' · '+escapeHtml(venta.anulada_por):''}${venta.motivo_anulacion?'<br>'+escapeHtml(venta.motivo_anulacion):''}</div></div>`:''}
     <div class="r-div"></div>
     <div class="r-info">
+      ${venta.__copia?`<div style="text-align:center;font-weight:800;letter-spacing:.06em;margin-bottom:2px;">*** REIMPRESIÓN ***</div>`:''}
       <div>Boleta N° <span class="r-boleta">${escapeHtml(boleta)}</span></div>
       <div>${fechaStr}</div>
       ${venta.cliente_nombre?`<div>Cliente: <b>${escapeHtml(venta.cliente_nombre)}</b></div>`:''}
@@ -2331,6 +2372,8 @@ function generarReciboHTML(venta,items){
     </table>
     <div class="r-div solid"></div>
     <div class="r-total-row"><span class="lbl">Total</span><span class="val">${money(venta.total)}</span></div>
+    ${Number(venta.efectivo_recibido)>0?`<div class="r-total-row" style="margin-top:3px;"><span class="lbl" style="font-size:12px;">Efectivo recibido</span><span class="val" style="font-size:15px;">${money(venta.efectivo_recibido)}</span></div>
+    <div class="r-total-row"><span class="lbl" style="font-size:12px;">Vuelto</span><span class="val" style="font-size:15px;">${money(venta.vuelto)}</span></div>`:''}
     <div class="r-div"></div>
     <div class="r-footer">
       <div class="r-gracias">¡Gracias por tu compra!</div>
@@ -2341,15 +2384,43 @@ function generarReciboHTML(venta,items){
 </body>
 </html>`;
 }
+// Imprime en un marco oculto de esta misma página: no se abre ninguna ventana
+// y, al terminar de imprimir (o cancelar), el marco se elimina solo.
+function imprimirHTML(html){
+  const f=document.createElement('iframe');
+  f.setAttribute('aria-hidden','true'); f.tabIndex=-1;
+  f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+  document.body.appendChild(f);
+  let limpio=false;
+  const limpiar=()=>{ if(limpio) return; limpio=true; setTimeout(()=>{ try{ f.remove(); }catch(e){} },400); };
+  try{
+    const w=f.contentWindow, d=f.contentDocument||w.document;
+    d.open(); d.write(html); d.close();
+    const imgs=[...d.images].filter(i=>!i.complete);
+    const cargadas=Promise.race([Promise.all(imgs.map(i=>new Promise(r=>{ i.onload=i.onerror=r; }))),new Promise(r=>setTimeout(r,1800))]);
+    cargadas.then(()=>setTimeout(()=>{
+      try{ w.onafterprint=limpiar; w.focus(); w.print(); }
+      catch(e){ console.error('print',e); limpiar(); }
+      setTimeout(limpiar,5*60*1000);   // por si el navegador no avisa que terminó
+    },150));
+  }catch(e){
+    console.error('imprimirHTML',e); limpiar();
+    toast('No se pudo imprimir. Revisa la impresora e inténtalo de nuevo',true);
+  }
+}
 function abrirReciboImprimir(venta,items){
   if(!venta){ toast('No hay datos de la venta para imprimir',true); return; }
-  const html=generarReciboHTML(venta,items||[]);
-  const win=window.open('','_blank','width=420,height=680');
-  if(!win){ toast('El navegador bloqueó la ventana de impresión — permite pop-ups para este sitio',true); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.onload=()=>{ setTimeout(()=>{ win.focus(); win.print(); },350); };
+  imprimirHTML(generarReciboHTML(venta,items||[]));
+}
+// Reimprime el último ticket (lo lee de la base: sirve aunque se haya recargado la página)
+async function reimprimirUltimo(){
+  const {data,error}=await supa.from('ventas').select('*').eq('anulada',false).order('id',{ascending:false}).limit(1);
+  if(error){ toast('No se pudo leer la última venta: '+error.message,true); return; }
+  const v=(data||[])[0];
+  if(!v){ toast('Todavía no hay ventas para reimprimir',true); return; }
+  const {data:items,error:e2}=await supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',v.id).order('id');
+  if(e2){ toast('No se pudo leer el detalle: '+e2.message,true); return; }
+  abrirReciboImprimir({...v,__copia:true},items||[]);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -3649,7 +3720,7 @@ async function reimprimirVenta(id){
   if(!venta){ toast('Venta no encontrada',true); return; }
   const {data:items,error}=await supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',id);
   if(error){ toast('Error al obtener el detalle de la venta: '+error.message,true); return; }
-  abrirReciboImprimir(venta,items||[]);
+  abrirReciboImprimir({...venta,__copia:true},items||[]);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5919,10 +5990,7 @@ function imprimirDocumento(titulo,cuerpo){
   ${cuerpo}
   <div class="pie">Impreso ${new Date().toLocaleString('es-CL')} por ${escapeHtml(SESSION?.nombre||'-')}</div>
 </body></html>`;
-  const win=window.open('','_blank','width=420,height=720');
-  if(!win){ toast('El navegador bloqueó la ventana de impresión — permite pop-ups para este sitio',true); return; }
-  win.document.open(); win.document.write(html); win.document.close();
-  win.onload=()=>{ setTimeout(()=>{ win.focus(); win.print(); },300); };
+  imprimirHTML(html);
 }
 const rFila=(a,b,cls)=>`<tr${cls?` class="${cls}"`:''}><td>${a}</td><td class="n">${b}</td></tr>`;
 function rConteo(conteo){
