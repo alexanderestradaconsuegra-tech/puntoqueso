@@ -748,7 +748,9 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
           <button class="btn secondary" onclick="openGastosRecurrentesModal()">Gastos recurrentes</button>
           <button class="btn" onclick="openGastoModal()">+ Nuevo gasto</button>
         </div></div>
-      <div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th></th></tr></thead>
+      <div class="inv-valor" id="gastosResumen"></div>
+      <div class="cat-chips" id="gastosFiltro" style="margin-bottom:10px;"></div>
+      <div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Pago</th><th></th></tr></thead>
       <tbody id="gastosBody"></tbody></table></div>
     </div>
 
@@ -1438,18 +1440,22 @@ async function generarGastosRecurrentesPendientes(){
       }
       if(!due) continue;
       const descripcion='(Recurrente) '+r.descripcion;
+      const periodo=r.frecuencia==='mensual'||!r.frecuencia?hoyISO.slice(0,7):hoyISO;
+      // Se crea POR PAGAR: no descuenta ninguna cuenta hasta que se pague.
       const {error:insErr}=await supa.from('gastos').insert({
-        fecha:hoyISO,descripcion,categoria:r.categoria,monto:r.monto,cuenta:r.cuenta||'bancoestado',
-        notas:'Generado automáticamente desde gasto recurrente #'+r.id
+        fecha:hoyISO,descripcion,categoria:r.categoria,monto:r.monto,estado_pago:'pendiente',cuenta:null,
+        recurrente_id:r.id,periodo,notas:'Generado automáticamente desde gasto recurrente #'+r.id
       });
-      if(insErr){ console.error('Error generando gasto recurrente #'+r.id,insErr); continue; }
+      // 23505 = ya se generó este período (p. ej. desde otro equipo): no es error
+      if(insErr&&insErr.code!=='23505'){ console.error('Error generando gasto recurrente #'+r.id,insErr); continue; }
       await supa.from('gastos_recurrentes').update({ultima_generacion:hoyISO}).eq('id',r.id);
-      logAudit('Gasto recurrente generado','gastos',r.descripcion+' — '+money(r.monto));
+      if(insErr) continue;
+      logAudit('Gasto recurrente generado (por pagar)','gastos',r.descripcion+' — '+money(r.monto));
       generados++;
     }
     if(generados>0){
       await loadAll();
-      toast(generados+' gasto'+(generados>1?'s':'')+' recurrente'+(generados>1?'s':'')+' generado'+(generados>1?'s':'')+' automáticamente');
+      toast(generados+' gasto'+(generados>1?'s':'')+' recurrente'+(generados>1?'s':'')+' por pagar');
     }
   }catch(e){ console.error('Error en generarGastosRecurrentesPendientes:',e); }
 }
@@ -4561,11 +4567,79 @@ async function bulkEliminarClientes(){
 // ══════════════════════════════════════════════════════════
 //  GASTOS
 // ══════════════════════════════════════════════════════════
-function renderGastos(){
-  document.getElementById('gastosBody').innerHTML=DB.gastos.map(g=>`
-    <tr><td>${new Date(g.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td>${g.descripcion}</td>
-    <td style="text-transform:capitalize;">${g.categoria}${g.cuenta?`<div class="sub-xs" style="text-transform:none;">${CUENTAS_PAGO[g.cuenta]||g.cuenta}</div>`:''}</td><td class="num">${money(g.monto)}</td>
-    <td><button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarGasto(${g.id})">Eliminar</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin gastos</td></tr>';
+// Gastos: "pendiente" = por pagar (no mueve ninguna cuenta); "pagado" = salió de una cuenta en fecha_pago.
+let GASTOS_FILTRO='todos', GASTOS_PEND=[];
+const fechaCL=f=>f?new Date(f+'T12:00:00').toLocaleDateString('es-CL'):'-';
+async function renderGastos(){
+  // los pendientes se piden todos (pueden ser más viejos que los últimos 200)
+  const {data:pend}=await supa.from('gastos').select('*').eq('estado_pago','pendiente').order('fecha');
+  GASTOS_PEND=pend||[];
+  const ids=new Set(DB.gastos.map(g=>g.id));
+  const todos=[...DB.gastos,...GASTOS_PEND.filter(g=>!ids.has(g.id))].sort((a,b)=>a.fecha<b.fecha?1:a.fecha>b.fecha?-1:b.id-a.id);
+  const totPend=GASTOS_PEND.reduce((s,g)=>s+Number(g.monto),0);
+  const hoy=hoyChile(), vencidos=GASTOS_PEND.filter(g=>g.fecha<=hoy);
+  const mes=hoy.slice(0,7), pagadoMes=DB.gastos.filter(g=>g.estado_pago!=='pendiente'&&String(g.fecha_pago||g.fecha).startsWith(mes)).reduce((s,g)=>s+Number(g.monto),0);
+  document.getElementById('gastosResumen').innerHTML=`
+    <div class="kpi-mini dest"><small>Por pagar</small><b>${money(totPend)}</b></div>
+    <div class="kpi-mini"><small>Gastos por pagar</small><b>${GASTOS_PEND.length}</b></div>
+    <div class="kpi-mini"><small>Pagado este mes</small><b>${money(pagadoMes)}</b></div>`;
+  document.getElementById('gastosFiltro').innerHTML=[['todos','Todos'],['pendiente',`Por pagar (${GASTOS_PEND.length})`],['pagado','Pagados']]
+    .map(([k,t])=>`<button type="button" class="cat-chip${GASTOS_FILTRO===k?' active':''}" onclick="GASTOS_FILTRO='${k}';renderGastos()">${t}</button>`).join('');
+  const lista=todos.filter(g=>GASTOS_FILTRO==='todos'||(GASTOS_FILTRO==='pendiente'?g.estado_pago==='pendiente':g.estado_pago!=='pendiente'));
+  document.getElementById('gastosBody').innerHTML=lista.map(g=>{
+    const pend=g.estado_pago==='pendiente';
+    return `<tr><td>${fechaCL(g.fecha)}</td><td>${escapeHtml(g.descripcion)}</td>
+    <td style="text-transform:capitalize;">${escapeHtml(g.categoria||'')}</td><td class="num">${money(g.monto)}</td>
+    <td>${pend?`<span class="badge por-cobrar">Por pagar</span>`:`<span class="badge pagado">Pagado</span><div class="sub-xs">${escapeHtml(CUENTAS_PAGO[g.cuenta]||g.cuenta||'-')} · ${fechaCL(g.fecha_pago||g.fecha)}</div>`}</td>
+    <td style="white-space:nowrap;">
+      ${pend?`<button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPagoGasto(${g.id})">Pagar</button>`
+            :(gastoConOrigen(g)?'':`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" title="Lo marcaste pagado por error" onclick="desmarcarPagoGasto(${g.id})">No pagado</button>`)}
+      <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarGasto(${g.id})">Eliminar</button>
+    </td></tr>`;}).join('')||'<tr><td colspan="6" class="empty">Sin gastos</td></tr>';
+  if(vencidos.length&&GASTOS_FILTRO==='todos'&&!renderGastos._avisado){ renderGastos._avisado=true; toast(`Tienes ${vencidos.length} gasto${vencidos.length>1?'s':''} por pagar (${money(vencidos.reduce((s,g)=>s+Number(g.monto),0))})`); }
+}
+// Gastos que nacen de otro registro (factura, motorizado, retiro de caja): se corrigen en su origen
+function gastoConOrigen(g){ return /^(Factura de compra|Pago motorizado)/.test(g.descripcion||'')||/desde la caja/.test(g.notas||''); }
+function gastoPorId(id){ return DB.gastos.find(g=>g.id===id)||GASTOS_PEND.find(g=>g.id===id)||null; }
+async function abrirPagoGasto(id){
+  const g=gastoPorId(id); if(!g) return;
+  await cargarCajaHoy();   // para saber si hay caja abierta (pago con plata del cajón)
+  const rec=g.recurrente_id?DB.gastosRecurrentes.find(r=>r.id===g.recurrente_id):null;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Pagar gasto</h3>
+    <div style="font-size:13px;color:var(--text2);">${escapeHtml(g.descripcion)} — <b>${money(g.monto)}</b></div>
+    <label>Pagado desde</label>${selectCuentaPago('pgCuenta',rec?.cuenta||'bancoestado')}
+    <label>Fecha del pago</label><input id="pgFecha" type="date" value="${hoyChile()}">
+    <label id="pgCajaWrap" style="display:none;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="pgDesdeCaja" style="width:16px;height:16px;" ${CAJA_HOY&&CAJA_HOY.estado==='abierta'?'checked':''}>
+      Sale de la plata del cajón (se registra como retiro de la caja de hoy)
+    </label>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnPagarGasto" onclick="confirmarPagoGasto(${g.id})">Pagar ${money(g.monto)}</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  const sel=document.getElementById('pgCuenta');
+  const sync=()=>{ document.getElementById('pgCajaWrap').style.display=sel.value==='efectivo'?'flex':'none'; };
+  sel.addEventListener('change',sync); sync();
+}
+async function confirmarPagoGasto(id){
+  const cuenta=document.getElementById('pgCuenta').value, fecha=document.getElementById('pgFecha').value||hoyChile();
+  const desdeCaja=cuenta==='efectivo'&&document.getElementById('pgDesdeCaja').checked;
+  const btn=document.getElementById('btnPagarGasto'); btn.disabled=true;
+  const {error}=await supa.rpc('pagar_gasto',{p_id:id,p_cuenta:cuenta,p_fecha:fecha,p_desde_caja:desdeCaja,p_usuario:SESSION.usuario});
+  if(error){ btn.disabled=false; toast(error.message,true); return; }
+  const g=gastoPorId(id);
+  logAudit('Gasto pagado','gastos',`${g?.descripcion||'#'+id} — ${money(g?.monto)} · ${CUENTAS_PAGO[cuenta]}${desdeCaja?' (cajón)':''} · ${fecha}`);
+  toast('Gasto pagado'); closeModal(); await loadAll(); renderGastos();
+}
+async function desmarcarPagoGasto(id){
+  const g=gastoPorId(id);
+  if(!confirm(`¿Volver "${g?.descripcion||'este gasto'}" a Por pagar? La plata vuelve a la cuenta ${CUENTAS_PAGO[g?.cuenta]||''}.`)) return;
+  const {error}=await supa.rpc('desmarcar_pago_gasto',{p_id:id});
+  if(error){ toast(error.message,true); return; }
+  logAudit('Gasto vuelto a por pagar','gastos',`${g?.descripcion||'#'+id} — ${money(g?.monto)}`);
+  toast('Gasto vuelto a Por pagar'); await loadAll(); renderGastos();
 }
 const CUENTAS_PAGO={efectivo:'Efectivo (caja)',bancoestado:'BancoEstado',mercadopago:'Mercado Pago'};
 function selectCuentaPago(id,actual){
@@ -4580,25 +4654,50 @@ function openGastoModal(){
     <label>Categoría</label>
     <select id="gaCategoria"><option value="servicios">Servicios</option><option value="mercaderia">Mercadería</option><option value="delivery">Delivery (motorizado)</option><option value="arriendo">Arriendo</option><option value="personal">Personal</option><option value="iva">IVA</option><option value="contador">Contador</option><option value="otros">Otros</option></select>
     <label>Monto</label><input id="gaMonto" type="number" step="1">
-    <label>Pagado desde</label>${selectCuentaPago('gaCuenta','bancoestado')}
-    <div class="sub-xs" style="margin-top:4px;">Si lo pagaste con plata de la caja durante el día, mejor regístralo en la Terminal con "Retiro / ingreso": así también cuadra el cierre.</div>
+    <label>¿Ya está pagado?</label>
+    <div class="pay-methods" id="gaEstado">
+      <button type="button" class="active" data-ep="pagado" onclick="gaSetEstado('pagado')">Pagado</button>
+      <button type="button" data-ep="pendiente" onclick="gaSetEstado('pendiente')">Por pagar</button>
+    </div>
+    <div id="gaCuentaWrap"><label>Pagado desde</label>${selectCuentaPago('gaCuenta','bancoestado')}
+    <div class="sub-xs" style="margin-top:4px;">Si lo pagaste con plata de la caja durante el día, mejor regístralo en la Terminal con "Retiro / ingreso": así también cuadra el cierre.</div></div>
+    <div id="gaPendNota" class="sub-xs" style="margin-top:6px;display:none;">Queda en "Por pagar" y no descuenta ninguna cuenta. Cuando lo pagues, tocas <b>Pagar</b> y eliges la cuenta.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" onclick="guardarGasto()">Guardar</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
 }
+function gaSetEstado(v){
+  document.querySelectorAll('#gaEstado button').forEach(b=>b.classList.toggle('active',b.dataset.ep===v));
+  document.getElementById('gaCuentaWrap').style.display=v==='pagado'?'block':'none';
+  document.getElementById('gaPendNota').style.display=v==='pendiente'?'block':'none';
+}
 async function guardarGasto(){
   const descripcion=sanitize(document.getElementById('gaDescripcion').value);
   const monto=Number(document.getElementById('gaMonto').value);
   if(!descripcion||!monto){ toast('Completa descripción y monto',true); return; }
-  const {error}=await supa.from('gastos').insert({fecha:document.getElementById('gaFecha').value,descripcion,categoria:document.getElementById('gaCategoria').value,monto,cuenta:document.getElementById('gaCuenta').value});
+  const fecha=document.getElementById('gaFecha').value;
+  const pagado=document.querySelector('#gaEstado button.active')?.dataset.ep!=='pendiente';
+  const {error}=await supa.from('gastos').insert({fecha,descripcion,categoria:document.getElementById('gaCategoria').value,monto,
+    estado_pago:pagado?'pagado':'pendiente',cuenta:pagado?document.getElementById('gaCuenta').value:null,fecha_pago:pagado?fecha:null});
   if(error){ toast('Error: '+error.message,true); return; }
   toast('Gasto guardado'); closeModal(); await loadAll(); renderGastos();
 }
 async function eliminarGasto(id){
-  if(!confirm('¿Eliminar este gasto?')) return;
-  await supa.from('gastos').delete().eq('id',id);
+  // un gasto que nace de una factura, del motorizado o de un retiro de caja se corrige en su origen
+  const [f,m,c]=await Promise.all([
+    supa.from('facturas_compra').select('id').eq('gasto_id',id).limit(1),
+    supa.from('pagos_motorizado').select('id').eq('gasto_id',id).limit(1),
+    supa.from('caja_movimientos').select('id').eq('gasto_id',id).limit(1)]);
+  if(f.data&&f.data.length){ toast('Este gasto viene de una factura de compra: edítala o elimínala en Proveedores',true); return; }
+  if(m.data&&m.data.length){ toast('Este gasto es un pago al motorizado: no se elimina desde aquí',true); return; }
+  if(c.data&&c.data.length){ toast('Este gasto salió del cajón (retiro de caja): no se elimina desde aquí',true); return; }
+  const g=gastoPorId(id);
+  if(!confirm(`¿Eliminar "${g?.descripcion||'este gasto'}"?`)) return;
+  const {error}=await supa.from('gastos').delete().eq('id',id);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit('Gasto eliminado','gastos',`${g?.descripcion||'#'+id} — ${money(g?.monto)}`);
   toast('Gasto eliminado'); await loadAll(); renderGastos();
 }
 
@@ -4646,7 +4745,8 @@ function openGastoRecurrenteModal(id){
       <option value="otros" ${(!r||r?.categoria==='otros')?'selected':''}>Otros</option>
     </select>
     <label>Monto</label><input id="grMonto" type="number" step="1" value="${r?.monto||''}">
-    <label>Se paga desde</label>${selectCuentaPago('grCuenta',r?.cuenta||'bancoestado')}
+    <label>Normalmente se paga desde</label>${selectCuentaPago('grCuenta',r?.cuenta||'bancoestado')}
+    <div class="sub-xs" style="margin-top:4px;">Cada período se crea como <b>Por pagar</b>. Recién cuando tocas <b>Pagar</b> se descuenta de la cuenta que elijas.</div>
     <label>Frecuencia</label>
     <select id="grFrecuencia" onchange="onGrFrecuenciaChange()">
       <option value="mensual" ${(!r||r?.frecuencia==='mensual')?'selected':''}>Mensual</option>
@@ -6276,7 +6376,7 @@ async function calcularCuentas(){
   const desde=conf.map(c=>c.fecha_inicio).sort()[0];
   const [vR,gR,mR,cmR,ciR]=await Promise.all([
     supa.from('ventas').select('created_at,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago').eq('anulada',false).gte('created_at',inicioISO(desde)).order('created_at'),
-    supa.from('gastos').select('id,fecha,descripcion,monto,cuenta').gte('fecha',desde).order('fecha'),
+    supa.from('gastos').select('id,fecha,fecha_pago,estado_pago,descripcion,monto,cuenta').or(`(fecha.gte.${desde},fecha_pago.gte.${desde})`).order('fecha'),
     supa.from('cuenta_movimientos').select('*').gte('fecha',desde).order('fecha'),
     supa.from('caja_movimientos').select('*').gte('created_at',inicioISO(desde)).order('created_at'),
     supa.from('cierres_caja').select('fecha,diferencia,estado').eq('estado','cerrada').gte('fecha',desde),
@@ -6296,7 +6396,8 @@ async function calcularCuentas(){
     Object.keys(MEDIO_A_CUENTA).forEach(k=>{ const n=Number(m[k])||0; if(n){ const key=dia+'|'+k; porDia[key]=(porDia[key]||0)+n; } });
   });
   Object.entries(porDia).forEach(([key,monto])=>{ const [dia,k]=key.split('|'); add(MEDIO_A_CUENTA[k],dia,NOMBRE_MEDIO[k],monto,'venta'); });
-  (gR.data||[]).forEach(g=>{ if(g.cuenta) add(g.cuenta,g.fecha,'Gasto: '+g.descripcion,-Number(g.monto),'gasto'); });
+  // solo lo pagado mueve la cuenta, y en la fecha en que se pagó
+  (gR.data||[]).forEach(g=>{ if(g.cuenta&&g.estado_pago!=='pendiente') add(g.cuenta,g.fecha_pago||g.fecha,'Gasto: '+g.descripcion,-Number(g.monto),'gasto'); });
   (mR.data||[]).forEach(m=>{
     const n=Number(m.monto);
     if(m.cuenta_origen) add(m.cuenta_origen,m.fecha,(m.tipo==='traspaso'?`Traspaso a ${CUENTAS_PAGO[m.cuenta_destino]||m.cuenta_destino}: `:'')+m.descripcion,-n,m.tipo);
