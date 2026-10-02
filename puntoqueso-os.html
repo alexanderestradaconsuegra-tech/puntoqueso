@@ -1243,6 +1243,9 @@ function closeModal(){ document.getElementById('modalBg').style.display='none'; 
 // toISOString() da la fecha UTC: una venta de las 22:00 caía en "mañana".
 // Los límites se calculan a medianoche local y se mandan al servidor como
 // instante ISO (timestamptz), así el filtro es exacto en cualquier zona.
+// "Hoy" SIEMPRE en hora de Chile, sin importar la zona del servidor ni del aparato
+// (toISOString() da la fecha UTC: desde las 21:00 en Chile ya sería "mañana").
+function hoyChile(d){ return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(d||new Date()); }
 function fechaLocalISO(d){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
@@ -1401,7 +1404,7 @@ async function generarGastosRecurrentesPendientes(){
     const {data:recurrentes,error}=await supa.from('gastos_recurrentes').select('*').eq('activo',true);
     if(error||!recurrentes||!recurrentes.length) return;
     const hoy=new Date();
-    const hoyISO=hoy.toISOString().slice(0,10);
+    const hoyISO=hoyChile();
     let generados=0;
     for(const r of recurrentes){
       const ultima=r.ultima_generacion?new Date(r.ultima_generacion+'T12:00:00'):(r.created_at?new Date(r.created_at):null);
@@ -4027,7 +4030,7 @@ async function exportarListaCompra(){
   const ws=XLSX.utils.json_to_sheet(filas);
   ws['!cols']=[{wch:28},{wch:16},{wch:12},{wch:12},{wch:16},{wch:8},{wch:14},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws,'Lista de compra');
-  const fecha=new Date().toISOString().slice(0,10);
+  const fecha=hoyChile();
   XLSX.writeFile(wb,`puntoqueso-lista-de-compra-${fecha}.xlsx`);
   logAudit('Descarga de lista de compra','productos',`${bajos.length} producto${bajos.length===1?'':'s'} bajo stock mínimo`);
   toast(`Lista de compra descargada: ${bajos.length} producto${bajos.length===1?'':'s'}`);
@@ -4344,7 +4347,7 @@ function selectCuentaPago(id,actual){
   return `<select id="${id}">${Object.entries(CUENTAS_PAGO).map(([k,v])=>`<option value="${k}" ${k===(actual||'bancoestado')?'selected':''}>${v}</option>`).join('')}</select>`;
 }
 function openGastoModal(){
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyChile();
   document.getElementById('modalContent').innerHTML=`
     <h3>Nuevo gasto</h3>
     <label>Fecha</label><input id="gaFecha" type="date" value="${hoy}">
@@ -4899,7 +4902,7 @@ async function openFacturaCompraModal(editId){
   let provList=DB.proveedores.filter(p=>p.activo);
   if(f&&f.proveedor_id&&!provList.some(p=>p.id===f.proveedor_id)){ const pp=DB.proveedores.find(p=>p.id===f.proveedor_id); if(pp) provList=[pp,...provList]; }
   const provOpts=provList.map(p=>`<option value="${p.id}"${f&&f.proveedor_id===p.id?' selected':''}>${escapeHtml(p.nombre)}</option>`).join('');
-  const hoy=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const hoy=hoyChile();
   document.getElementById('modalContent').innerHTML=`
     <h3>${f?'Editar factura de compra':'Nueva factura de compra'}</h3>
     ${f?`<div class="sub" style="margin-bottom:8px;">Al guardar, el stock se corrige por la diferencia y, si estaba pagada, el gasto se actualiza.</div>`:`
@@ -5199,7 +5202,7 @@ async function guardarFacturaCompra(){
 async function generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,cuenta){
   if(factura.gasto_id) return;
   const {data:gs,error}=await supa.from('gastos').insert({
-    fecha:fecha||new Date().toISOString().slice(0,10),
+    fecha:fecha||hoyChile(),
     descripcion:`Factura de compra ${numero?'#'+numero:'#'+factura.id} — ${proveedor?.nombre||factura.proveedor_nombre||''}`,
     categoria:'mercaderia',monto:total,cuenta:cuenta||'bancoestado',notas:`Generado automáticamente al pagar la factura de compra #${factura.id}`
   }).select();
@@ -6324,7 +6327,7 @@ async function exportarExcel(){
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(prodR.data||[]),'Productos');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cliR.data||[]),'Clientes');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(gasR.data||[]),'Gastos');
-  const fecha=new Date().toISOString().slice(0,10);
+  const fecha=hoyChile();
   XLSX.writeFile(wb,`puntoqueso-export-${fecha}.xlsx`);
   logAudit('Exportación a Excel','config','');
 }
