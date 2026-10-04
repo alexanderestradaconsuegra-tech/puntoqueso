@@ -599,6 +599,11 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
             <label>Tarjeta <span style="font-weight:500;color:var(--muted);">(BancoEstado)</span></label><input type="number" id="mixtoTarjeta" min="0" step="1" oninput="calcMixed()">
             <div class="mixto-diff" id="mixtoDiff"></div>
           </div>
+          <div id="posFechaBox" style="display:none;margin-top:12px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;">Fecha de la venta
+              <input type="date" id="posFecha" onchange="setPosFecha(this.value)" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:var(--r-sm);"></label>
+            <div id="posFechaAviso" class="sub-xs" style="margin-top:4px;"></div>
+          </div>
           <button class="btn" id="btnCobrar" style="width:100%;justify-content:center;margin-top:14px;" onclick="cobrar()">Cobrar</button>
           <button class="btn secondary" style="width:100%;justify-content:center;margin-top:8px;" onclick="vaciarCarrito()">Vaciar carrito</button>
           <button class="btn secondary" id="btnImprimirUltimaBoleta" style="width:100%;justify-content:center;margin-top:8px;" onclick="reimprimirUltimo()">🖨️ Reimprimir último ticket</button>
@@ -1368,7 +1373,7 @@ function nav(view){
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+view));
   document.querySelector('.sidebar').classList.remove('open');
   if(view==='dashboard') renderDashboard();
-  if(view==='terminal'){ renderPosProductos(); verificarCajaTerminal(); }
+  if(view==='terminal'){ renderPosProductos(); verificarCajaTerminal(); pintarPosFecha(); }
   if(view==='pedidos') renderPedidos();
   if(view==='referidos') renderReferidos();
   if(view==='clientesweb') renderClientesWeb();
@@ -2207,10 +2212,27 @@ async function cobrar(){
   _cobrando=true;
   try{ await cobrarVenta(); } finally { _cobrando=false; const b=document.getElementById('btnCobrar'); if(b&&METODO_PAGO!=='mixto') efActualizar(); }
 }
+// Venta de otro día (solo administrador): queda con esa fecha y no entra a la caja de hoy.
+let POS_FECHA=null;
+function pintarPosFecha(){
+  const box=document.getElementById('posFechaBox'); if(!box) return;
+  box.style.display=esDueno()?'block':'none';
+  const inp=document.getElementById('posFecha'), hoy=hoyChile();
+  inp.max=hoy; inp.value=POS_FECHA||hoy;
+  const av=document.getElementById('posFechaAviso');
+  av.innerHTML=POS_FECHA?`<span style="color:var(--danger);font-weight:700;">Venta del ${fechaCL(POS_FECHA)}: no entra a la caja de hoy.</span> <a href="#" onclick="setPosFecha('');return false;">Volver a hoy</a>`:'';
+  const b=document.getElementById('btnCobrar'); if(b&&!_cobrando) b.textContent=POS_FECHA?`Cobrar (venta del ${fechaCL(POS_FECHA)})`:'Cobrar';
+}
+function setPosFecha(v){
+  const hoy=hoyChile();
+  POS_FECHA=(v&&v<hoy)?v:null;
+  pintarPosFecha();
+}
 async function cobrarVenta(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
   if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega al menos un producto: el delivery solo no se cobra',true); return; }
-  if(!(await cajaAbiertaParaVender(true))) return;
+  // una venta de otro día no necesita la caja de hoy abierta
+  if(!POS_FECHA&&!(await cajaAbiertaParaVender(true))) return;
   const clienteId=document.getElementById('posCliente').value||null;
   const cliente=clienteId?DB.clientes.find(c=>c.id==clienteId):null;
   const metodo=METODO_PAGO;
@@ -2247,9 +2269,10 @@ async function cobrarVenta(){
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
     delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),descuento:descTotal,efectivo_recibido:recibido,vuelto,
-    registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null,items,venta_uid:VENTA_UID
+    registrado_por:SESSION.usuario,turno_id:POS_FECHA?null:(TURNO_ACTUAL?.id||null),items,venta_uid:VENTA_UID,
+    fecha:POS_FECHA||null
   }});
-  btn.disabled=false; btn.textContent='Cobrar';
+  btn.disabled=false; pintarPosFecha();
   if(error){
     toast('Error al cobrar: '+error.message,true);
     if(/turno|caja/i.test(error.message)) cajaAbiertaParaVender();   // muestra abrir caja/turno
@@ -2258,7 +2281,7 @@ async function cobrarVenta(){
   // el stock en pantalla se ajusta al tiro; los datos completos se refrescan por detrás
   CARRITO.forEach(i=>{ const p=i.producto_id&&DB.productos.find(x=>x.id===i.producto_id); if(p) p.stock=Number(p.stock)-Number(i.cantidad); });
   const itemsParaBoleta=items.map(i=>({producto_nombre:i.producto_nombre,cantidad:i.cantidad,precio_unitario:i.precio_unitario,subtotal:i.subtotal}));
-  logAudit('Venta registrada','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${money(total)} (${metodo})`);
+  logAudit('Venta registrada','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${money(total)} (${metodo})${POS_FECHA?` · con fecha ${fechaCL(POS_FECHA)}`:''}`);
   if(descTotal>0) logAudit('Descuento en venta','ventas',`Boleta ${venta.boleta_numero||venta.id} — descuento ${money(descTotal)} (${CARRITO.filter(i=>i.precio_manual).map(i=>i.nombre+' '+money(i.precio)).join(', ')||'general'}${descVenta>0?' + descuento general':''})`);
   LAST_VENTA=venta; LAST_VENTA_ITEMS=itemsParaBoleta;
   VENTA_UID=null;   // el próximo carrito es otra venta
@@ -3793,9 +3816,34 @@ function sheetAccionesVenta(id){
     <button type="button" class="sheet-item" onclick="reimprimirVenta(${id});closeSheet()">
       <svg class="ic" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       <span>Ver / imprimir boleta</span></button>
+    ${esDueno()&&v&&!v.anulada?`<button type="button" class="sheet-item" onclick="closeSheet();abrirCambiarFechaVenta(${id})">
+      <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span>Cambiar fecha</span></button>`:''}
     ${canDo('eliminarVentas')&&v&&!v.anulada?`<div class="sheet-sep"></div><button type="button" class="sheet-item danger" onclick="closeSheet();anularVenta(${id})">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
       <span>Anular venta</span></button>`:''}`);
+}
+function abrirCambiarFechaVenta(id){
+  const v=ventaPorId(id); if(!v) return;
+  const actual=diaDeTimestamp(v.created_at);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Cambiar fecha de la boleta ${escapeHtml(String(v.boleta_numero||id))}</h3>
+    <div style="font-size:13px;color:var(--text2);">${money(v.total)} · ahora con fecha ${fechaCL(actual)}</div>
+    <label>Nueva fecha</label><input type="date" id="cfvFecha" value="${actual}" max="${hoyChile()}">
+    <div class="sub-xs" style="margin-top:6px;">Si la pasas a otro día, sale de la caja de hoy (no se cuenta en el cierre). No se puede si su turno ya se cerró.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="confirmarCambiarFechaVenta(${id})">Guardar</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function confirmarCambiarFechaVenta(id){
+  const f=document.getElementById('cfvFecha').value; if(!f){ toast('Elige la fecha',true); return; }
+  const v=ventaPorId(id);
+  const {error}=await supa.rpc('cambiar_fecha_venta',{p_id:id,p_fecha:f,p_usuario:SESSION.usuario});
+  if(error){ toast(error.message,true); return; }
+  logAudit('Fecha de venta cambiada','ventas',`Boleta ${v?.boleta_numero||id}: ${fechaCL(diaDeTimestamp(v?.created_at))} → ${fechaCL(f)}`);
+  toast('Fecha cambiada'); closeModal(); await loadAll(); renderVentas();
 }
 async function reimprimirVenta(id){
   // se lee fresca: si la anularon desde otra caja, la boleta debe salir "ANULADA"
