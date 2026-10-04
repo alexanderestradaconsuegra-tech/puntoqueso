@@ -2148,18 +2148,22 @@ function efActualizar(){
   else if(rec<total){ el.innerHTML=`<span style="color:var(--danger);">Falta ${money(total-rec)}</span>`; btn.disabled=true; }
   else{ el.innerHTML=rec===total?'<span style="color:var(--ok);">Pago exacto</span>':`Vuelto: <span style="color:var(--ok);font-size:20px;">${money(rec-total)}</span>`; btn.disabled=false; }
 }
-function mostrarVuelto(total,recibido,vuelto){
+// Después de cobrar: siempre se ofrece imprimir el ticket de ESA venta (y el vuelto si hubo).
+// Enter = imprimir; Esc o "Nueva venta" = seguir vendiendo.
+function mostrarVentaLista(venta,items,total,recibido,vuelto){
   document.getElementById('modalContent').innerHTML=`
     <h3>Venta registrada</h3>
-    <div style="text-align:center;margin:10px 0 4px;color:var(--text2);font-size:14px;">Entrega de vuelto</div>
-    <div style="text-align:center;font-size:44px;font-weight:900;color:var(--ok);line-height:1.1;">${money(vuelto)}</div>
-    <div style="text-align:center;margin-top:8px;font-size:13px;color:var(--text2);">Total ${money(total)} · Recibido ${money(recibido)}</div>
+    <div style="text-align:center;color:var(--text2);font-size:13px;">Boleta N° ${escapeHtml(String(venta.boleta_numero||venta.id))} · Total <b>${money(total)}</b></div>
+    ${recibido!=null&&vuelto>0?`
+      <div style="text-align:center;margin:12px 0 2px;color:var(--text2);font-size:14px;">Entrega de vuelto</div>
+      <div style="text-align:center;font-size:44px;font-weight:900;color:var(--ok);line-height:1.1;">${money(vuelto)}</div>
+      <div style="text-align:center;margin-top:6px;font-size:13px;color:var(--text2);">Recibido ${money(recibido)}</div>`:''}
     <div class="actions">
-      <button class="btn secondary" onclick="closeModal();reimprimirUltimo()">Imprimir ticket</button>
-      <button class="btn" id="btnVueltoListo" onclick="closeModal()">Listo</button>
+      <button class="btn secondary" id="btnVentaNueva" onclick="closeModal()">Nueva venta</button>
+      <button class="btn" id="btnVentaImprimir" onclick="closeModal();abrirReciboImprimir(LAST_VENTA,LAST_VENTA_ITEMS)">🖨️ Imprimir ticket</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
-  setTimeout(()=>document.getElementById('btnVueltoListo')?.focus(),50);
+  setTimeout(()=>document.getElementById('btnVentaImprimir')?.focus(),50);
 }
 function calcMixed(){
   const total=carritoTotal();
@@ -2253,7 +2257,7 @@ async function cobrar(){
   vaciarCarrito();
   document.getElementById('efRecibido').value='';
   setMetodoPago('efectivo');
-  if(recibido!=null&&vuelto>0) mostrarVuelto(total,recibido,vuelto);
+  mostrarVentaLista(venta,itemsParaBoleta,total,recibido,vuelto);
   ['mixtoEfectivo','mixtoTransf','mixtoTarjeta'].forEach(id=>document.getElementById(id).value='');
   await loadAll();
   renderPosProductos();
