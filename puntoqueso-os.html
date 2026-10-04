@@ -6450,8 +6450,95 @@ async function renderHistorialCierres(){
         <td class="num">${abierta?'—':money(Number(c.ventas_transferencia||0)+Number(c.ventas_mercadopago||0))}</td>
         <td class="num">${abierta?'—':money(Number(c.ventas_tarjeta||0)+Number(c.ventas_otro_mixto||0))}</td>
         <td>${abierta||!banco?'—':(c.banco_verificado?`<span class="badge pagado" title="${escapeHtml((c.banco_verificado_por||'')+' '+(c.banco_notas||''))}">Verificado</span>`:(admin?`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="verificarBancoCierre(${c.id})">Marcar verificado</button>`:'<span class="badge por-cobrar">Pendiente</span>'))}</td>
-        <td>${abierta?'':`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="imprimirReporteCierre(${c.id})">Reporte</button>`}</td>
+        <td style="white-space:nowrap;">${abierta?'':`<button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="imprimirReporteCierre(${c.id})">Reporte</button>${admin?` <button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="abrirCorregirCierre(${c.id})">Corregir</button>`:''}`}</td>
       </tr>`;}).join('')}</tbody></table></div>`;
+}
+// ── Corregir un cierre ya hecho (solo admin) ──
+// Recalcula lo que "debía haber" con los datos de HOY (ventas anuladas, cambiadas de fecha,
+// retiros agregados después) y permite corregir el efectivo inicial y lo contado, del día y
+// de cada turno. Queda en las notas y en Auditoría quién lo corrigió y por qué.
+let CORR=null;
+async function abrirCorregirCierre(id){
+  if(!esDueno()) return;
+  const [cR,tR]=await Promise.all([
+    supa.from('cierres_caja').select('*').eq('id',id).limit(1),
+    supa.from('turnos_caja').select('*').eq('cierre_id',id).order('numero')]);
+  const c=cR.data&&cR.data[0]; if(!c){ toast('Cierre no encontrado',true); return; }
+  const turnos=(tR.data||[]).filter(t=>t.estado==='cerrado');
+  CORR={c,turnos};
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Corregir cierre del ${fechaCL(c.fecha)}</h3>
+    <div class="sub-xs" style="margin-bottom:8px;">"Debía haber" se recalcula con las ventas y retiros como están ahora. Corrige el efectivo inicial o lo contado si se anotó mal.</div>
+    ${turnos.map((t,i)=>`
+      <div style="border:1px solid var(--border);border-radius:var(--r-sm);padding:10px;margin-bottom:10px;">
+        <b>Turno ${t.numero} · ${escapeHtml(t.cajero_nombre||t.cajero||'')}</b>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <label style="flex:1;font-size:12px;">Recibió con<input type="number" id="ccT${i}Fondo" value="${Number(t.fondo_inicial)||0}" oninput="recalcCorreccion()"></label>
+          <label style="flex:1;font-size:12px;">Contado<input type="number" id="ccT${i}Cont" value="${Number(t.total_contado)||0}" oninput="recalcCorreccion()"></label>
+        </div>
+        <div id="ccT${i}Res" class="sub-xs" style="margin-top:4px;">Calculando…</div>
+      </div>`).join('')}
+    <div style="border:1.5px solid var(--brand);border-radius:var(--r-sm);padding:10px;">
+      <b>Cierre del día</b>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <label style="flex:1;font-size:12px;">Efectivo inicial<input type="number" id="ccFondo" value="${Number(c.fondo_inicial)||0}" oninput="recalcCorreccion()"></label>
+        <label style="flex:1;font-size:12px;">Contado al cerrar<input type="number" id="ccCont" value="${Number(c.total_contado)||0}" oninput="recalcCorreccion()"></label>
+      </div>
+      <div id="ccRes" class="sub-xs" style="margin-top:4px;">Calculando…</div>
+    </div>
+    <label>Motivo de la corrección</label><input id="ccMotivo" maxlength="200" placeholder="Ej: se contó mal el efectivo, venta anulada después del cierre">
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnGuardarCorr" onclick="guardarCorreccionCierre()">Guardar corrección</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  try{
+    const hasta=c.cerrada_at||new Date().toISOString();
+    CORR.tDia=await calcularTotalesCaja(c,hasta);
+    CORR.tTurnos=[];
+    for(const t of turnos) CORR.tTurnos.push(await calcularTotalesCaja(c,null,t));
+  }catch(e){ toast('No se pudo recalcular: '+e.message,true); return; }
+  recalcCorreccion();
+}
+function corrValores(){
+  const n=id=>Number(document.getElementById(id)?.value)||0;
+  const dia={fondo:n('ccFondo'),contado:n('ccCont')};
+  dia.esperado=dia.fondo+CORR.tDia.ventas_efectivo+CORR.tDia.ingresos-CORR.tDia.retiros;
+  const turnos=CORR.turnos.map((t,i)=>{ const tt=CORR.tTurnos[i]; const fondo=n(`ccT${i}Fondo`), contado=n(`ccT${i}Cont`);
+    return {fondo,contado,esperado:fondo+tt.ventas_efectivo+tt.ingresos-tt.retiros}; });
+  return {dia,turnos};
+}
+function recalcCorreccion(){
+  if(!CORR||!CORR.tDia) return;
+  const v=corrValores(), linea=(x,antes)=>{ const e=estadoDiferencia(x.contado-x.esperado);
+    return `Debía haber <b>${money(x.esperado)}</b> · contado ${money(x.contado)} → <b style="color:${e.clase==='cuadra'?'var(--ok)':e.clase==='falta'?'var(--danger)':'var(--warn)'}">${e.txt}</b>${antes!=null&&Math.round(antes)!==Math.round(x.contado-x.esperado)?` <span style="color:var(--muted);">(antes ${estadoDiferencia(antes).txt})</span>`:''}`; };
+  v.turnos.forEach((t,i)=>{ const el=document.getElementById(`ccT${i}Res`); if(el) el.innerHTML=linea(t,CORR.turnos[i].diferencia); });
+  document.getElementById('ccRes').innerHTML=linea(v.dia,CORR.c.diferencia)+`<br>Ventas en efectivo ${money(CORR.tDia.ventas_efectivo)} · transferencias ${money(CORR.tDia.ventas_transferencia+CORR.tDia.ventas_mercadopago)} · tarjeta ${money(CORR.tDia.ventas_tarjeta)}`;
+}
+async function guardarCorreccionCierre(){
+  if(!CORR||!CORR.tDia) return;
+  const motivo=sanitize(document.getElementById('ccMotivo').value);
+  if(!motivo){ toast('Escribe el motivo de la corrección',true); return; }
+  const v=corrValores(), c=CORR.c, t=CORR.tDia;
+  const btn=document.getElementById('btnGuardarCorr'); btn.disabled=true;
+  const nota=`[Corregido ${new Date().toLocaleString('es-CL')} por ${SESSION.nombre||SESSION.usuario}: ${motivo}]`;
+  for(let i=0;i<CORR.turnos.length;i++){
+    const tu=CORR.turnos[i], tt=CORR.tTurnos[i], x=v.turnos[i];
+    const {error}=await supa.from('turnos_caja').update({fondo_inicial:x.fondo,
+      ventas_efectivo:tt.ventas_efectivo,ventas_transferencia:tt.ventas_transferencia,ventas_tarjeta:tt.ventas_tarjeta,ventas_mercadopago:tt.ventas_mercadopago,
+      ventas_cantidad:tt.ventas_cantidad,total_vendido:tt.total_vendido,retiros:tt.retiros,ingresos:tt.ingresos,
+      total_esperado:x.esperado,total_contado:x.contado,diferencia:x.contado-x.esperado,
+      notas:[tu.notas,nota].filter(Boolean).join(' ')}).eq('id',tu.id);
+    if(error){ btn.disabled=false; toast('Error en el turno '+tu.numero+': '+error.message,true); return; }
+  }
+  const {error}=await supa.from('cierres_caja').update({fondo_inicial:v.dia.fondo,
+    ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,ventas_mercadopago:t.ventas_mercadopago,
+    ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
+    total_esperado:v.dia.esperado,total_contado:v.dia.contado,diferencia:v.dia.contado-v.dia.esperado,
+    notas:[c.notas,nota].filter(Boolean).join(' ')}).eq('id',c.id);
+  if(error){ btn.disabled=false; toast('Error: '+error.message,true); return; }
+  logAudit('Cierre de caja corregido','caja',`${c.fecha}: diferencia ${estadoDiferencia(c.diferencia).txt} → ${estadoDiferencia(v.dia.contado-v.dia.esperado).txt} · ${motivo}`);
+  toast('Cierre corregido'); closeModal(); renderHistorialCierres();
 }
 async function verificarBancoCierre(id){
   if(SESSION?.rol!=='admin') return;
