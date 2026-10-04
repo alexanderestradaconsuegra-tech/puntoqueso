@@ -1389,9 +1389,29 @@ function nav(view){
 // ══════════════════════════════════════════════════════════
 //  CARGA DE DATOS
 // ══════════════════════════════════════════════════════════
+// ── Fotos de productos: se descargan una sola vez y quedan en memoria ──
+// (antes venían en cada loadAll y eran varios MB cada vez que se cobraba o guardaba algo)
+const PRODUCTO_COLS='id,nombre,categoria,unidad,precio,stock,stock_minimo,sku,codigo_barras,vender_por_peso,activo,created_at,updated_at,costo,descripcion,precio_mayor,en_catalogo,favorito,orden,destacado_web';
+const IMG_PROD=new Map(); let _imgsCargadas=false, _imgsCargando=null;
+function imgDe(p){ return p?(IMG_PROD.get(p.id)||p.imagen_b64||null):null; }
+function cargarImagenesProductos(){
+  if(_imgsCargadas) return Promise.resolve();
+  if(_imgsCargando) return _imgsCargando;
+  _imgsCargando=(async()=>{
+    const {data,error}=await supa.from('productos').select('id,imagen_b64').eq('activo',true).or('(imagen_b64.not.is.null)');
+    if(error){ console.error('imagenes',error); _imgsCargando=null; return; }
+    (data||[]).forEach(r=>{ if(r.imagen_b64) IMG_PROD.set(r.id,r.imagen_b64); });
+    _imgsCargadas=true; _imgsCargando=null;
+    // repinta lo que esté a la vista con las fotos
+    if(document.getElementById('view-terminal')?.classList.contains('active')) renderPosProductos(document.getElementById('posBuscar')?.value||'');
+    if(document.getElementById('view-productos')?.classList.contains('active')) renderProductos(document.getElementById('prodBuscar')?.value||'');
+  })();
+  return _imgsCargando;
+}
 async function loadAll(){
   const [prod,cli,ped,vent,gas,usr,prov,facCompra,gasRec]=await Promise.all([
-    supa.from('productos').select('*').eq('activo',true).order('nombre'),
+    // Sin las fotos: pesan mucho y se piden UNA vez aparte (cargarImagenesProductos)
+    supa.from('productos').select(PRODUCTO_COLS).eq('activo',true).order('nombre'),
     supa.from('clientes').select('*').eq('activo',true).order('nombre'),
     supa.from('pedidos').select('*').order('created_at',{ascending:false}).limit(200),
     supa.from('ventas').select('*').order('created_at',{ascending:false}).limit(200),
@@ -1404,6 +1424,7 @@ async function loadAll(){
   DB.productos=prod.data||[]; DB.clientes=cli.data||[]; DB.pedidos=ped.data||[]; DB.ventas=vent.data||[]; DB.gastos=gas.data||[]; DB.usuarios=usr.data||[];
   DB.proveedores=prov.data||[]; DB.facturasCompra=facCompra.data||[]; DB.gastosRecurrentes=gasRec.data||[];
   if(prod.error) toast('Error cargando productos: '+prod.error.message,true);
+  cargarImagenesProductos();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1737,7 +1758,7 @@ function renderPosProductos(filter=''){
     : '<p class="empty">Sin productos</p>';
   document.getElementById('posProductos').innerHTML=rows.map(p=>`
     <button class="pos-prod" onclick="${p.vender_por_peso?`openWeightPicker(${p.id})`:`agregarAlCarrito(${p.id})`}">
-      ${p.imagen_b64?`<img class="pos-prod-img" src="${p.imagen_b64}" alt="">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
+      ${imgDe(p)?`<img class="pos-prod-img" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
       <div class="pp-nombre">${p.nombre}</div>
       <div class="pp-precio num">${money(p.precio)}/${p.unidad||'kg'}</div>
       ${Number(p.precio_mayor)>0?`<div class="pp-mayor num">Mayor ${money(p.precio_mayor)}</div>`:''}
@@ -4307,7 +4328,7 @@ function renderProductos(filter=''){
     const m=margenProducto(p);
     return `
     <tr><td><input type="checkbox" class="bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)"></td>
-    <td>${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
+    <td>${imgDe(p)?`<img class="prod-thumb" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
     <td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
     <td class="num">${money(p.precio)}/${p.unidad}</td>
     ${verC?`<td class="num"><input class="costo-inline num" type="number" step="1" min="0" value="${Number(p.costo)||0}" ${editar?'':'disabled'} onchange="guardarCostoInline(${p.id},this.value)" title="Editar costo"></td>
@@ -4327,7 +4348,7 @@ function renderProductos(filter=''){
     <div class="lcard">
       <div class="lc-row">
         <input type="checkbox" class="lc-chk bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)">
-        ${p.imagen_b64?`<img class="prod-thumb" src="${p.imagen_b64}" alt="">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
+        ${imgDe(p)?`<img class="prod-thumb" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
         <div class="lc-main">
           <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
           <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
@@ -4367,7 +4388,7 @@ function comprimirImagen(file,maxSize,quality){
     reader.readAsDataURL(file);
   });
 }
-let _prodImagenB64=null;
+let _prodImagenB64=null, _prodImagenOrig=null;
 async function onProductoFotoChange(input){
   const file=input.files&&input.files[0];
   if(!file) return;
@@ -4391,7 +4412,7 @@ function renderProductoFotoPreview(){
 }
 function openProductoModal(id){
   const p=id?DB.productos.find(x=>x.id===id):{};
-  _prodImagenB64=p.imagen_b64||null;
+  _prodImagenB64=imgDe(p); _prodImagenOrig=_prodImagenB64;
   document.getElementById('modalContent').innerHTML=`
     <h3>${id?'Editar':'Nuevo'} producto</h3>
     <label>Nombre</label><input id="prNombre" value="${p.nombre||''}">
@@ -4464,15 +4485,19 @@ async function guardarProducto(id){
     vender_por_peso:document.getElementById('prVenderPeso').checked,
     en_catalogo:document.getElementById('prEnCatalogo').checked,
     favorito:document.getElementById('prFavorito').checked,
-    imagen_b64:_prodImagenB64||null,
     updated_at:new Date().toISOString()
   };
+  // la foto solo viaja si cambió (pesa mucho y así no se pisa una foto que aún no cargaba)
+  const fotoCambio=!id||(_prodImagenB64||null)!==(_prodImagenOrig||null);
+  if(fotoCambio) row.imagen_b64=_prodImagenB64||null;
   // El stock solo se guarda si se cambió en esta ventana: así editar el precio
   // no pisa el stock real con el valor que la pantalla tenía guardado.
   const stEl=document.getElementById('prStock');
   if(!id||stEl.value!==stEl.dataset.inicial) row.stock=Number(stEl.value)||0;
-  const {error}=id?await supa.from('productos').update(row).eq('id',id):await supa.from('productos').insert(row);
+  const {data:guardado,error}=id?await supa.from('productos').update(row).eq('id',id).select('id'):await supa.from('productos').insert(row).select('id');
   if(error){ toast('Error: '+error.message,true); return; }
+  const gid=id||guardado?.[0]?.id;
+  if(gid&&fotoCambio){ if(_prodImagenB64) IMG_PROD.set(gid,_prodImagenB64); else IMG_PROD.delete(gid); }
   logAudit(id?'Producto editado':'Producto creado','productos',nombre+(row.stock!==undefined&&id?` (stock → ${row.stock})`:''));
   toast('Producto guardado'); closeModal(); await loadAll(); renderProductos();
 }

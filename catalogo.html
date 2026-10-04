@@ -719,6 +719,7 @@ class PGQuery{
   eq(col,val){ this.params.push(`${encodeURIComponent(col)}=eq.${encodeURIComponent(val)}`); return this; }
   order(col,{ascending=true}={}){ this.params.push(`order=${encodeURIComponent(col)}.${ascending?'asc':'desc'}`); return this; }
   limit(n){ this.params.push('limit='+n); return this; }
+  or(expr){ this.params.push('or='+encodeURIComponent(expr)); return this; }
   single(){ this._single=true; this.headers['Accept']='application/vnd.pgrst.object+json'; return this; }
   insert(rows){ this._method='POST'; this._body=rows; this.headers['Prefer']='return=representation'; return this; }
   async _exec(){
@@ -850,7 +851,8 @@ if(DOMINIO_VE){
 //  CARGA
 // ══════════════════════════════════════════════════════════
 async function cargarProductos(){
-  const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,imagen_b64,descripcion,activo,orden,destacado_web').eq('activo','true').order('nombre',{ascending:true});
+  // Primero los datos (liviano) para mostrar el menú al tiro; las fotos llegan después.
+  const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,descripcion,activo,orden,destacado_web').eq('activo','true').order('nombre',{ascending:true});
   if(error){
     document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo en un momento.</p>';
     document.getElementById('promoRow').innerHTML='';
@@ -860,6 +862,14 @@ async function cargarProductos(){
   PRODUCTOS=(data||[]).sort(compararOrden);
   await marcarDisponibilidad();
   renderTodo();
+  cargarFotosProductos();
+}
+async function cargarFotosProductos(){
+  const {data,error}=await supa.from('productos').select('id,imagen_b64').eq('activo','true').or('(imagen_b64.not.is.null)');
+  if(error||!data||!data.length) return;
+  const m=new Map(data.map(r=>[r.id,r.imagen_b64]));
+  PRODUCTOS.forEach(p=>{ if(m.has(p.id)) p.imagen_b64=m.get(p.id); });
+  renderPromos(); renderTiles(); renderGrid();
 }
 // Agotado / últimas unidades según el stock del sistema (sin mostrar cantidades).
 // Lo agotado queda al final de su categoría.
