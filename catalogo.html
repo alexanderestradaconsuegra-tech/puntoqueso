@@ -1349,12 +1349,21 @@ function direccionCambio(){
 function comunaCambio(){
   if(DELIV.punto&&DELIV.punto.fuente==='google-texto'){ DELIV={punto:null,cot:null,estado:'idle',msg:''}; pintarQuote(); }
 }
-let _gmapsP=null;
+let _gmapsP=null, _gmapsFalla=false;
+// Google nunca debe dejar el pedido esperando: cada consulta tiene tiempo máximo.
+function conLimite(p,ms){ return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('tiempo')),ms))]); }
+// Google llama esto cuando rechaza la API Key (mal copiada, API no habilitada o sitio no autorizado)
+window.gm_authFailure=function(){
+  _gmapsFalla=true; _placesOk=false; ocultarSugerencias();
+  console.warn('Google Maps rechazó la API Key: el delivery se confirma por WhatsApp');
+  if(DELIV.estado==='buscando'){ DELIV={punto:null,cot:null,estado:'sin-mapa',msg:''}; pintarQuote(); }
+};
 function cargarGoogleMaps(){
   const key=String(CFG.google_maps_key||'').trim();
   if(!key) return Promise.reject(new Error('sin-key'));
+  if(_gmapsFalla) return Promise.reject(new Error('key-rechazada'));
   if(window.google&&google.maps&&google.maps.importLibrary) return Promise.resolve();
-  if(_gmapsP) return _gmapsP;
+  if(_gmapsP) return conLimite(_gmapsP,8000).catch(e=>{ if(e&&/tiempo|no respondió/i.test(e.message)) _gmapsFalla=true; throw e; });
   _gmapsP=new Promise((res,rej)=>{
     window.__pqGmapsListo=()=>res();
     const sc=document.createElement('script');
@@ -1362,7 +1371,8 @@ function cargarGoogleMaps(){
     sc.async=true; sc.onerror=()=>{ _gmapsP=null; rej(new Error('carga')); };
     document.head.appendChild(sc);
   });
-  return _gmapsP;
+  // si Google no carga a tiempo, no se vuelve a esperar en esta visita
+  return conLimite(_gmapsP,8000).catch(e=>{ if(e&&/tiempo|no respondió/i.test(e.message)) _gmapsFalla=true; throw e; });
 }
 async function buscarSugerencias(){
   const seq=++_sugSeq;
@@ -1373,11 +1383,11 @@ async function buscarSugerencias(){
     await cargarGoogleMaps();
     const {AutocompleteSuggestion,AutocompleteSessionToken}=await google.maps.importLibrary('places');
     if(!_sugToken) _sugToken=new AutocompleteSessionToken();
-    const {suggestions}=await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+    const {suggestions}=await conLimite(AutocompleteSuggestion.fetchAutocompleteSuggestions({
       input:comuna?`${calle}, ${comuna}`:calle, sessionToken:_sugToken,
       includedRegionCodes:['cl'], language:'es', region:'cl',
       locationBias:{center:localLatLng(),radius:20000},
-    });
+    }),6000);
     if(seq!==_sugSeq) return;
     _placesOk=true;
     _sugLista=(suggestions||[]).map(x=>x.placePrediction).filter(Boolean).slice(0,5);
@@ -1417,7 +1427,7 @@ async function elegirSugerencia(i){
   DELIV={punto:null,cot:null,estado:'buscando',msg:''}; pintarQuote();
   try{
     const place=pred.toPlace();
-    await place.fetchFields({fields:['location','formattedAddress','addressComponents']});
+    await conLimite(place.fetchFields({fields:['location','formattedAddress','addressComponents']}),6000);
     _sugToken=null;   // la sesión de Google termina al elegir
     if(seq!==_geoSeq) return;
     const comps=place.addressComponents||[];
@@ -1442,8 +1452,8 @@ async function geocodificarDireccion(){
   DELIV={punto:null,cot:null,estado:'buscando',msg:''}; pintarQuote();
   try{
     await cargarGoogleMaps();
-    const {Geocoder}=await google.maps.importLibrary('geocoding');
-    const {results}=await new Geocoder().geocode({address:`${calle}, ${comuna}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}});
+    const {Geocoder}=await conLimite(google.maps.importLibrary('geocoding'),6000);
+    const {results}=await conLimite(new Geocoder().geocode({address:`${calle}, ${comuna}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}}),8000);
     if(seq!==_geoSeq) return;
     const r=(results||[]).find(x=>(x.types||[]).some(t=>TIPOS_OK.includes(t)));
     if(!r){ DELIV={punto:null,cot:null,estado:'error',msg:'No encontramos esa dirección exacta. Revisa calle, número y comuna, o usa tu ubicación actual.'}; pintarQuote(); return; }
@@ -1456,7 +1466,8 @@ async function geocodificarDireccion(){
 }
 const TIPOS_OK=['street_address','premise','subpremise','establishment','point_of_interest','route','intersection'];
 async function cotizarPunto(punto,seq){
-  const {data,error}=await supa.rpc('cotizar_delivery',{p_lat:punto.lat,p_lng:punto.lng});
+  let data=null,error=null;
+  try{ ({data,error}=await conLimite(supa.rpc('cotizar_delivery',{p_lat:punto.lat,p_lng:punto.lng}),8000)); }catch(e){ error=e; }
   if(seq!=null&&seq!==_geoSeq) return;
   if(error||!data){ DELIV={punto,cot:null,estado:'sin-mapa',msg:''}; pintarQuote(); return; }
   DELIV={punto,cot:data,estado:'ok',msg:''}; pintarQuote();
@@ -1571,7 +1582,14 @@ async function enviarPedido(){
   if(telefono.replace(/\D/g,'').length<8){ toast('Escribe tu WhatsApp',true); return; }
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
   if(ENTREGA==='delivery'&&!calle&&!DELIV.punto){ toast('Escribe tu dirección o usa tu ubicación actual',true); return; }
-  if(ENTREGA==='delivery'&&DELIV.estado==='buscando'){ toast('Un momento, estamos calculando el delivery…'); return; }
+  if(ENTREGA==='delivery'&&DELIV.estado==='buscando'){
+    // se espera un poco al cálculo; si no llega, el pedido sigue y el delivery se confirma por WhatsApp
+    const btnE=document.getElementById('btnEnviarPedido'); btnE.disabled=true; btnE.textContent='Calculando delivery…';
+    const t0=Date.now(); while(DELIV.estado==='buscando'&&Date.now()-t0<9000) await new Promise(r=>setTimeout(r,250));
+    btnE.disabled=false; btnE.textContent='Enviar pedido';
+    if(DELIV.estado==='buscando'){ DELIV={punto:null,cot:null,estado:'sin-mapa',msg:''}; pintarQuote(); }
+    if(DELIV.estado==='ok'){ toast('Revisa el delivery calculado y vuelve a tocar Enviar'); return; }
+  }
   if(ENTREGA==='delivery'&&!DELIV.punto&&calle&&DELIV.estado!=='sin-mapa'&&DELIV.estado!=='error'){
     ocultarSugerencias(); await geocodificarDireccion();
     if(DELIV.estado==='ok'){ toast('Revisa el delivery calculado y vuelve a tocar Enviar'); return; }

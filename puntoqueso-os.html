@@ -3178,8 +3178,8 @@ async function calcularDeliveryPedido(id,{silencioso=false}={}){
     if(!p.direccion_calle){ avisar('El pedido no tiene dirección',true); return null; }
     try{
       await cargarGoogleMaps(key);
-      const {Geocoder}=await google.maps.importLibrary('geocoding');
-      const {results}=await new Geocoder().geocode({address:`${p.direccion_calle}, ${p.direccion_comuna||'Santiago'}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}});
+      const {Geocoder}=await conLimite(google.maps.importLibrary('geocoding'),6000);
+      const {results}=await conLimite(new Geocoder().geocode({address:`${p.direccion_calle}, ${p.direccion_comuna||'Santiago'}, Región Metropolitana, Chile`,region:'CL',componentRestrictions:{country:'CL'}}),8000);
       const r=(results||[]).find(x=>(x.types||[]).some(t=>['street_address','premise','subpremise','establishment','point_of_interest','route','intersection'].includes(t)));
       if(!r){ avisar(`Google no encontró "${p.direccion_calle}". Escribe el delivery a mano.`,true); return null; }
       lat=r.geometry.location.lat(); lng=r.geometry.location.lng(); dirGoogle=r.formatted_address;
@@ -3544,10 +3544,14 @@ function actualizarLinkMapaLocal(){
   a.style.display=lat&&lng?'':'none';
   a.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat+','+lng)}`;
 }
-let _gmapsPromise=null;
+let _gmapsPromise=null, _gmapsFalla=false;
+function conLimite(p,ms,msg){ return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg||'Google no respondió a tiempo')),ms))]); }
+// Google llama esto cuando rechaza la API Key
+window.gm_authFailure=function(){ _gmapsFalla=true; toast('Google rechazó la API Key: revisa que esté bien copiada, con Maps JavaScript, Places y Geocoding habilitadas, y que este sitio esté autorizado',true); };
 function cargarGoogleMaps(key){
+  if(_gmapsFalla) return Promise.reject(new Error('Google rechazó la API Key'));
   if(window.google&&google.maps&&google.maps.importLibrary) return Promise.resolve();
-  if(_gmapsPromise) return _gmapsPromise;
+  if(_gmapsPromise) return conLimite(_gmapsPromise,8000).catch(e=>{ if(e&&/tiempo|no respondió/i.test(e.message)) _gmapsFalla=true; throw e; });
   _gmapsPromise=new Promise((res,rej)=>{
     window.__pqGmapsListo=()=>res();
     const sc=document.createElement('script');
@@ -3555,7 +3559,8 @@ function cargarGoogleMaps(key){
     sc.async=true; sc.onerror=()=>{ _gmapsPromise=null; rej(new Error('No se pudo cargar Google Maps')); };
     document.head.appendChild(sc);
   });
-  return _gmapsPromise;
+  // si Google no carga a tiempo, no se vuelve a esperar en esta visita
+  return conLimite(_gmapsPromise,8000).catch(e=>{ if(e&&/tiempo|no respondió/i.test(e.message)) _gmapsFalla=true; throw e; });
 }
 async function ubicarLocalGoogle(){
   const key=document.getElementById('cfgGmapsKey').value.trim();
@@ -3564,8 +3569,8 @@ async function ubicarLocalGoogle(){
   if(!dir){ toast('Completa la dirección del negocio (en Datos del negocio)',true); return; }
   try{
     await cargarGoogleMaps(key);
-    const {Geocoder}=await google.maps.importLibrary('geocoding');
-    const {results}=await new Geocoder().geocode({address:dir+', Chile',region:'CL'});
+    const {Geocoder}=await conLimite(google.maps.importLibrary('geocoding'),6000);
+    const {results}=await conLimite(new Geocoder().geocode({address:dir+', Chile',region:'CL'}),8000);
     const r=results&&results[0];
     if(!r){ toast('Google no encontró esa dirección',true); return; }
     document.getElementById('cfgLocalLat').value=r.geometry.location.lat().toFixed(6);
