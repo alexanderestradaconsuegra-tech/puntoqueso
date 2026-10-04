@@ -1950,7 +1950,7 @@ function agregarDeliveryCarrito(val){
 }
 function actualizarCantidad(idx,val){ CARRITO[idx].cantidad=Math.max(0.1,parseFloat(val)||1); renderCarrito(); }
 function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCarrito(); }
-function vaciarCarrito(){ CARRITO=[]; DESCUENTO_VENTA=null; renderCarrito(); }
+function vaciarCarrito(){ CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; renderCarrito(); }
 
 function agregarPesoAlCarrito(p,kg,label){
   CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:kg,qtyLabel:label,unidad:p.unidad||'kg',
@@ -2198,10 +2198,19 @@ async function moverStock(productoId,delta,tipo,motivo,origen,ref,costo){
   const p=DB.productos.find(x=>x.id===productoId); if(p) p.stock=Number(data);
   return {ok:true,stock:Number(data)};
 }
+// Anti-duplicado: _cobrando bloquea un segundo toque mientras se cobra, y VENTA_UID
+// (uno por carrito) hace que el servidor no registre dos veces la misma venta.
+let _cobrando=false, VENTA_UID=null;
+function nuevoUid(){ return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)); }
 async function cobrar(){
+  if(_cobrando) return;
+  _cobrando=true;
+  try{ await cobrarVenta(); } finally { _cobrando=false; const b=document.getElementById('btnCobrar'); if(b&&METODO_PAGO!=='mixto') efActualizar(); }
+}
+async function cobrarVenta(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
   if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega al menos un producto: el delivery solo no se cobra',true); return; }
-  if(!(await cajaAbiertaParaVender())) return;
+  if(!(await cajaAbiertaParaVender(true))) return;
   const clienteId=document.getElementById('posCliente').value||null;
   const cliente=clienteId?DB.clientes.find(c=>c.id==clienteId):null;
   const metodo=METODO_PAGO;
@@ -2220,47 +2229,46 @@ async function cobrar(){
   }
   const montos=montosPorMedio(metodo,total,mixto);
 
-  const {data:ventaIns,error}=await supa.from('ventas').insert({
+  // Líneas de la boleta (productos, delivery y descuento general)
+  const items=CARRITO.map(item=>({
+    producto_id:item.producto_id||null,
+    producto_nombre:item.nombre+(item.qtyLabel?` (${item.qtyLabel})`:''),
+    cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad,
+    es_mayor:!!item.es_mayor,precio_original:item.es_delivery?null:precioLista(item)
+  }));
+  if(descVenta>0){
+    const nombreDesc='Descuento'+(DESCUENTO_VENTA.tipo==='%'?` ${DESCUENTO_VENTA.valor}%`:'');
+    items.push({producto_id:null,producto_nombre:nombreDesc,cantidad:1,precio_unitario:-descVenta,subtotal:-descVenta});
+  }
+  const btn=document.getElementById('btnCobrar'); btn.disabled=true; btn.textContent='Cobrando…';
+  if(!VENTA_UID) VENTA_UID=nuevoUid();
+  // Una sola operación en el servidor: venta + líneas + stock (o nada si algo falla)
+  const {data:venta,error}=await supa.rpc('registrar_venta',{p:{
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
     delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),descuento:descTotal,efectivo_recibido:recibido,vuelto,
-    estado_pago:'pagado',origen:'terminal',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
-  }).select();
-  if(error){ toast('Error al cobrar: '+error.message,true); return; }
-  const venta=ventaIns[0];
-
-  const itemsParaBoleta=[];
-  for(const item of CARRITO){
-    const producto_nombre=item.nombre+(item.qtyLabel?` (${item.qtyLabel})`:'');
-    const prod=DB.productos.find(p=>p.id===item.producto_id);
-    await supa.from('venta_items').insert({
-      venta_id:venta.id,producto_id:item.producto_id,producto_nombre,
-      cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad,
-      costo_unitario:Number(prod?.costo)||0,es_mayor:!!item.es_mayor,
-      precio_original:item.es_delivery?null:precioLista(item)
-    });
-    itemsParaBoleta.push({producto_nombre,cantidad:item.cantidad,precio_unitario:item.precio,subtotal:item.precio*item.cantidad});
-    if(item.producto_id){
-      const r=await moverStock(item.producto_id,-Number(item.cantidad),'salida',`Venta boleta ${venta.boleta_numero||venta.id}`,'terminal',venta.id);
-      if(!r.ok) toast(`Venta guardada, pero no se pudo descontar el stock de ${item.nombre}. Revísalo.`,true);
-    }
+    registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null,items,venta_uid:VENTA_UID
+  }});
+  btn.disabled=false; btn.textContent='Cobrar';
+  if(error){
+    toast('Error al cobrar: '+error.message,true);
+    if(/turno|caja/i.test(error.message)) cajaAbiertaParaVender();   // muestra abrir caja/turno
+    return;
   }
-  if(descVenta>0){
-    const nombreDesc='Descuento'+(DESCUENTO_VENTA.tipo==='%'?` ${DESCUENTO_VENTA.valor}%`:'');
-    await supa.from('venta_items').insert({venta_id:venta.id,producto_id:null,producto_nombre:nombreDesc,cantidad:1,precio_unitario:-descVenta,subtotal:-descVenta,costo_unitario:0});
-    itemsParaBoleta.push({producto_nombre:nombreDesc,cantidad:1,precio_unitario:-descVenta,subtotal:-descVenta});
-  }
+  // el stock en pantalla se ajusta al tiro; los datos completos se refrescan por detrás
+  CARRITO.forEach(i=>{ const p=i.producto_id&&DB.productos.find(x=>x.id===i.producto_id); if(p) p.stock=Number(p.stock)-Number(i.cantidad); });
+  const itemsParaBoleta=items.map(i=>({producto_nombre:i.producto_nombre,cantidad:i.cantidad,precio_unitario:i.precio_unitario,subtotal:i.subtotal}));
   logAudit('Venta registrada','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${money(total)} (${metodo})`);
   if(descTotal>0) logAudit('Descuento en venta','ventas',`Boleta ${venta.boleta_numero||venta.id} — descuento ${money(descTotal)} (${CARRITO.filter(i=>i.precio_manual).map(i=>i.nombre+' '+money(i.precio)).join(', ')||'general'}${descVenta>0?' + descuento general':''})`);
-  toast(`Venta registrada — ${money(total)}`);
   LAST_VENTA=venta; LAST_VENTA_ITEMS=itemsParaBoleta;
+  VENTA_UID=null;   // el próximo carrito es otra venta
   vaciarCarrito();
   document.getElementById('efRecibido').value='';
   setMetodoPago('efectivo');
-  mostrarVentaLista(venta,itemsParaBoleta,total,recibido,vuelto);
   ['mixtoEfectivo','mixtoTransf','mixtoTarjeta'].forEach(id=>document.getElementById(id).value='');
-  await loadAll();
-  renderPosProductos();
+  renderPosProductos(document.getElementById('posBuscar')?.value||'');
+  mostrarVentaLista(venta,itemsParaBoleta,total,recibido,vuelto);
+  loadAll().then(()=>{ if(document.getElementById('view-terminal')?.classList.contains('active')) renderPosProductos(document.getElementById('posBuscar')?.value||''); });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5739,7 +5747,8 @@ async function verificarCajaTerminal(){
   if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
   else if(CAJA_HOY&&CAJA_HOY.estado==='abierta'&&!TURNO_ACTUAL&&currentPage==='terminal') abrirModalTurno();
 }
-async function cajaAbiertaParaVender(){
+async function cajaAbiertaParaVender(rapido){
+  if(rapido&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===fechaLocalISO(new Date())&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
   await cargarCajaHoy(); renderCajaBar();
   if(CAJA_HOY&&CAJA_HOY.estado==='abierta'){
     if(!TURNO_ACTUAL){ toast('Abre tu turno para vender',true); abrirModalTurno(); return false; }
