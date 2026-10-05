@@ -2943,7 +2943,7 @@ function pdAgregarItem(){
   const cantidad=parseFloat(document.getElementById('pdCantidad').value);
   if(!cantidad||cantidad<=0){ toast('Ingresa una cantidad válida',true); return; }
   const precio=Number(sel.options[sel.selectedIndex].dataset.precio);
-  PD_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,precio_unitario:precio,subtotal:Math.round(precio*cant)idad});
+  PD_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,precio_unitario:precio,subtotal:Math.round(precio*cantidad)});
   document.getElementById('pdCantidad').value='';
   document.getElementById('pdItemsList').innerHTML=PD_ITEMS.map((i,idx)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;">${i.producto_nombre} x${i.cantidad} <b>${money(i.subtotal)}</b></div>`).join('');
 }
@@ -3292,7 +3292,7 @@ async function agregarItemPedido(){
   if(!p) return;
   const precio=Number(prod.precio)||0;
   const {data,error}=await supa.from('pedido_items').insert({
-    pedido_id:id,producto_id:prod.id,producto_nombre:prod.nombre,cantidad:cant,precio_unitario:precio,subtotal:precio*cant
+    pedido_id:id,producto_id:prod.id,producto_nombre:prod.nombre,cantidad:cant,precio_unitario:precio,subtotal:Math.round(precio*cant)
   }).select('id');
   if(error||!data||!data.length){ console.error(error); toast('No se pudo agregar el producto'+(error?': '+error.message:''),true); return; }
   await recalcularTotalPedido(p,`agregado ${prod.nombre} ${fmtCantidadPedido(cant,!!prod.vender_por_peso)}`);
