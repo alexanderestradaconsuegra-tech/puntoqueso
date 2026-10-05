@@ -134,8 +134,8 @@ button{cursor:pointer;}
 .slide.s-blanco h1 em,.slide.s-blanco h2 em{color:var(--ink);background:var(--yellow);padding:0 8px;border-radius:8px;text-shadow:none;}
 .s-blanco .slide-cta{background:var(--ink);color:#fff;}
 /* banner con foto de fondo amarillo: el texto va sobre el amarillo */
-.slide.s-photo.claro{background-color:#FDC603;color:var(--ink);}
-.slide.s-photo.claro::before{background:linear-gradient(180deg,rgba(253,198,3,0) 120px,rgba(253,198,3,.9) 205px,#FDC603 232px);}
+.slide.s-photo.claro{background-color:#FDC603;color:var(--ink);padding-top:222px;}
+.slide.s-photo.claro::before{background:linear-gradient(180deg,rgba(253,198,3,0) 190px,rgba(253,198,3,.85) 220px,#FDC603 234px);}
 .s-photo.claro .slide-tag{background:var(--ink);color:var(--yellow);}
 .slide.s-photo.claro h1 em,.slide.s-photo.claro h2 em{color:#fff;text-shadow:3px 3px 0 var(--ink);}
 .s-photo.claro .slide-cta{background:var(--ink);color:#fff;}
@@ -439,7 +439,8 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
   .slide p{font-size:17px;}
   .slide-art{position:absolute;margin:0;right:30px;top:50%;transform:translateY(-50%);width:380px;height:380px;}
   .slide.s-blanco{background-position:right 48px center;background-size:auto 86%;align-items:center;min-height:440px;padding-bottom:64px;}
-  .slide.s-photo.claro::before{background:linear-gradient(90deg,rgba(253,198,3,.95) 0%,rgba(253,198,3,.75) 30%,rgba(253,198,3,0) 50%);}
+  .slide.s-photo.claro{padding-top:48px;}
+  .slide.s-photo.claro::before{background:linear-gradient(90deg,rgba(253,198,3,.5) 0%,rgba(253,198,3,.25) 30%,rgba(253,198,3,0) 40%);}
   .tiles.n2,.tiles.n4{grid-template-columns:repeat(2,1fr);}
   .car-btn{display:flex;}
   .slide.s-photo{background-size:cover;background-position:var(--fxpc,right) center;align-items:center;min-height:440px;padding-top:48px;padding-bottom:64px;}
@@ -808,7 +809,7 @@ const ES_VE=c=>/venezolan|campolac/i.test(c||'');
 const ES_QUESO=c=>/queso|quesillo/i.test(c||'');
 
 const SLIDES = DOMINIO_VE ? [
-  {tema:'s-photo claro',foto:'hero-arepa',tag:'Sabor de casa',titulo:'El queso que tu arepa <em>estaba extrañando</em>',
+  {tema:'s-photo claro',foto:'hero-arepa',fxpc:'41%',tag:'Sabor de casa',titulo:'El queso que tu arepa <em>estaba extrañando</em>',
    texto:'Llanero, de mano, palmita, guayanés, trenza y más. Quesos venezolanos artesanales, frescos y listos para llegar a tu mesa hoy.',
    cta:'Quiero mi queso',accion:'menu',pic:'ve'},
   {tema:'s-photo',foto:'queso-paisa',fx:'78%',fxpc:'30%',tag:'Laminado · Bajo en sal',titulo:'Queso <em>paisa</em>',
