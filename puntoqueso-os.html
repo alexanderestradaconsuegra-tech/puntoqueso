@@ -105,6 +105,7 @@ tr:last-child td{border-bottom:none;}
 /* etapas de entrega de pedidos — mismo sistema de badges, reusa los tokens de color existentes */
 .badge.preparando{background:#fef3d9;color:var(--warn);}
 .badge.en_camino{background:var(--mint);color:var(--brand-dark);}
+.badge.listo{background:#e3f0ff;color:#1d5fb8;}
 .badge.por-cobrar{background:#fef3d9;color:var(--warn);margin-left:5px;}
 
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px;}
@@ -1523,13 +1524,14 @@ async function iniciarApp(){
   await cargarConfigForm();
   if(canDo('verGastos')) await generarGastosRecurrentesPendientes();
   await enviarConfirmacionesPedidosNuevos();
+  verificarPagosMP();
   document.getElementById('sbCambiarCajero').style.display=DB.usuarios.filter(u=>u.activo).length>1?'block':'none';
   renderDashboard();
   initBarcodeListener();
   initWeightKeyboard();
   // Config tiene formularios largos: si el refresco automático la recargara
   // mientras alguien está escribiendo, borraría todo antes de guardar.
-  setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
+  setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); verificarPagosMP(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
 }
 (function(){
   try{
@@ -1637,8 +1639,8 @@ function renderChartVentas14d(ventas){
 
 // ── Barras horizontales — pedidos agrupados por estado (mismos colores que las badges) ──
 function renderChartPedidosEstado(){
-  const estados=['pendiente','preparando','en_camino','entregado','anulado'];
-  const colors={pendiente:'var(--warn)',preparando:'var(--warn)',en_camino:'var(--brand-dark)',entregado:'var(--ok)',anulado:'var(--danger)'};
+  const estados=['pendiente','preparando','listo','en_camino','entregado','anulado'];
+  const colors={pendiente:'var(--warn)',preparando:'var(--warn)',listo:'#1d5fb8',en_camino:'var(--brand-dark)',entregado:'var(--ok)',anulado:'var(--danger)'};
   const counts=estados.map(e=>DB.pedidos.filter(p=>p.estado===e).length);
   const total=counts.reduce((a,b)=>a+b,0);
   const el=document.getElementById('chartPedidosEstado');
@@ -2155,7 +2157,7 @@ function efActualizar(){
 }
 // Después de cobrar: siempre se ofrece imprimir el ticket de ESA venta (y el vuelto si hubo).
 // Enter = imprimir; Esc o "Nueva venta" = seguir vendiendo.
-function mostrarVentaLista(venta,items,total,recibido,vuelto){
+function mostrarVentaLista(venta,items,total,recibido,vuelto,txtCerrar){
   document.getElementById('modalContent').innerHTML=`
     <h3>Venta registrada</h3>
     <div style="text-align:center;color:var(--text2);font-size:13px;">Boleta N° ${escapeHtml(String(venta.boleta_numero||venta.id))} · Total <b>${money(total)}</b></div>
@@ -2164,7 +2166,7 @@ function mostrarVentaLista(venta,items,total,recibido,vuelto){
       <div style="text-align:center;font-size:44px;font-weight:900;color:var(--ok);line-height:1.1;">${money(vuelto)}</div>
       <div style="text-align:center;margin-top:6px;font-size:13px;color:var(--text2);">Recibido ${money(recibido)}</div>`:''}
     <div class="actions">
-      <button class="btn secondary" id="btnVentaNueva" onclick="closeModal()">Nueva venta</button>
+      <button class="btn secondary" id="btnVentaNueva" onclick="closeModal()">${txtCerrar||'Nueva venta'}</button>
       <button class="btn" id="btnVentaImprimir" onclick="closeModal();abrirReciboImprimir(LAST_VENTA,LAST_VENTA_ITEMS)">🖨️ Imprimir ticket</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
@@ -2513,11 +2515,37 @@ async function reimprimirUltimo(){
 // ══════════════════════════════════════════════════════════
 //  PEDIDOS (WhatsApp)
 // ══════════════════════════════════════════════════════════
-const PEDIDO_ETAPAS=['pendiente','preparando','en_camino','entregado'];
+// Etapas: retiro en tienda no pasa por "en camino".
+//   delivery: pendiente → preparando → listo (le llega el cobro) → en camino → entregado
+//   retiro:   pendiente → preparando → listo (le llega el cobro) → entregado (retiró)
+const PEDIDO_ETAPAS=['pendiente','preparando','listo','en_camino','entregado'];
+const esRetiro=p=>!!p&&p.tipo_entrega==='retiro';
+function etapasPedido(p){ return esRetiro(p)?['pendiente','preparando','listo','entregado']:PEDIDO_ETAPAS; }
+function siguienteEtapa(p){
+  if(!p||p.estado==='anulado') return null;
+  const et=etapasPedido(p), i=et.indexOf(p.estado);
+  return i>=0&&i<et.length-1?et[i+1]:null;
+}
+function etiquetaEtapa(p,e){
+  e=e||p.estado;
+  if(e==='listo') return esRetiro(p)?'Listo para retirar':'Listo';
+  if(e==='entregado'&&esRetiro(p)) return 'Retirado';
+  return PEDIDO_ETAPA_LABEL[e]||e;
+}
+// Texto del botón que avanza la etapa
+function textoBotonEtapa(p,e){
+  if(e==='preparando') return 'Preparar';
+  if(e==='listo') return 'Listo: enviar cobro';
+  if(e==='en_camino') return 'Despachar';
+  if(e==='entregado') return pedidoPagado(p)?(esRetiro(p)?'Entregar (retiró)':'Entregado'):(esRetiro(p)?'Cobrar y entregar':'Entregado');
+  return PEDIDO_ETAPA_LABEL[e]||e;
+}
+// Pagado de verdad = el pago quedó registrado como venta (con medio de pago)
+function pedidoPagado(p){ return !!p&&p.estado_pago==='pagado'&&pedidoFacturado(p); }
 // 'facturado' ya NO se escribe (ahora se marca con pedidos.venta_id), pero pedidos
 // históricos pueden tenerlo guardado: se mantiene la etiqueta para que el badge no
 // quede vacío y se trata como "ya facturado" (ver pedidoFacturado).
-const PEDIDO_ETAPA_LABEL={pendiente:'Pendiente',preparando:'Preparando',en_camino:'En camino',entregado:'Entregado',anulado:'Anulado',facturado:'Facturado'};
+const PEDIDO_ETAPA_LABEL={pendiente:'Pendiente',preparando:'Preparando',listo:'Listo',en_camino:'En camino',entregado:'Entregado',anulado:'Anulado',facturado:'Facturado'};
 
 // ── helpers de peso ──────────────────────────────────────
 // El sistema guarda SIEMPRE los pesos en kg (catalogo.html usa kg en
@@ -2630,21 +2658,20 @@ function pintarPedidos(){
   const vacio=v.tab==='historial'?'Sin pedidos cerrados en este período':'No hay pedidos en curso';
   document.getElementById('pedidosBody').innerHTML=rows.map(p=>{
     const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
-    const idx=PEDIDO_ETAPAS.indexOf(p.estado);
-    const siguiente=(p.estado!=='anulado'&&idx>=0&&idx<PEDIDO_ETAPAS.length-1)?PEDIDO_ETAPAS[idx+1]:null;
+    const siguiente=siguienteEtapa(p);
     return `
     <tr><td>#${p.id}<div style="color:var(--muted);font-size:11px;">${escapeHtml(p.cliente_tel||'-')}</div></td>
     <td>${escapeHtml(p.cliente_nombre||'-')}</td>
     <td style="font-size:12.5px;">${escapeHtml(dir||'-')}${etiquetaEntrega(p)?`<div class="sub-xs">${escapeHtml(etiquetaEntrega(p))}</div>`:''}</td>
     <td class="num">${money(p.total)}${p.pesos_ajustados?`<div style="color:var(--muted);font-size:11px;">peso ajustado</div>`:''}</td>
     <td>
-      <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
-      ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
-      ${pedidoFacturado(p)?`<span class="badge pagado" style="margin-left:5px;">Facturado</span>`:''}
+      <span class="badge ${p.estado}">${escapeHtml(etiquetaEtapa(p))}</span>
+      ${pedidoPagado(p)?`<span class="badge pagado" style="margin-left:5px;">Pagado</span>`:p.estado!=='anulado'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
     </td>
     <td>${new Date(p.created_at).toLocaleDateString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
-      ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
+      ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${escapeHtml(textoBotonEtapa(p,siguiente))}</button>`:''}
+      ${!siguiente&&p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirCobroPedido(${p.id})">Registrar pago</button>`:''}
       <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / editar</button>
       ${puedeEliminarPedido(p)?`<button class="btn danger" style="padding:6px 9px;font-size:12px;" title="Eliminar pedido (no se avisa al cliente)" aria-label="Eliminar pedido" onclick="eliminarPedido(${p.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>`:''}
     </td></tr>`;
@@ -2652,8 +2679,7 @@ function pintarPedidos(){
 
   document.getElementById('pedidosCards').innerHTML=rows.map(p=>{
     const dir=[p.direccion_calle,p.direccion_depto,p.direccion_comuna].filter(Boolean).join(', ');
-    const idx=PEDIDO_ETAPAS.indexOf(p.estado);
-    const siguiente=(p.estado!=='anulado'&&idx>=0&&idx<PEDIDO_ETAPAS.length-1)?PEDIDO_ETAPAS[idx+1]:null;
+    const siguiente=siguienteEtapa(p);
     return `
     <div class="lcard">
       <div class="lc-row"><div class="lc-main">
@@ -2661,14 +2687,14 @@ function pintarPedidos(){
           <div class="lc-fig">${money(p.total)}${p.pesos_ajustados?`<span class="lc-fig-sub">peso ajustado</span>`:''}</div></div>
         <div class="lc-meta">${escapeHtml(dir||'-')}${p.cliente_tel?` · ${escapeHtml(p.cliente_tel)}`:''}${etiquetaEntrega(p)?`<br>${escapeHtml(etiquetaEntrega(p))}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
         <div class="lc-badges">
-          <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
-          ${p.estado_pago==='pendiente'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
-          ${pedidoFacturado(p)?`<span class="badge pagado">Facturado</span>`:''}
+          <span class="badge ${p.estado}">${escapeHtml(etiquetaEtapa(p))}</span>
+          ${pedidoPagado(p)?`<span class="badge pagado">Pagado</span>`:p.estado!=='anulado'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
         </div>
       </div></div>
       <div class="lc-row" style="gap:8px;">
         <button class="btn" style="flex:1;" onclick="abrirPedidoDetalle(${p.id})">Ver / editar</button>
-        ${siguiente?`<button class="btn secondary" style="flex:1;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${PEDIDO_ETAPA_LABEL[siguiente]}</button>`:''}
+        ${siguiente?`<button class="btn secondary" style="flex:1;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${escapeHtml(textoBotonEtapa(p,siguiente))}</button>`:''}
+        ${!siguiente&&p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn secondary" style="flex:1;" onclick="abrirCobroPedido(${p.id})">Registrar pago</button>`:''}
         ${puedeEliminarPedido(p)?`<button class="btn danger" style="padding:8px 11px;" title="Eliminar pedido (no se avisa al cliente)" aria-label="Eliminar pedido" onclick="eliminarPedido(${p.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>`:''}
       </div>
     </div>`;
@@ -2677,19 +2703,191 @@ function pintarPedidos(){
 async function avanzarEstadoPedido(id,nuevoEstado){
   const p=pedidoPorId(id);
   if(!p) return;
+  // "Listo": se envía al cliente el detalle con el monto y el link de pago
+  if(nuevoEstado==='listo') return marcarListoPedido(id);
+  // Entregar sin pago registrado: primero se cobra (o se deja por cobrar a propósito)
+  if(nuevoEstado==='entregado'&&!pedidoPagado(p)) return abrirCobroPedido(id,true);
   // El flujo del local es: el cliente paga el link → recién ahí se despacha.
   // Se avisa, pero NO se bloquea: hay entregas que se pagan contra entrega.
-  if(nuevoEstado==='en_camino'&&p.estado_pago==='pendiente'){
-    if(!confirm('Este pedido aún no está pagado. ¿Despachar de todas formas?')) return;
+  if(nuevoEstado==='en_camino'&&!pedidoPagado(p)){
+    if(!confirm('Este pedido aún no está pagado. ¿Despachar de todas formas?\n\n(Cuando el motorizado traiga la plata, regístrala con "Registrar pago".)')) return;
   }
-  const {error:estErr}=await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',id);
-  if(estErr){ toast('Error: '+estErr.message,true); return; }
-  logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → ${nuevoEstado}`);
+  await cambiarEtapaPedido(p,nuevoEstado);
+  toast('Estado actualizado'); await loadAll(); renderPedidos();
+}
+async function cambiarEtapaPedido(p,nuevoEstado){
+  const {error:estErr}=await supa.from('pedidos').update({estado:nuevoEstado}).eq('id',p.id);
+  if(estErr){ toast('Error: '+estErr.message,true); return false; }
+  logAudit('Cambio de estado pedido','pedidos',`Pedido #${p.id} → ${nuevoEstado}`);
   let msg=mensajePedidoEstado(p,nuevoEstado);
   if(msg&&nuevoEstado==='entregado') msg+=await textoInvitacion(p);
   if(msg&&p.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
-  toast('Estado actualizado'); await loadAll(); renderPedidos();
-  notificarPremiosReferidos();
+  if(nuevoEstado==='entregado') notificarPremiosReferidos();
+  return true;
+}
+// Pedido preparado: se manda el detalle final (pesos reales, delivery, total)
+// con el link de pago y el pedido pasa a "Listo".
+async function marcarListoPedido(id){
+  const ok=await enviarBoletaYLinkPago(id,{listo:true});
+  if(!ok) return;
+  const {error}=await supa.from('pedidos').update({estado:'listo'}).eq('id',id).in('estado',['pendiente','preparando']);
+  if(error){ toast('El mensaje salió, pero no se pudo cambiar la etapa: '+error.message,true); }
+  logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → listo`);
+  await loadAll(); renderPedidos();
+}
+
+// ── Registrar el pago del pedido = la venta ──────────────────
+// Un solo paso: elige cómo pagó el cliente y se crea la venta (descuenta
+// stock, entra a la cuenta que corresponde y, si es efectivo, a la caja).
+const MEDIOS_PEDIDO={efectivo:'Efectivo (caja)',transferencia:'Transferencia',tarjeta:'Tarjeta',mercadopago:'Link de pago Mercado Pago'};
+let COBRO_PED={id:null,entregar:false,metodo:'efectivo',total:0};
+async function abrirCobroPedido(id,entregar){
+  const {data:pf}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
+  const p=(pf&&pf[0])||pedidoPorId(id);
+  if(!p) return;
+  recordarPedidos([p]);
+  if(pedidoPagado(p)){
+    if(entregar){ await cambiarEtapaPedido(p,'entregado'); toast('Pedido entregado'); closeModal(); await loadAll(); renderPedidos(); }
+    else toast('Este pedido ya está pagado');
+    return;
+  }
+  if(pedidoNecesitaDelivery(p)&&!confirm('Este pedido no tiene el monto del delivery. ¿Cobrar igual sin delivery?\n\nSi no, cancela y escribe el monto en "Ver / editar".')) return;
+  const total=esRetiro(p)?Number(p.total)-costoDelivery(p):Number(p.total);
+  // retiro: el cliente está en el mesón (lo normal es efectivo); delivery con link: Mercado Pago
+  const metodo=(!esRetiro(p)&&p.mp_link)?'mercadopago':'efectivo';
+  COBRO_PED={id:p.id,entregar:!!entregar,metodo,total};
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${entregar&&esRetiro(p)?'Cobrar y entregar':'Registrar pago'} · Pedido #${p.id}</h3>
+    <div style="font-size:13px;color:var(--text2);">${escapeHtml(p.cliente_nombre||'-')} · ${escapeHtml(esRetiro(p)?'Retiro en tienda':etiquetaEntrega(p)||'Delivery')}</div>
+    <div style="text-align:center;font-size:34px;font-weight:900;margin:12px 0 4px;" class="num">${money(total)}</div>
+    <label>¿Cómo pagó?</label>
+    <div id="cpMedios" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      ${Object.entries(MEDIOS_PEDIDO).map(([k,v])=>`<button type="button" class="btn ${k===metodo?'':'secondary'}" data-m="${k}" onclick="setMedioCobroPedido('${k}')">${v}</button>`).join('')}
+    </div>
+    <div id="cpEfectivo" style="margin-top:10px;display:${metodo==='efectivo'?'block':'none'};">
+      <label>Recibido (opcional, para el vuelto)</label>
+      <input type="number" id="cpRecibido" min="0" step="100" inputmode="numeric" placeholder="${Math.round(total)}" oninput="calcVueltoPedido()">
+      <div id="cpVuelto" style="font-size:15px;font-weight:700;margin-top:6px;color:var(--ok);"></div>
+    </div>
+    <div class="sub-xs" style="margin-top:10px;">Se registra como venta: descuenta el stock y la plata queda en ${'<b id="cpCuenta"></b>'}.</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      ${entregar?`<button class="btn secondary" onclick="entregarSinCobrar(${p.id})">Entregar sin cobrar</button>`:''}
+      <button class="btn" id="btnCobroPedido" onclick="confirmarCobroPedido()">${entregar?'Cobrar y entregar':'Registrar pago'}</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  setMedioCobroPedido(metodo);
+}
+function setMedioCobroPedido(m){
+  COBRO_PED.metodo=m;
+  document.querySelectorAll('#cpMedios button').forEach(b=>b.className='btn '+(b.dataset.m===m?'':'secondary'));
+  const ef=document.getElementById('cpEfectivo'); if(ef) ef.style.display=m==='efectivo'?'block':'none';
+  const c=document.getElementById('cpCuenta');
+  if(c) c.textContent=m==='efectivo'?'la caja de hoy':m==='tarjeta'?'la cuenta de la tarjeta':'Mercado Pago';
+  calcVueltoPedido();
+}
+function calcVueltoPedido(){
+  const el=document.getElementById('cpVuelto'); if(!el) return;
+  const r=Number(document.getElementById('cpRecibido')?.value)||0;
+  el.textContent=r>0?(r>=COBRO_PED.total?`Vuelto: ${money(r-COBRO_PED.total)}`:`Faltan ${money(COBRO_PED.total-r)}`):'';
+  el.style.color=r>0&&r<COBRO_PED.total?'var(--danger)':'var(--ok)';
+}
+async function entregarSinCobrar(id){
+  const p=pedidoPorId(id); if(!p) return;
+  if(!confirm('El pedido queda ENTREGADO y POR COBRAR. Cuando te paguen, entra al pedido y usa "Registrar pago".')) return;
+  if(await cambiarEtapaPedido(p,'entregado')){ toast('Entregado · queda por cobrar'); closeModal(); await loadAll(); renderPedidos(); }
+}
+let _cobrandoPedido=false;
+async function confirmarCobroPedido(){
+  if(_cobrandoPedido) return;
+  const c=COBRO_PED, p=pedidoPorId(c.id);
+  if(!p) return;
+  let recibido=null;
+  if(c.metodo==='efectivo'){
+    const r=Number(document.getElementById('cpRecibido')?.value)||0;
+    if(r>0&&r<c.total){ toast('El monto recibido es menor que el total',true); return; }
+    if(r>0) recibido=r;
+    // el efectivo entra al cajón: caja y turno abiertos
+    await cargarCajaHoy(); renderCajaBar();
+    if(!CAJA_HOY||CAJA_HOY._vieja||CAJA_HOY.estado!=='abierta'||!TURNO_ACTUAL){ toast('Para cobrar en efectivo abre la caja y tu turno (Terminal de ventas)',true); return; }
+    if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return; }
+  }else await cargarCajaHoy();   // si hay turno abierto, la venta queda en él
+  _cobrandoPedido=true;
+  const btn=document.getElementById('btnCobroPedido'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
+  const {data,error}=await supa.rpc('cobrar_pedido',{p_id:c.id,p:{metodo_pago:c.metodo,turno_id:TURNO_ACTUAL?.id||null,
+    registrado_por:SESSION.usuario,entregar:c.entregar,efectivo_recibido:recibido}});
+  _cobrandoPedido=false;
+  if(error){ if(btn){ btn.disabled=false; btn.textContent=c.entregar?'Cobrar y entregar':'Registrar pago'; } toast('No se pudo registrar el pago: '+error.message,true); return; }
+  const venta=data.venta;
+  logAudit('Pago de pedido','pedidos',`Pedido #${c.id} → venta #${venta.id} (${c.metodo}, ${money(venta.total)})`);
+  if(c.entregar){
+    let msg=mensajePedidoEstado(p,'entregado');
+    if(msg) msg+=await textoInvitacion(p);
+    if(msg&&p.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
+    notificarPremiosReferidos();
+  }
+  const {data:its}=await supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',venta.id).order('id');
+  LAST_VENTA=venta; LAST_VENTA_ITEMS=its||[];
+  mostrarVentaLista(venta,LAST_VENTA_ITEMS,Number(venta.total),recibido,recibido!=null?recibido-Number(venta.total):0,'Listo');
+  await loadAll(); renderPedidos();
+}
+
+// ── Pagos por link de Mercado Pago: se detectan solos ─────────
+// Mientras el panel está abierto, cada pedido con link y sin pago se consulta
+// en Mercado Pago (máx. 1 vez por minuto). Si el pago está aprobado se
+// registra la venta con medio "Link de pago Mercado Pago" y se avisa al cliente.
+const _mpRevisado=new Map();
+let _mpRevisando=false;
+async function pagoAprobadoMP(p,token){
+  const refs=['PQ-'+p.id,String(p.id)];
+  for(const ref of refs){
+    const res=await conLimite(fetch(`https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(ref)}&sort=date_created&criteria=desc`,
+      {headers:{'Authorization':`Bearer ${token}`}}),10000,'Mercado Pago no respondió');
+    if(!res.ok) throw new Error('Mercado Pago respondió '+res.status);
+    const js=await res.json();
+    const ok=(js.results||[]).find(x=>x.status==='approved'
+      // referencia vieja (solo el número): además el monto y la fecha tienen que calzar
+      &&(ref.startsWith('PQ-')||(Math.abs(Number(x.transaction_amount)-Number(p.total))<=1&&new Date(x.date_created)>=new Date(p.created_at))));
+    if(ok) return ok;
+  }
+  return null;
+}
+async function verificarPagosMP(forzarId){
+  const token=CONFIG_CACHE.mercadopago_access_token;
+  if(!token||_mpRevisando) return null;
+  _mpRevisando=true;
+  let encontrado=null;
+  try{
+    const ahora=Date.now();
+    const todos=new Map([...PEDIDOS_EXTRA.values(),...DB.pedidos].map(p=>[p.id,p]));
+    const cands=[...todos.values()].filter(p=>p.mp_link&&p.estado!=='anulado'&&!pedidoPagado(p)
+      &&(forzarId?p.id===forzarId:(ahora-new Date(p.created_at)<7*864e5&&ahora-(_mpRevisado.get(p.id)||0)>60000)));
+    for(const p of cands.slice(0,10)){
+      _mpRevisado.set(p.id,ahora);
+      let pago=null;
+      try{ pago=await pagoAprobadoMP(p,token); }catch(e){ console.warn('Revisión de pago MP pedido #'+p.id,e.message); if(forzarId) throw e; continue; }
+      if(!pago) continue;
+      const {data,error}=await supa.rpc('cobrar_pedido',{p_id:p.id,p:{metodo_pago:'mercadopago',turno_id:TURNO_ACTUAL?.id||null,registrado_por:'mercadopago'}});
+      if(error){ console.error('No se pudo registrar el pago MP del pedido #'+p.id,error); continue; }
+      encontrado=p.id;
+      if(!data.repetida&&!data.ya_pagado){
+        logAudit('Pago de pedido','pedidos',`Pedido #${p.id} pagado con link Mercado Pago (pago ${pago.id}) → venta #${data.venta.id}`);
+        if(p.cliente_tel) enviarWhatsApp(p.cliente_tel,`¡Recibimos tu pago de ${money(data.venta.total)} del pedido #${p.id}! Gracias 🧀${esRetiro(p)?' Ya puedes pasar a retirarlo.':' Te avisamos cuando vaya en camino.'}`);
+      }
+      toast(`Pedido #${p.id}: pago recibido por Mercado Pago (${money(data.venta.total)})`);
+    }
+  }finally{ _mpRevisando=false; }
+  if(encontrado){ await loadAll(); if(currentPage==='pedidos') renderPedidos(); }
+  return encontrado;
+}
+async function comprobarPagoPedido(id){
+  const btn=document.getElementById('btnComprobarPago'); if(btn){ btn.disabled=true; btn.textContent='Consultando…'; }
+  try{
+    const r=await verificarPagosMP(id);
+    if(r){ closeModal(); return; }
+    toast('Mercado Pago todavía no registra el pago de este pedido');
+  }catch(e){ toast('No se pudo consultar Mercado Pago: '+e.message,true); }
+  if(btn){ btn.disabled=false; btn.textContent='Comprobar pago'; }
 }
 async function anularPedido(id){
   if(!confirm('¿Anular este pedido?')) return;
@@ -2700,21 +2898,21 @@ async function anularPedido(id){
   if(msg&&p?.cliente_tel) enviarWhatsApp(p.cliente_tel,msg);
   toast('Pedido anulado'); closeModal(); await loadAll(); renderPedidos();
 }
-async function marcarPagoPedido(id,nuevoEstadoPago){
-  await supa.from('pedidos').update({estado_pago:nuevoEstadoPago}).eq('id',id);
-  logAudit('Cambio de estado pedido','pedidos',`Pedido #${id} → pago ${nuevoEstadoPago}`);
-  toast('Pago actualizado'); closeModal(); await loadAll(); renderPedidos();
-  notificarPremiosReferidos();
-}
 function openPedidoModal(){
   const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre}</option>`).join('');
   document.getElementById('modalContent').innerHTML=`
     <h3>Nuevo pedido</h3>
     <label>Nombre del cliente</label><input id="pdNombre">
     <label>Teléfono</label><input id="pdTelefono">
-    <label>Calle y número</label><input id="pdCalle" placeholder="Av. Siempre Viva 742">
-    <label>Depto/Casa (opcional)</label><input id="pdDepto" placeholder="Depto 12B">
-    <label>Comuna</label><input id="pdComuna" placeholder="Ñuñoa">
+    <label>Entrega</label>
+    <select id="pdEntrega" onchange="document.getElementById('pdDireccion').style.display=this.value==='retiro'?'none':'block'">
+      <option value="retiro">Retiro en tienda</option><option value="delivery">Delivery</option>
+    </select>
+    <div id="pdDireccion" style="display:none;">
+      <label>Calle y número</label><input id="pdCalle" placeholder="Av. Siempre Viva 742">
+      <label>Depto/Casa (opcional)</label><input id="pdDepto" placeholder="Depto 12B">
+      <label>Comuna</label><input id="pdComuna" placeholder="Ñuñoa">
+    </div>
     <label>Notas</label><textarea id="pdNotas" rows="2"></textarea>
     <label style="margin-top:14px;">Producto</label>
     <select id="pdProducto">${prodOpts}</select>
@@ -2747,86 +2945,17 @@ async function guardarPedido(){
   const depto=sanitize(document.getElementById('pdDepto').value);
   const comuna=sanitize(document.getElementById('pdComuna').value);
   const notas=sanitize(document.getElementById('pdNotas').value);
+  const entrega=document.getElementById('pdEntrega').value;
   if(!nombre){ toast('Ingresa el nombre del cliente',true); return; }
+  if(entrega==='delivery'&&!calle){ toast('Escribe la dirección del delivery',true); return; }
   if(!PD_ITEMS.length){ toast('Agrega al menos un producto',true); return; }
   const total=PD_ITEMS.reduce((s,i)=>s+i.subtotal,0);
-  const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,direccion_calle:calle,direccion_depto:depto,direccion_comuna:comuna,notas,total,estado:'pendiente'}).select();
+  const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,tipo_entrega:entrega,
+    ...(entrega==='retiro'?{}:{direccion_calle:calle,direccion_depto:depto,direccion_comuna:comuna}),notas,total,estado:'pendiente'}).select();
   if(error){ toast('Error: '+error.message,true); return; }
   for(const item of PD_ITEMS) await supa.from('pedido_items').insert({...item,pedido_id:ped[0].id});
   toast('Pedido guardado'); closeModal(); await loadAll(); renderPedidos();
 }
-// Decisión: "Facturar" ahora solo aparece cuando estado==='entregado' — refleja el
-// flujo real de una entrega: la venta/boleta se cierra una vez que el cliente ya
-// recibió el pedido, no antes. El pedido sigue pudiendo estar "por cobrar"
-// (estado_pago='pendiente') al facturarse — eso no bloquea la facturación.
-function facturarPedido(id){
-  const p=pedidoPorId(id);
-  if(!p) return;
-  if(pedidoFacturado(p)){ toast('Este pedido ya fue facturado',true); return; }
-  // El método de pago real ya no se asume 'efectivo': si se pagó por el link de
-  // Mercado Pago se propone 'tarjeta'. El empleado confirma o cambia — de esto
-  // dependen Contabilidad y el cierre de caja, que agrupan por metodo_pago.
-  const sugerido=(p.mp_link&&p.estado_pago==='pagado')?'mercadopago':'efectivo';
-  const etiquetas={efectivo:'Efectivo',transferencia:'Transferencia (Mercado Pago)',tarjeta:'Tarjeta (BancoEstado)',mercadopago:'Link de pago Mercado Pago'};
-  const opts=Object.keys(etiquetas)
-    .map(m=>`<option value="${m}" ${m===sugerido?'selected':''}>${etiquetas[m]}</option>`).join('');
-  document.getElementById('modalContent').innerHTML=`
-    <h3>Facturar pedido #${p.id}</h3>
-    <div style="font-size:13px;color:var(--text2);">Se creará una venta por <b>${money(p.total)}</b> a nombre de ${escapeHtml(p.cliente_nombre||'-')} y se descontará el stock.</div>
-    <label>Método de pago</label>
-    <select id="fpMetodo">${opts}</select>
-    <div style="font-size:12px;color:var(--muted);margin-top:8px;">Estado de pago de la venta: <b>${p.estado_pago||'pendiente'}</b> (se toma del pedido).</div>
-    <div class="actions">
-      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" onclick="confirmarFacturarPedido(${p.id})">Facturar</button>
-    </div>`;
-  document.getElementById('modalBg').style.display='flex';
-}
-async function confirmarFacturarPedido(id){
-  const p=pedidoPorId(id);
-  if(!p) return;
-  if(pedidoFacturado(p)){ toast('Este pedido ya fue facturado',true); return; }
-  const metodo=document.getElementById('fpMetodo').value;
-  // Siempre se leen los items frescos desde la base (no de una copia en DB):
-  // pueden haberse ajustado los pesos hace un momento y la venta debe salir
-  // con las cantidades finales realmente preparadas.
-  const {data:items,error:itErr}=await supa.from('pedido_items').select('*').eq('pedido_id',id);
-  if(itErr){ toast('Error al leer el detalle del pedido: '+itErr.message,true); console.error(itErr); return; }
-  const {data:ventaIns,error}=await supa.from('ventas').insert({
-    cliente_nombre:p.cliente_nombre,total:p.total,metodo_pago:metodo,delivery_monto:costoDelivery(p),
-    ...montosPorMedio(metodo,Number(p.total)||0,null),
-    estado_pago:p.estado_pago||'pendiente',origen:'whatsapp',registrado_por:SESSION.usuario,turno_id:TURNO_ACTUAL?.id||null
-  }).select();
-  if(error){ toast('Error: '+error.message,true); console.error(error); return; }
-  const venta=ventaIns[0];
-  for(const it of (items||[])){
-    const prod=DB.productos.find(x=>x.id===it.producto_id);
-    await supa.from('venta_items').insert({venta_id:venta.id,producto_id:it.producto_id,producto_nombre:it.producto_nombre,cantidad:it.cantidad,precio_unitario:it.precio_unitario,subtotal:it.subtotal,costo_unitario:Number(prod?.costo)||0});
-    if(it.producto_id){
-      const r=await moverStock(it.producto_id,-Number(it.cantidad),'salida',`Pedido #${p.id} facturado (boleta ${venta.boleta_numero||venta.id})`,'whatsapp',venta.id);
-      if(!r.ok) toast(`Venta guardada, pero no se pudo descontar el stock de ${it.producto_nombre}. Revísalo.`,true);
-    }
-  }
-  // El delivery va como una línea más de la venta (sin producto ni stock), así
-  // la boleta suma igual que el total cobrado.
-  if(costoDelivery(p)>0){
-    const c=costoDelivery(p);
-    const {error:dErr}=await supa.from('venta_items').insert({venta_id:venta.id,producto_id:null,producto_nombre:'Delivery',cantidad:1,precio_unitario:c,subtotal:c,costo_unitario:0});
-    if(dErr) console.error('No se pudo agregar la línea de delivery',dErr);
-  }
-  // El pedido conserva su etapa real de entrega ('entregado'); la marca de
-  // facturado es venta_id, que además impide volver a facturarlo.
-  const {error:pedErr}=await supa.from('pedidos').update({venta_id:venta.id}).eq('id',id);
-  if(pedErr){
-    console.error(pedErr);
-    toast(`Venta #${venta.id} creada, pero no se pudo marcar el pedido como facturado: ${pedErr.message}. NO vuelvas a facturarlo.`,true);
-  }else{
-    toast('Pedido facturado');
-  }
-  logAudit('Pedido facturado','pedidos',`Pedido #${id} → venta #${venta.id} (${metodo}, ${p.estado_pago||'pendiente'})`);
-  closeModal(); await loadAll(); renderPedidos();
-}
-
 // ══════════════════════════════════════════════════════════
 //  DETALLE / PREPARACIÓN DEL PEDIDO
 //  Aquí el empleado ve el detalle que pidió el cliente y ajusta los
@@ -2894,10 +3023,12 @@ async function abrirPedidoDetalle(id){
     </div>
     <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px;margin-top:8px;" onclick="editarDatosClientePedido(${p.id})">Editar datos del cliente</button>
     <div style="margin:10px 0;">
-      <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span>
-      <span class="badge ${p.estado_pago==='pagado'?'pagado':'por-cobrar'}">${p.estado_pago==='pagado'?'Pagado':'Por cobrar'}</span>
-      ${pedidoFacturado(p)?`<span class="badge pagado" style="margin-left:5px;">Facturado</span>`:''}
+      <span class="badge ${p.estado}">${escapeHtml(etiquetaEtapa(p))}</span>
+      <span class="badge ${pedidoPagado(p)?'pagado':'por-cobrar'}">${pedidoPagado(p)?'Pagado':'Por cobrar'}</span>
+      ${esRetiro(p)?`<span class="badge" style="margin-left:5px;">Retiro en tienda</span>`:''}
     </div>
+    ${pedidoPagado(p)?`<div id="pdiPagoInfo" class="sub-xs" style="margin-bottom:6px;">Pago registrado como venta #${p.venta_id}.</div>`:''}
+    ${pasosPedidoHTML(p)}
     <div style="font-size:12px;color:var(--muted);">Ajusta el peso real que saliste de la balanza. Se guarda en kg; aquí escribes gramos.</div>
     <div style="margin-top:8px;">${filas}</div>
     ${agregarHTML}
@@ -2920,11 +3051,13 @@ async function abrirPedidoDetalle(id){
     </div>
     ${p.total_original!=null?`<div style="font-size:11.5px;color:var(--muted);text-align:right;">Total original del pedido: ${money(p.total_original)}</div>`:''}
     ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="guardarPesosPedido()">Guardar pesos y delivery</button></div>`:''}
-    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="enviarBoletaYLinkPago(${p.id})">📤 Enviar boleta + link de pago</button></div>`:''}
+    ${botonEtapaDetalleHTML(p)}
+    ${editable&&['listo','en_camino','entregado'].includes(p.estado)?`<div class="actions"><button class="btn secondary" style="width:100%;" onclick="enviarBoletaYLinkPago(${p.id})">Reenviar detalle + link de pago</button></div>`:''}
     <div class="actions">
-      ${p.estado!=='anulado'&&p.estado_pago==='pendiente'?`<button class="btn secondary" onclick="marcarPagoPedido(${p.id},'pagado')">Marcar pagado</button>`:''}
-      ${p.estado==='entregado'&&!pedidoFacturado(p)?`<button class="btn secondary" onclick="facturarPedido(${p.id})">Facturar</button>`:''}
-      ${p.mp_link?`<button class="btn secondary" onclick="mostrarLinkPago(pedidoPorId(${p.id}))">Ver link de pago</button>`:''}
+      ${p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn" onclick="abrirCobroPedido(${p.id})">Registrar pago</button>`:''}
+      ${p.mp_link&&!pedidoPagado(p)?`<button class="btn secondary" id="btnComprobarPago" onclick="comprobarPagoPedido(${p.id})">Comprobar pago</button>`:''}
+      ${p.mp_link&&!pedidoPagado(p)?`<button class="btn secondary" onclick="mostrarLinkPago(pedidoPorId(${p.id}))">Ver link de pago</button>`:''}
+      ${pedidoFacturado(p)?`<button class="btn secondary" onclick="imprimirVentaPedido(${p.venta_id})">🖨️ Ticket</button>`:''}
     </div>
     <div class="actions">
       ${p.estado!=='anulado'&&p.estado!=='entregado'?`<button class="btn danger" onclick="anularPedido(${p.id})">Anular</button>`:''}
@@ -2934,6 +3067,44 @@ async function abrirPedidoDetalle(id){
   document.getElementById('modalBg').style.display='flex';
   if(editable) syncUnidadNuevoItemPedido();
   recalcPedidoDetalle();
+}
+// Pasos del pedido, marcando en cuál va (para que siempre se sepa qué sigue)
+function pasosPedidoHTML(p){
+  if(p.estado==='anulado') return '';
+  const et=etapasPedido(p), i=et.indexOf(p.estado);
+  const pasos=et.slice(1).map((e,k)=>{ const hecho=i>=k+1; return `<span style="font-size:11.5px;font-weight:${i===k+1?800:500};color:${hecho?'var(--ok)':'var(--muted)'};">${hecho?'✓ ':''}${escapeHtml(etiquetaEtapa(p,e))}</span>`; });
+  pasos.push(`<span style="font-size:11.5px;font-weight:500;color:${pedidoPagado(p)?'var(--ok)':'var(--muted)'};">${pedidoPagado(p)?'✓ ':''}Pagado</span>`);
+  return `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:2px 0 10px;">${pasos.join('<span style="color:var(--muted);font-size:11.5px;">›</span>')}</div>`;
+}
+function botonEtapaDetalleHTML(p){
+  const sig=siguienteEtapa(p);
+  if(!sig) return '';
+  const ayuda={preparando:'Avisa al cliente que su pedido se está preparando.',
+    listo:'Guarda los pesos y envía al cliente el detalle final con el total y el link de pago.',
+    en_camino:'Avisa al cliente que su pedido va en camino.',
+    entregado:pedidoPagado(p)?'Marca el pedido como entregado.':'Registra cómo pagó y marca el pedido como entregado.'}[sig]||'';
+  return `<div class="actions" style="flex-direction:column;align-items:stretch;"><button class="btn" style="width:100%;" onclick="avanzarDesdeDetalle(${p.id},'${sig}')">${escapeHtml(textoBotonEtapa(p,sig))}</button>
+    <div class="sub-xs" style="text-align:center;margin-top:4px;">${escapeHtml(ayuda)}</div></div>`;
+}
+// Desde el detalle: si cambió un peso o el delivery se guarda primero
+async function avanzarDesdeDetalle(id,sig){
+  const p=pedidoPorId(id);
+  if(p&&p.estado!=='anulado'&&!pedidoFacturado(p)&&hayCambiosDetallePedido(p)){
+    const ok=await guardarPesosPedido({silencioso:true});
+    if(ok===false) return;
+  }
+  return avanzarEstadoPedido(id,sig);
+}
+function hayCambiosDetallePedido(p){
+  const cants=leerCantidadesPedidoDetalle();
+  return PEDIDO_DET.items.some((it,i)=>Math.abs(cants[i]-Number(it.cantidad))>1e-9)||deliveryDetalleCambio(p);
+}
+async function imprimirVentaPedido(ventaId){
+  const [vR,iR]=await Promise.all([supa.from('ventas').select('*').eq('id',ventaId).limit(1),
+    supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',ventaId).order('id')]);
+  const v=(vR.data||[])[0];
+  if(!v){ toast('No se encontró la venta',true); return; }
+  abrirReciboImprimir(v,iR.data||[]);
 }
 // Lee los inputs del modal y devuelve las cantidades en kg (unidad de guardado).
 function leerCantidadesPedidoDetalle(){
@@ -2975,16 +3146,16 @@ function recalcPedidoDetalle(){
   if(t) t.textContent=money(total);
   return total;
 }
-async function guardarPesosPedido(){
+async function guardarPesosPedido({silencioso=false}={}){
   const id=PEDIDO_DET.id;
   const p=pedidoPorId(id);
-  if(!p) return;
+  if(!p) return false;
   const cants=leerCantidadesPedidoDetalle();
   const delivery=leerDeliveryPedidoDetalle();
   const cambioDelivery=deliveryDetalleCambio(p);
   const nuevoTotal=cants.reduce((s,c,i)=>s+(Number(PEDIDO_DET.items[i].precio_unitario)||0)*c,0)+delivery;
   const cambios=PEDIDO_DET.items.map((it,i)=>({it,nueva:cants[i]})).filter(({it,nueva})=>Math.abs(nueva-Number(it.cantidad))>1e-9);
-  if(!cambios.length&&!cambioDelivery&&Math.abs(nuevoTotal-Number(p.total))<0.5){ toast('No hay cambios que guardar'); return; }
+  if(!cambios.length&&!cambioDelivery&&Math.abs(nuevoTotal-Number(p.total))<0.5){ if(!silencioso) toast('No hay cambios que guardar'); return true; }
   // Orden deliberado: primero los items, el pedido (padre) al final. Sin
   // transacciones en PostgREST, si algo falla a mitad de camino los items
   // quedan consistentes y el total es recalculable desde ellos.
@@ -2997,7 +3168,7 @@ async function guardarPesosPedido(){
     if(error){
       console.error(error);
       toast(`Error al guardar "${it.producto_nombre}": ${error.message}. El total del pedido NO se actualizó — revisa y reintenta.`,true);
-      return;
+      return false;
     }
   }
   const patchPedido={total:nuevoTotal};
@@ -3017,12 +3188,16 @@ async function guardarPesosPedido(){
   if(error){
     console.error(error);
     toast('Los pesos se guardaron, pero falló la actualización del total del pedido: '+error.message,true);
-    return;
+    return false;
   }
   logAudit('Ajuste de pesos pedido','pedidos',`Pedido #${id}: total ${money(p.total)} → ${money(nuevoTotal)}${linkInvalidado?' (link de pago invalidado)':''}`);
+  recordarPedidos([{...p,...patchPedido}]);
+  const i=DB.pedidos.findIndex(x=>x.id===id); if(i>=0) DB.pedidos[i]={...p,...patchPedido};
+  if(silencioso) return true;
   toast(linkInvalidado?'Cambios guardados — el link de pago quedó obsoleto, vuelve a generarlo con el nuevo monto':'Cambios guardados');
   await loadAll(); renderPedidos();
   abrirPedidoDetalle(id);
+  return true;
 }
 // ── Edición del pedido: datos del cliente y productos ─────
 function editarDatosClientePedido(id){
@@ -3386,7 +3561,7 @@ async function verPedidosCliente(tel){
     <h3>${escapeHtml(c?.nombre||tel)}</h3>
     <div class="sub-xs" style="margin-bottom:8px;">${escapeHtml(c?.tel_contacto||tel)} · ${c?.pedidos||0} pedidos · ${money(c?.total||0)}</div>
     ${prods.length?`<div style="font-size:12.5px;margin-bottom:10px;"><b>Ha comprado:</b> ${escapeHtml(prods.join(', '))}</div>`:''}
-    ${(data||[]).map(p=>`<div class="caja-linea"><span>#${p.id} · ${new Date(p.created_at).toLocaleDateString('es-CL')} <span class="badge ${p.estado}">${PEDIDO_ETAPA_LABEL[p.estado]||p.estado}</span></span>
+    ${(data||[]).map(p=>`<div class="caja-linea"><span>#${p.id} · ${new Date(p.created_at).toLocaleDateString('es-CL')} <span class="badge ${p.estado}">${escapeHtml(etiquetaEtapa(p))}</span></span>
       <span style="display:flex;gap:8px;align-items:center;"><b>${money(p.total)}</b><button class="btn secondary" style="padding:5px 9px;font-size:12px;" onclick="nav('pedidos');abrirPedidoDetalle(${p.id})">Ver</button></span></div>`).join('')||'<div class="empty">Sin pedidos</div>'}
     <div class="actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>`;
   document.getElementById('modalBg').style.display='flex';
@@ -3646,7 +3821,7 @@ function nombreNegocio(){
   const cfg=CONFIG_CACHE||{};
   return cfg.nombre_negocio||cfg.negocio_nombre||'Punto Queso';
 }
-function mensajeBoletaPedido(p,items,link){
+function mensajeBoletaPedido(p,items,link,{listo=false}={}){
   const lineas=items.map(it=>{
     const porPeso=pedidoItemPorPeso(it);
     const orig=it.cantidad_original==null?null:Number(it.cantidad_original);
@@ -3656,50 +3831,68 @@ function mensajeBoletaPedido(p,items,link){
       :`  ${fmtCantidadPedido(it.cantidad,porPeso)} — ${money(it.subtotal)}`;
     return `• ${it.producto_nombre||''}\n${detalle}`;
   }).join('\n');
-  const lDel=lineaDeliveryMensaje(p);
-  const sub=Number(p.total)-costoDelivery(p);
-  const resumen=lDel?`Productos: ${money(sub)}\n${lDel}\n`:'';
-  return `🧀 *${nombreNegocio()}* — Pedido #${p.id}\n\n${lineas}\n\n${resumen}*Total: ${money(p.total)}*\n\nPaga aquí 👉 ${link}`;
+  const retiro=esRetiro(p);
+  const total=retiro?Number(p.total)-costoDelivery(p):Number(p.total);
+  // retiro en tienda: sin líneas de delivery
+  const lDel=retiro?'':lineaDeliveryMensaje(p);
+  const resumen=lDel?`Productos: ${money(total-costoDelivery(p))}\n${lDel}\n`:'';
+  const dirLocal=(CONFIG_CACHE.negocio_direccion||'').trim();
+  const cab=listo?(retiro?'¡Tu pedido está listo para retirar! ✅':'¡Tu pedido está listo! ✅')+'\n\n':'';
+  let pie;
+  if(pedidoPagado(p)) pie=retiro?'Ya está pagado. Te esperamos'+(dirLocal?` en ${dirLocal}`:'')+'.':'Ya está pagado. Lo despachamos enseguida 🚚';
+  else if(retiro) pie=(link?`Puedes pagar aquí 👉 ${link}\no al retirar en la tienda`:'Pagas al retirar en la tienda')+(dirLocal?`\n\n📍 Retiro: ${dirLocal}`:'');
+  else pie=link?`Paga aquí 👉 ${link}\nApenas se confirme el pago lo despachamos 🚚`:'Te contactamos para coordinar el pago y el despacho.';
+  return `🧀 *${nombreNegocio()}* — Pedido #${p.id}\n${cab?'\n'+cab:'\n'}${lineas}\n\n${resumen}*Total: ${money(total)}*\n\n${pie}`;
 }
 function whatsappConfigurado(){
   return !!(CONFIG_CACHE.evolution_api_url&&CONFIG_CACHE.evolution_api_key&&CONFIG_CACHE.evolution_instance);
 }
-async function enviarBoletaYLinkPago(id){
+async function enviarBoletaYLinkPago(id,{listo=false}={}){
   const token=CONFIG_CACHE.mercadopago_access_token;
-  if(!token){ toast('Configura tu Access Token de Mercado Pago en Configuración primero',true); return; }
-  let p=pedidoPorId(id);
-  if(!p) return;
-  // La boleta no sale sin delivery: si falta, se calcula por distancia ahora.
+  const {data:pf}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
+  let p=(pf&&pf[0])||pedidoPorId(id);
+  if(!p) return false;
+  recordarPedidos([p]);
+  // El detalle no sale sin delivery: si falta, se calcula por distancia ahora (retiro nunca lleva).
   if(pedidoNecesitaDelivery(p)){
     const calc=await calcularDeliveryPedido(id,{silencioso:true});
     if(calc) p=calc;
-    else if(!confirm('Este pedido no tiene el delivery definido (no se pudo calcular).\n\n¿Enviar la boleta SIN delivery? Si no, cancela y escribe el monto en el pedido.')) return;
+    else if(!confirm('Este pedido no tiene el delivery definido (no se pudo calcular).\n\n¿Enviar el detalle SIN delivery? Si no, cancela y escribe el monto en el pedido.')) return false;
   }
-  if(!(Number(p.total)>0)){ toast('El pedido no tiene monto que cobrar',true); return; }
-  // Invariante anti-link-obsoleto: la boleta SIEMPRE se envía con una
-  // preferencia recién creada por el total actual. Guardar pesos ya borra el
-  // link viejo, pero regenerar aquí cubre también cualquier otro camino que
-  // haya cambiado pedidos.total — el cliente nunca recibe un monto viejo.
-  let pref;
-  try{ pref=await crearPreferenciaMP(p,token); }
-  catch(e){ console.error(e); toast('Error de Mercado Pago: '+e.message,true); return; }
-  const {error:upErr}=await supa.from('pedidos').update({mp_preference_id:pref.id,mp_link:pref.init_point}).eq('id',id);
-  if(upErr){ console.error(upErr); toast('No se pudo guardar el link de pago: '+upErr.message,true); return; }
+  const total=esRetiro(p)?Number(p.total)-costoDelivery(p):Number(p.total);
+  if(!(total>0)){ toast('El pedido no tiene monto que cobrar',true); return false; }
+  // Invariante anti-link-obsoleto: el detalle SIEMPRE sale con una preferencia
+  // recién creada por el total actual: el cliente nunca recibe un monto viejo.
+  let link=null;
+  if(!pedidoPagado(p)&&token){
+    let pref;
+    try{ pref=await crearPreferenciaMP({...p,total},token); }
+    catch(e){
+      console.error(e);
+      if(!confirm('No se pudo crear el link de Mercado Pago ('+e.message+').\n\n¿Enviar el detalle SIN link de pago?')) return false;
+    }
+    if(pref){
+      const {error:upErr}=await supa.from('pedidos').update({mp_preference_id:pref.id,mp_link:pref.init_point}).eq('id',id);
+      if(upErr){ console.error(upErr); toast('No se pudo guardar el link de pago: '+upErr.message,true); return false; }
+      link=pref.init_point;
+    }
+  }
   const {data:items,error:itErr}=await supa.from('pedido_items').select('*').eq('pedido_id',id).order('id');
-  if(itErr){ console.error(itErr); toast('Error al leer el detalle: '+itErr.message,true); return; }
-  const msg=mensajeBoletaPedido(p,items||[],pref.init_point);
+  if(itErr){ console.error(itErr); toast('Error al leer el detalle: '+itErr.message,true); return false; }
+  const msg=mensajeBoletaPedido(p,items||[],link,{listo});
   if(whatsappConfigurado()&&p.cliente_tel){
     await enviarWhatsApp(p.cliente_tel,msg);
-    toast('Boleta y link de pago enviados por WhatsApp');
-    logAudit('Boleta + link enviados','pedidos',`Pedido #${id} a ${p.cliente_tel} por ${money(p.total)}`);
+    toast(link?'Detalle y link de pago enviados por WhatsApp':'Detalle enviado por WhatsApp');
+    logAudit('Detalle + link enviados','pedidos',`Pedido #${id} a ${p.cliente_tel} por ${money(total)}`);
     closeModal();
   }else{
     // WhatsApp sin configurar (o pedido sin teléfono): nunca dejamos al
     // empleado sin nada — se muestra el mensaje listo para copiar y pegar.
-    mostrarMensajeParaCopiar('Boleta — Pedido #'+id,msg,!p.cliente_tel?'Este pedido no tiene teléfono registrado.':'Evolution API (WhatsApp) no está configurada.');
-    logAudit('Boleta + link generados (envío manual)','pedidos',`Pedido #${id} por ${money(p.total)}`);
+    mostrarMensajeParaCopiar('Detalle — Pedido #'+id,msg,!p.cliente_tel?'Este pedido no tiene teléfono registrado.':'Evolution API (WhatsApp) no está configurada.');
+    logAudit('Detalle + link generados (envío manual)','pedidos',`Pedido #${id} por ${money(total)}`);
   }
-  await loadAll(); renderPedidos();
+  if(!listo){ await loadAll(); renderPedidos(); }
+  return true;
 }
 function mostrarMensajeParaCopiar(titulo,mensaje,aviso){
   document.getElementById('modalContent').innerHTML=`
@@ -5028,7 +5221,7 @@ function mensajePedidoEstado(p,estado){
   switch(estado){
     case 'preparando': return `Hola ${nombre}! Tu pedido #${p.id} en ${nombreNegocio()} está siendo preparado 🧀`;
     case 'en_camino': return `Tu pedido #${p.id} va en camino 🚚`;
-    case 'entregado': return `Tu pedido #${p.id} fue entregado. ¡Gracias por tu compra!`;
+    case 'entregado': return esRetiro(p)?`¡Gracias por retirar tu pedido #${p.id}! Que lo disfrutes 🧀`:`Tu pedido #${p.id} fue entregado. ¡Gracias por tu compra!`;
     case 'anulado': return `Tu pedido #${p.id} fue anulado. Cualquier duda contáctanos.`;
     default: return null;
   }
@@ -5056,7 +5249,7 @@ async function crearPreferenciaMP(p,token){
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
     body:JSON.stringify({
       items:[{title:`Pedido #${p.id} - ${nombreNegocio()}`,quantity:1,unit_price:Number(p.total)||0,currency_id:'CLP'}],
-      external_reference:String(p.id)
+      external_reference:'PQ-'+p.id
     })
   });
   const data=await res.json().catch(()=>({}));
@@ -5749,10 +5942,22 @@ let CAJA_HOY=null;
 let CAJA_TURNOS=[], TURNO_ACTUAL=null;
 const DENOMINACIONES=[20000,10000,5000,2000,1000,500,100,50,10];
 
+// "5 de octubre" / "lunes 5 de octubre" a partir de 'YYYY-MM-DD' (sin corrimiento de zona)
+function fechaLarga(iso,conDia){
+  if(!iso) return '';
+  const [y,m,d]=String(iso).slice(0,10).split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString('es-CL',conDia?{weekday:'long',day:'numeric',month:'long'}:{day:'numeric',month:'long'});
+}
 async function cargarCajaHoy(){
-  const {data,error}=await supa.from('cierres_caja').select('*').eq('fecha',fechaLocalISO(new Date())).limit(1);
-  if(error){ console.error(error); return CAJA_HOY; }
-  CAJA_HOY=(data||[])[0]||null;
+  const hoy=hoyChile();
+  // una caja de un día anterior que quedó abierta manda: hay que cerrarla antes de abrir la de hoy
+  const [vR,hR]=await Promise.all([
+    supa.from('cierres_caja').select('*').eq('estado','abierta').lt('fecha',hoy).order('fecha').limit(5),
+    supa.from('cierres_caja').select('*').eq('fecha',hoy).limit(1)
+  ]);
+  if(hR.error){ console.error(hR.error); return CAJA_HOY; }
+  const vieja=(vR.data||[]).find(c=>c.abierta_at);
+  CAJA_HOY=vieja?{...vieja,_vieja:true}:((hR.data||[])[0]||null);
   // fila vieja (del cierre anterior a este módulo) sin apertura registrada: no cuenta como caja abierta
   if(CAJA_HOY&&!CAJA_HOY.abierta_at) CAJA_HOY=null;
   CAJA_TURNOS=[]; TURNO_ACTUAL=null;
@@ -5772,6 +5977,11 @@ function renderCajaBar(){
   if(!CAJA_HOY){
     bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Caja sin abrir</span>
       <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalAperturaCaja()">Abrir caja</button>`;
+    return;
+  }
+  if(CAJA_HOY._vieja){
+    bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Quedó abierta la caja del ${escapeHtml(fechaLarga(CAJA_HOY.fecha,true))}</span>
+      <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalCierreCaja('dia')">Cerrar esa caja</button>`;
     return;
   }
   if(CAJA_HOY.estado==='cerrada'){
@@ -5797,12 +6007,14 @@ function renderCajaBar(){
 async function verificarCajaTerminal(){
   await cargarCajaHoy();
   renderCajaBar();
-  if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
+  if(CAJA_HOY&&CAJA_HOY._vieja&&currentPage==='terminal') avisoCajaVieja();
+  else if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
   else if(CAJA_HOY&&CAJA_HOY.estado==='abierta'&&!TURNO_ACTUAL&&currentPage==='terminal') abrirModalTurno();
 }
 async function cajaAbiertaParaVender(rapido){
-  if(rapido&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===fechaLocalISO(new Date())&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
+  if(rapido&&CAJA_HOY&&!CAJA_HOY._vieja&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===hoyChile()&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
   await cargarCajaHoy(); renderCajaBar();
+  if(CAJA_HOY&&CAJA_HOY._vieja){ avisoCajaVieja(); return false; }
   if(CAJA_HOY&&CAJA_HOY.estado==='abierta'){
     if(!TURNO_ACTUAL){ toast('Abre tu turno para vender',true); abrirModalTurno(); return false; }
     if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return false; }
@@ -5813,16 +6025,29 @@ async function cajaAbiertaParaVender(rapido){
   return false;
 }
 
+function avisoCajaVieja(){
+  const f=fechaLarga(CAJA_HOY.fecha,true);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Falta cerrar la caja del ${escapeHtml(f)}</h3>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Esa caja quedó abierta. Ciérrala contando el efectivo del cajón y después se abre la caja de hoy (<b>${escapeHtml(fechaLarga(hoyChile(),true))}</b>).</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Ahora no</button>
+      <button class="btn" onclick="abrirModalCierreCaja('dia')">Cerrar caja del ${escapeHtml(fechaLarga(CAJA_HOY.fecha))}</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
 async function abrirModalAperturaCaja(){
+  if(CAJA_HOY&&CAJA_HOY._vieja) return avisoCajaVieja();
   // sugiere el efectivo que quedó contado en el último cierre
   const {data:ult}=await supa.from('cierres_caja').select('fecha,total_contado').eq('estado','cerrada').order('fecha',{ascending:false}).limit(1);
   const u=(ult||[])[0];
   document.getElementById('modalContent').innerHTML=`
-    <h3>Abrir caja</h3>
+    <h3>Abrir caja de hoy</h3>
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px;text-transform:capitalize;">${escapeHtml(fechaLarga(hoyChile(),true))}</div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Cuenta el efectivo con que parte el cajón (el sencillo para dar vuelto) y escríbelo.</div>
     <label>Efectivo inicial</label>
     <input type="number" id="cajaFondo" min="0" step="10" inputmode="numeric" placeholder="Ej: 30000">
-    ${u?`<div class="sub-xs" style="margin-top:4px;">En el último cierre (${escapeHtml(u.fecha)}) se contaron ${money(u.total_contado)}.</div>`:''}
+    ${u?`<div class="sub-xs" style="margin-top:4px;">Al cerrar la caja del ${escapeHtml(fechaLarga(u.fecha,true))} quedaron ${money(u.total_contado)} en el cajón.</div>`:''}
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Ahora no</button>
       <button class="btn" id="btnAbrirCaja" onclick="confirmarAperturaCaja()">Abrir caja</button>
@@ -5835,7 +6060,7 @@ async function confirmarAperturaCaja(){
   if(v===''||Number(v)<0){ toast('Escribe el efectivo inicial (puede ser 0)',true); return; }
   const fondo=Number(v)||0;
   const btn=document.getElementById('btnAbrirCaja'); btn.disabled=true;
-  const fecha=fechaLocalISO(new Date());
+  const fecha=hoyChile();
   const row={fecha,estado:'abierta',abierta_at:new Date().toISOString(),abierta_por:SESSION.usuario,fondo_inicial:fondo,
     cerrada_at:null,cerrada_por:null,total_esperado:0,total_contado:null,diferencia:null};
   const {data:existe}=await supa.from('cierres_caja').select('id,abierta_at').eq('fecha',fecha).limit(1);
@@ -5973,7 +6198,7 @@ function abrirModalCierreCaja(modo='dia'){
   const fila=d=>`<div class="denom-row"><span>${money(d)}</span><input type="number" min="0" step="1" inputmode="numeric" data-d="${d}" placeholder="0" oninput="sumarConteoCaja()"></div>`;
   const quien=TURNO_ACTUAL?(TURNO_ACTUAL.cajero_nombre||nombreUsuario(TURNO_ACTUAL.cajero)):'';
   document.getElementById('modalContent').innerHTML=`
-    <h3>${modo==='turno'?`Cerrar turno ${TURNO_ACTUAL.numero} · ${escapeHtml(quien)}`:'Cerrar caja del día'}</h3>
+    <h3>${modo==='turno'?`Cerrar turno ${TURNO_ACTUAL.numero} · ${escapeHtml(quien)}`:`Cerrar caja del ${escapeHtml(fechaLarga(CAJA_HOY?.fecha,true))}`}</h3>
     ${modo==='dia'&&TURNO_ACTUAL?`<div class="sub-xs" style="margin-bottom:6px;">También se cierra el turno ${TURNO_ACTUAL.numero} de ${escapeHtml(quien)} con este mismo conteo.</div>`:''}
     <div style="font-size:13px;color:var(--text2);margin-bottom:4px;">Cuenta el efectivo del cajón y escribe <b>cuántos</b> billetes y monedas hay de cada uno. Después verás si cuadra.</div>
     <div class="sub-xs" style="font-weight:700;margin-top:10px;">Billetes</div>
@@ -6159,7 +6384,7 @@ function mostrarResultadoCierre(c,t){
 }
 async function reabrirCaja(){
   if(SESSION?.rol!=='admin') return;
-  if(!CAJA_HOY||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
+  if(!CAJA_HOY||CAJA_HOY._vieja||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
   const {error}=await supa.from('cierres_caja').update({estado:'abierta',cerrada_at:null,cerrada_por:null,total_contado:null,diferencia:null,conteo:null}).eq('id',CAJA_HOY.id);
   if(error){ toast('No se pudo reabrir: '+error.message,true); return; }
   logAudit('Caja reabierta','caja',CAJA_HOY.fecha);
@@ -6664,7 +6889,7 @@ function verMovimientosCuenta(codigo,sinRecargar){
 
 function abrirModalSaldosIniciales(){
   const r=CUENTAS_VIEW.data; if(!r) return;
-  const hoy=fechaLocalISO(new Date());
+  const hoy=hoyChile();
   document.getElementById('modalContent').innerHTML=`
     <h3>Saldos iniciales</h3>
     <div style="font-size:13px;color:var(--text2);">Escribe cuánto hay en cada cuenta en la fecha indicada. El sistema suma y resta desde ese día. Si cambias un saldo o una fecha, se recalcula todo desde ahí.</div>
@@ -6725,7 +6950,7 @@ async function guardarConciliacion(codigo,sis){
   const notas=sanitize(document.getElementById('concNotas').value)||null;
   const ajustar=document.getElementById('concAjustar').checked&&dif!==0;
   const btn=document.getElementById('btnConc'); btn.disabled=true;
-  const hoy=fechaLocalISO(new Date());
+  const hoy=hoyChile();
   const {error}=await supa.from('conciliaciones').insert({cuenta:codigo,fecha:hoy,saldo_sistema:sis,saldo_real:real,diferencia:dif,ajustado:ajustar,notas,registrado_por:SESSION.usuario}).select('id');
   if(error){ btn.disabled=false; toast('Error: '+error.message,true); return; }
   if(ajustar){
@@ -6739,7 +6964,7 @@ async function guardarConciliacion(codigo,sis){
 
 function abrirModalMovimientoCuenta(tipo){
   const opts=Object.entries(CUENTAS_PAGO).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
-  const hoy=fechaLocalISO(new Date());
+  const hoy=hoyChile();
   const t={traspaso:'Traspaso entre cuentas',ingreso:'Ingreso a una cuenta',egreso:'Salida de una cuenta'}[tipo];
   document.getElementById('modalContent').innerHTML=`
     <h3>${t}</h3>
