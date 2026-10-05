@@ -2943,7 +2943,7 @@ function pdAgregarItem(){
   const cantidad=parseFloat(document.getElementById('pdCantidad').value);
   if(!cantidad||cantidad<=0){ toast('Ingresa una cantidad válida',true); return; }
   const precio=Number(sel.options[sel.selectedIndex].dataset.precio);
-  PD_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,precio_unitario:precio,subtotal:precio*cantidad});
+  PD_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,precio_unitario:precio,subtotal:Math.round(precio*cant)idad});
   document.getElementById('pdCantidad').value='';
   document.getElementById('pdItemsList').innerHTML=PD_ITEMS.map((i,idx)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;">${i.producto_nombre} x${i.cantidad} <b>${money(i.subtotal)}</b></div>`).join('');
 }
@@ -3145,7 +3145,7 @@ function recalcPedidoDetalle(){
   const cants=leerCantidadesPedidoDetalle();
   let total=0;
   PEDIDO_DET.items.forEach((it,i)=>{
-    const sub=(Number(it.precio_unitario)||0)*cants[i];
+    const sub=Math.round((Number(it.precio_unitario)||0)*cants[i]);
     total+=sub;
     const el=document.getElementById('pdiSub'+i);
     if(el) el.textContent=money(sub);
@@ -3162,14 +3162,15 @@ async function guardarPesosPedido({silencioso=false}={}){
   const cants=leerCantidadesPedidoDetalle();
   const delivery=leerDeliveryPedidoDetalle();
   const cambioDelivery=deliveryDetalleCambio(p);
-  const nuevoTotal=cants.reduce((s,c,i)=>s+(Number(PEDIDO_DET.items[i].precio_unitario)||0)*c,0)+delivery;
+  // pesos chilenos: cada línea se redondea al peso (Mercado Pago no acepta decimales)
+  const nuevoTotal=cants.reduce((s,c,i)=>s+Math.round((Number(PEDIDO_DET.items[i].precio_unitario)||0)*c),0)+Math.round(delivery);
   const cambios=PEDIDO_DET.items.map((it,i)=>({it,nueva:cants[i]})).filter(({it,nueva})=>Math.abs(nueva-Number(it.cantidad))>1e-9);
   if(!cambios.length&&!cambioDelivery&&Math.abs(nuevoTotal-Number(p.total))<0.5){ if(!silencioso) toast('No hay cambios que guardar'); return true; }
   // Orden deliberado: primero los items, el pedido (padre) al final. Sin
   // transacciones en PostgREST, si algo falla a mitad de camino los items
   // quedan consistentes y el total es recalculable desde ellos.
   for(const {it,nueva} of cambios){
-    const patch={cantidad:nueva,subtotal:(Number(it.precio_unitario)||0)*nueva};
+    const patch={cantidad:nueva,subtotal:Math.round((Number(it.precio_unitario)||0)*nueva)};
     // cantidad_original se fija SOLO en el primer ajuste: es lo que pidió el
     // cliente y no se puede pisar en ediciones posteriores.
     if(it.cantidad_original==null) patch.cantidad_original=Number(it.cantidad);
@@ -3320,7 +3321,7 @@ async function recalcularTotalPedido(p,accion){
     abrirPedidoDetalle(id); return;
   }
   // el delivery también es parte del total (no es un item)
-  const nuevoTotal=(items||[]).reduce((s,it)=>s+(Number(it.subtotal)||0),0)+costoDelivery(p);
+  const nuevoTotal=(items||[]).reduce((s,it)=>s+Math.round(Number(it.subtotal)||0),0)+Math.round(costoDelivery(p));
   const patch={total:nuevoTotal};
   // total_original = lo que pidió el cliente: se fija solo en el primer cambio
   if(p.total_original==null) patch.total_original=Number(p.total);
@@ -5257,7 +5258,7 @@ async function crearPreferenciaMP(p,token){
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
     body:JSON.stringify({
-      items:[{title:`Pedido #${p.id} - ${nombreNegocio()}`,quantity:1,unit_price:Number(p.total)||0,currency_id:'CLP'}],
+      items:[{title:`Pedido #${p.id} - ${nombreNegocio()}`,quantity:1,unit_price:Math.round(Number(p.total)||0),currency_id:'CLP'}],
       external_reference:'PQ-'+p.id
     })
   });
