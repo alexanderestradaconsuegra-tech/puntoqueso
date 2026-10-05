@@ -2809,7 +2809,7 @@ async function confirmarCobroPedido(){
     if(r>0) recibido=r;
     // el efectivo entra al cajón: caja y turno abiertos
     await cargarCajaHoy(); renderCajaBar();
-    if(!CAJA_HOY||CAJA_HOY._vieja||CAJA_HOY.estado!=='abierta'||!TURNO_ACTUAL){ toast('Para cobrar en efectivo abre la caja y tu turno (Terminal de ventas)',true); return; }
+    if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'||!TURNO_ACTUAL){ toast('Para cobrar en efectivo abre la caja y tu turno (Terminal de ventas)',true); return; }
     if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return; }
   }else await cargarCajaHoy();   // si hay turno abierto, la venta queda en él
   _cobrandoPedido=true;
@@ -5956,8 +5956,12 @@ async function cargarCajaHoy(){
     supa.from('cierres_caja').select('*').eq('fecha',hoy).limit(1)
   ]);
   if(hR.error){ console.error(hR.error); return CAJA_HOY; }
-  const vieja=(vR.data||[]).find(c=>c.abierta_at);
-  CAJA_HOY=vieja?{...vieja,_vieja:true}:((hR.data||[])[0]||null);
+  const viejas=(vR.data||[]).filter(c=>c.abierta_at);
+  if(viejas.length&&!_cerrandoViejas){
+    _cerrandoViejas=true;
+    try{ for(const c of viejas) await cerrarCajaViejaSola(c); }finally{ _cerrandoViejas=false; }
+  }
+  CAJA_HOY=(hR.data||[])[0]||null;
   // fila vieja (del cierre anterior a este módulo) sin apertura registrada: no cuenta como caja abierta
   if(CAJA_HOY&&!CAJA_HOY.abierta_at) CAJA_HOY=null;
   CAJA_TURNOS=[]; TURNO_ACTUAL=null;
@@ -5977,11 +5981,6 @@ function renderCajaBar(){
   if(!CAJA_HOY){
     bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Caja sin abrir</span>
       <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalAperturaCaja()">Abrir caja</button>`;
-    return;
-  }
-  if(CAJA_HOY._vieja){
-    bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Quedó abierta la caja del ${escapeHtml(fechaLarga(CAJA_HOY.fecha,true))}</span>
-      <button class="btn" style="padding:8px 12px;font-size:12.5px;" onclick="abrirModalCierreCaja('dia')">Cerrar esa caja</button>`;
     return;
   }
   if(CAJA_HOY.estado==='cerrada'){
@@ -6007,14 +6006,12 @@ function renderCajaBar(){
 async function verificarCajaTerminal(){
   await cargarCajaHoy();
   renderCajaBar();
-  if(CAJA_HOY&&CAJA_HOY._vieja&&currentPage==='terminal') avisoCajaVieja();
-  else if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
+  if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
   else if(CAJA_HOY&&CAJA_HOY.estado==='abierta'&&!TURNO_ACTUAL&&currentPage==='terminal') abrirModalTurno();
 }
 async function cajaAbiertaParaVender(rapido){
-  if(rapido&&CAJA_HOY&&!CAJA_HOY._vieja&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===hoyChile()&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
+  if(rapido&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===hoyChile()&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
   await cargarCajaHoy(); renderCajaBar();
-  if(CAJA_HOY&&CAJA_HOY._vieja){ avisoCajaVieja(); return false; }
   if(CAJA_HOY&&CAJA_HOY.estado==='abierta'){
     if(!TURNO_ACTUAL){ toast('Abre tu turno para vender',true); abrirModalTurno(); return false; }
     if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return false; }
@@ -6025,19 +6022,30 @@ async function cajaAbiertaParaVender(rapido){
   return false;
 }
 
-function avisoCajaVieja(){
-  const f=fechaLarga(CAJA_HOY.fecha,true);
-  document.getElementById('modalContent').innerHTML=`
-    <h3>Falta cerrar la caja del ${escapeHtml(f)}</h3>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Esa caja quedó abierta. Ciérrala contando el efectivo del cajón y después se abre la caja de hoy (<b>${escapeHtml(fechaLarga(hoyChile(),true))}</b>).</div>
-    <div class="actions">
-      <button class="btn secondary" onclick="closeModal()">Ahora no</button>
-      <button class="btn" onclick="abrirModalCierreCaja('dia')">Cerrar caja del ${escapeHtml(fechaLarga(CAJA_HOY.fecha))}</button>
-    </div>`;
-  document.getElementById('modalBg').style.display='flex';
+// Una caja de un día anterior que quedó abierta se cierra sola: con las ventas
+// de ESE día, sin conteo y sin diferencia (no se inventa un faltante).
+let _cerrandoViejas=false;
+async function cerrarCajaViejaSola(c){
+  try{
+    const ahora=new Date().toISOString();
+    const t=await calcularTotalesCaja(c,ahora);
+    const nota='Cerrada sola por el sistema: quedó abierta de un día anterior (sin conteo)';
+    const {data}=await supa.from('cierres_caja').update({estado:'cerrada',cerrada_at:ahora,cerrada_por:SESSION.usuario,
+      ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,
+      ventas_otro_mixto:0,ventas_mercadopago:t.ventas_mercadopago,ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
+      total_esperado:t.esperado,total_contado:t.esperado,diferencia:0,notas:nota}).eq('id',c.id).eq('estado','abierta').select('id');
+    const {data:trs}=await supa.from('turnos_caja').select('*').eq('cierre_id',c.id).eq('estado','abierto');
+    for(const tu of (trs||[])){
+      const tt=await calcularTotalesCaja(c,ahora,tu);
+      await supa.from('turnos_caja').update({estado:'cerrado',fin_at:ahora,cerrado_por:SESSION.usuario,
+        ventas_efectivo:tt.ventas_efectivo,ventas_transferencia:tt.ventas_transferencia,ventas_tarjeta:tt.ventas_tarjeta,ventas_mercadopago:tt.ventas_mercadopago,
+        ventas_cantidad:tt.ventas_cantidad,total_vendido:tt.total_vendido,retiros:tt.retiros,ingresos:tt.ingresos,
+        total_esperado:tt.esperado,total_contado:tt.esperado,diferencia:0,notas:nota}).eq('id',tu.id).eq('estado','abierto');
+    }
+    if(data&&data.length) logAudit('Caja cerrada sola','caja',`${c.fecha} — quedó abierta; esperado ${money(t.esperado)}, sin conteo`);
+  }catch(e){ console.error('No se pudo cerrar la caja vieja',c.id,e); }
 }
 async function abrirModalAperturaCaja(){
-  if(CAJA_HOY&&CAJA_HOY._vieja) return avisoCajaVieja();
   // sugiere el efectivo que quedó contado en el último cierre
   const {data:ult}=await supa.from('cierres_caja').select('fecha,total_contado').eq('estado','cerrada').order('fecha',{ascending:false}).limit(1);
   const u=(ult||[])[0];
@@ -6230,10 +6238,15 @@ async function calcularTotalesCaja(caja,hasta,turno){
   let q=supa.from('ventas').select('id,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago,registrado_por,created_at,boleta_numero').eq('anulada',false);
   let qm=supa.from('caja_movimientos').select('*').eq('cierre_id',caja.id).order('created_at');
   if(turno){ q=q.eq('turno_id',turno.id); qm=qm.eq('turno_id',turno.id); }
-  else{ q=q.gte('created_at',caja.abierta_at); if(hasta) q=q.lte('created_at',hasta); }
+  else{
+    // una caja es de UN día: nunca suma ventas de días siguientes (aunque se cierre tarde)
+    const finDia=new Date(Date.parse(caja.fecha+'T00:00:00Z')+29*3600e3).toISOString();
+    q=q.gte('created_at',caja.abierta_at).lte('created_at',hasta&&hasta<finDia?hasta:finDia);
+  }
   const [vR,mR]=await Promise.all([q.order('created_at'),qm]);
   if(vR.error) throw vR.error;
   if(mR.error) throw mR.error;
+  if(!turno&&caja.fecha) vR.data=(vR.data||[]).filter(v=>hoyChile(new Date(v.created_at))===caja.fecha);
   const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_mercadopago:0,ventas_otro_mixto:0,ventas_cantidad:0,ventas_mixtas:0,retiros:0,ingresos:0,total_vendido:0};
   (vR.data||[]).forEach(v=>{
     if(v.estado_pago==='pendiente') return;   // pedido facturado sin pagar: la plata aún no entra
@@ -6384,7 +6397,7 @@ function mostrarResultadoCierre(c,t){
 }
 async function reabrirCaja(){
   if(SESSION?.rol!=='admin') return;
-  if(!CAJA_HOY||CAJA_HOY._vieja||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
+  if(!CAJA_HOY||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
   const {error}=await supa.from('cierres_caja').update({estado:'abierta',cerrada_at:null,cerrada_por:null,total_contado:null,diferencia:null,conteo:null}).eq('id',CAJA_HOY.id);
   if(error){ toast('No se pudo reabrir: '+error.message,true); return; }
   logAudit('Caja reabierta','caja',CAJA_HOY.fecha);
