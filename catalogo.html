@@ -442,7 +442,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
   .slide.s-photo.claro::before{background:linear-gradient(90deg,rgba(253,198,3,.95) 0%,rgba(253,198,3,.75) 30%,rgba(253,198,3,0) 50%);}
   .tiles.n2,.tiles.n4{grid-template-columns:repeat(2,1fr);}
   .car-btn{display:flex;}
-  .slide.s-photo{background-size:cover;background-position:right center;align-items:center;min-height:440px;padding-top:48px;padding-bottom:64px;}
+  .slide.s-photo{background-size:cover;background-position:var(--fxpc,right) center;align-items:center;min-height:440px;padding-top:48px;padding-bottom:64px;}
   .slide.s-photo .slide-tag{font-size:15px;padding:6px 14px;margin-bottom:14px;}
   .slide.s-photo p{font-size:17px;margin-bottom:20px;}
   .slide.s-photo::before{background:linear-gradient(90deg,rgba(11,10,9,.9) 0%,rgba(11,10,9,.6) 38%,rgba(11,10,9,0) 60%);}
@@ -811,6 +811,9 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-photo claro',foto:'hero-arepa',tag:'Sabor de casa',titulo:'El queso que tu arepa <em>estaba extrañando</em>',
    texto:'Llanero, de mano, palmita, guayanés, trenza y más. Quesos venezolanos artesanales, frescos y listos para llegar a tu mesa hoy.',
    cta:'Quiero mi queso',accion:'menu',pic:'ve'},
+  {tema:'s-photo',foto:'queso-paisa',fx:'78%',fxpc:'30%',tag:'Laminado · Bajo en sal',titulo:'Queso <em>paisa</em>',
+   texto:'Blanco pasteurizado, suave y fresco. En láminas listas para tu sándwich o arepa: ideal para una alimentación equilibrada.',
+   cta:'Pedir queso paisa',accion:'buscar:paisa',pic:'ve'},
   {tema:'s-photo',foto:'fiambres-quesos',tag:'Todo en un pedido',titulo:'Tu mesa completa <em>sin salir de casa</em>',
    texto:'Suma quesos maduros, mortadela, salame y más. Lo pesamos al preparar y te confirmamos el total por WhatsApp antes de pagar.',
    cta:'Armar mi pedido',accion:'menu',pic:'ve2'},
@@ -1003,7 +1006,7 @@ function renderCarrusel(){
   document.getElementById('carTrack').innerHTML=SLIDES.map((s,i)=>{
     const src=imgParaSlide(s.pic);
     const H=i===0?'h1':'h2';
-    const estilo=s.foto?` style="--foto:url('${s.foto}.webp')${s.fx?`;--fx:${s.fx}`:''}"`:'';
+    const estilo=s.foto?` style="--foto:url('${s.foto}.webp')${s.fx?`;--fx:${s.fx}`:''}${s.fxpc?`;--fxpc:${s.fxpc}`:''}"`:'';
     return `<div class="slide ${s.tema}"${estilo} role="group" aria-roledescription="diapositiva" aria-label="${i+1} de ${SLIDES.length}">
       <div class="slide-copy">
         <span class="slide-tag">${esc(s.tag)}</span>
@@ -1047,6 +1050,11 @@ function accionSlide(a){
     const n=numeroWhatsApp();
     if(n){ window.open(`https://wa.me/${n}?text=${encodeURIComponent('Hola! Quiero cotizar precios por mayor')}`,'_blank','noopener'); return; }
     document.getElementById('contacto').scrollIntoView({behavior:'smooth'}); return;
+  }
+  if(a.startsWith('buscar:')){
+    const q=document.getElementById('buscarInput');
+    if(q){ q.value=a.slice(7); renderGrid(); }
+    document.getElementById('menu').scrollIntoView({behavior:'smooth'}); return;
   }
   if(a==='ve'){ const c=categorias().find(ES_VE); if(c){ irACategoria(c); return; } }
   document.getElementById('menu').scrollIntoView({behavior:'smooth'});
