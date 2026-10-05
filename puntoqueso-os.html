@@ -1562,7 +1562,7 @@ async function renderDashboard(){
 
   const [ventR,gasR,pendR]=await Promise.all([
     supa.from('ventas').select('total,created_at').eq('anulada',false).gte('created_at',desdeVentas.toISOString()),
-    supa.from('gastos').select('monto,categoria,fecha,fecha_pago,estado_pago').or(`(fecha.gte.${monthISO},fecha_pago.gte.${monthISO})`),
+    supa.from('gastos').select('monto,categoria,fecha,fecha_pago,estado_pago,recurrente_id').or(`(fecha.gte.${monthISO},fecha_pago.gte.${monthISO})`),
     supa.from('gastos').select('monto').eq('estado_pago','pendiente'),
   ]);
   if(ventR.error){ console.error(ventR.error); toast('Error cargando ventas del Dashboard: '+ventR.error.message,true); }
@@ -1582,8 +1582,15 @@ async function renderDashboard(){
   const porPagar=(pendR.data||[]).reduce((s,g)=>s+Number(g.monto||0),0);
   // Gastos de operación del mes (arriendo, luz, sueldos…; pagados o por pagar, por la fecha del gasto).
   // No entran: mercadería (ya está en el costo de lo vendido) ni delivery (se traspasa al motorizado).
-  const gastosOperacion=gastosRows.filter(g=>String(g.fecha)>=monthISO&&!['mercaderia','delivery'].includes(g.categoria))
-    .reduce((s,g)=>s+Number(g.monto||0),0);
+  // Los gastos FIJOS del mes (arriendo, sueldos, servicios, contador, IVA, recurrentes) se pagan
+  // de una vez pero son de todo el mes: se cuentan en proporción a los días que van. Si no,
+  // el día 5 se comparaban 5 días de ventas contra el arriendo completo y salía pérdida falsa.
+  const diaMes=Number(hoyChile().slice(8,10)), diasMes=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const esFijo=g=>g.recurrente_id!=null||['arriendo','personal','servicios','contador','iva'].includes(g.categoria);
+  const gOp=gastosRows.filter(g=>String(g.fecha)>=monthISO&&!['mercaderia','delivery'].includes(g.categoria));
+  const fijosMes=gOp.filter(esFijo).reduce((s,g)=>s+Number(g.monto||0),0);
+  const variables=gOp.filter(g=>!esFijo(g)).reduce((s,g)=>s+Number(g.monto||0),0);
+  const gastosOperacion={total:Math.round(variables+fijosMes*diaMes/diasMes),fijosMes,variables,diaMes,diasMes};
   const bajoStock=DB.productos.filter(p=>Number(p.stock)<=Number(p.stock_minimo||0));
   const pendientes=DB.pedidos.filter(p=>p.estado==='pendiente');
 
@@ -1592,7 +1599,7 @@ async function renderDashboard(){
     <div class="kpi-card"><div class="kpi-label">Ventas esta semana</div><div class="kpi-value num">${money(totalSemana)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Ventas este mes</div><div class="kpi-value num">${money(totalVentasMes)}</div></div>
     <div class="kpi-card"><div class="kpi-label">Gastos pagados este mes</div><div class="kpi-value num">${money(totalGastosMes)}</div><div class="kpi-sub">${porPagar>0?`Por pagar: ${money(porPagar)}`:'Nada por pagar'}</div></div>
-    ${canDo('verCostos')?`<div class="kpi-card" id="kpiGananciaMes" title="Margen bruto (ventas − costo de lo vendido) − gastos de operación del mes (sin mercadería ni delivery)"><div class="kpi-label">Ganancia del mes</div><div class="kpi-value num">…</div><div class="kpi-sub">margen − gastos de operación</div></div>`:''}
+    ${canDo('verCostos')?`<div class="kpi-card" id="kpiGananciaMes" title="Margen bruto (ventas − costo de lo vendido) − gastos de operación. Los gastos fijos del mes (arriendo, sueldos, servicios…) se cuentan según los días que van del mes."><div class="kpi-label">Ganancia del mes</div><div class="kpi-value num">…</div><div class="kpi-sub">margen − gastos de operación</div></div>`:''}
     ${canDo('verCostos')?'<div class="kpi-card" id="kpiMargenBrutoMes"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num">…</div></div>':''}
     <div class="kpi-card"><div class="kpi-label">Pedidos pendientes</div><div class="kpi-value num">${pendientes.length}</div></div>
     <div class="kpi-card"><div class="kpi-label">Stock bajo</div><div class="kpi-value num" style="color:${bajoStock.length?'var(--danger)':'inherit'}">${bajoStock.length}</div></div>
@@ -1700,10 +1707,12 @@ async function renderChartTopProductos(mesD,gastosOperacion){
     kpiMargen.querySelector('.kpi-value').style.color=margenBruto<0?'var(--danger)':'var(--ok)';
     const kg=document.getElementById('kpiGananciaMes');
     if(kg){
-      const g=margenBruto-(Number(gastosOperacion)||0);
+      const go=gastosOperacion||{total:0,fijosMes:0,variables:0};
+      const g=margenBruto-go.total;
       kg.querySelector('.kpi-value').textContent=money(g);
       kg.querySelector('.kpi-value').style.color=g<0?'var(--danger)':'var(--ok)';
-      kg.querySelector('.kpi-sub').textContent=`margen ${money(margenBruto)} − gastos ${money(gastosOperacion)}`;
+      kg.querySelector('.kpi-sub').innerHTML=`margen ${money(margenBruto)} − gastos ${money(go.total)}`+
+        (go.fijosMes?`<br>fijos del mes ${money(go.fijosMes)}: van ${go.diaMes} de ${go.diasMes} días`:'');
     }
   }
   if(!items.length){ el.innerHTML='<p class="empty">Aún no hay ventas este mes</p>'; return; }
