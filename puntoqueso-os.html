@@ -5557,11 +5557,11 @@ function renderProveedores(){
     </td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin proveedores</td></tr>';
   document.getElementById('facturasCompraBody').innerHTML=DB.facturasCompra.map(f=>`
     <tr><td>${f.proveedor_nombre||'-'}</td><td>${f.numero_factura||'-'}</td>
-    <td>${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td class="num">${money(f.total)}</td>
-    <td><span class="badge ${f.estado_pago==='pagada'?'pagado':'pendiente'}">${f.estado_pago==='pagada'?'Pagada':'Pendiente'}</span></td>
+    <td>${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td class="num">${money(f.total)}${f.estado_pago!=='pagada'&&Number(f.pagado)>0?`<div class="sub-xs">Abonado ${money(f.pagado)}<br><b style="color:var(--danger);">Debe ${money(Number(f.total)-Number(f.pagado))}</b></div>`:''}</td>
+    <td><span class="badge ${f.estado_pago==='pagada'?'pagado':'pendiente'}">${f.estado_pago==='pagada'?'Pagada':Number(f.pagado)>0?'Abonada':'Pendiente'}</span></td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openFacturaCompraModal(${f.id})">Editar</button>
-      ${f.estado_pago!=='pagada'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="marcarFacturaPagada(${f.id})">Marcar pagada</button>`:''}
+      ${f.estado_pago!=='pagada'?`<button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirAbonoFactura(${f.id})">Pagar / abonar</button>`:Number(f.pagado)>0&&!f.gasto_id?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirAbonoFactura(${f.id})">Ver pagos</button>`:''}
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarFacturaCompra(${f.id})">Eliminar</button>
     </td></tr>`).join('')||'<tr><td colspan="6" class="empty">Sin facturas de compra</td></tr>';
 }
@@ -5659,6 +5659,11 @@ async function openFacturaCompraModal(editId){
     if(f.gasto_id){ const {data:g}=await supa.from('gastos').select('cuenta').eq('id',f.gasto_id).limit(1); if(g&&g[0]&&g[0].cuenta) cuentaActual=g[0].cuenta; }
     document.getElementById('fcCuenta').value=cuentaActual;
     fcSetEstadoPago(f.estado_pago==='pagada'?'pagada':'pendiente');
+    if(Number(f.pagado)>0&&!f.gasto_id){   // con abonos: los pagos se manejan en "Pagar / abonar"
+      const pm=document.querySelector('#modalContent .pay-methods');
+      if(pm){ pm.style.display='none'; pm.insertAdjacentHTML('afterend',`<div class="sub-xs" style="margin:4px 0 8px;">Tiene abonos por ${money(f.pagado)}: los pagos se manejan con "Pagar / abonar".</div>`); }
+      const w=document.getElementById('fcCuentaWrap'); if(w) w.style.display='none';
+    }
     const {data,error}=await supa.from('factura_compra_items').select('*').eq('factura_id',f.id).order('id');
     if(error){ toast('No se pudieron cargar los productos de la factura: '+error.message,true); closeModal(); return; }
     FC_ITEMS=(data||[]).map(i=>({producto_id:i.producto_id,producto_nombre:i.producto_nombre,cantidad:Number(i.cantidad),costo_unitario:Number(i.costo_unitario),subtotal:Math.round(Number(i.cantidad)*Number(i.costo_unitario)),sin_match:!i.producto_id}));
@@ -5921,6 +5926,67 @@ async function generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,cue
   }).select();
   if(error){ console.error('generarGastoDesdeFactura',error); toast('La factura se guardó, pero no se pudo crear el gasto automático: '+error.message,true); return; }
   await supa.from('facturas_compra').update({gasto_id:gs[0].id}).eq('id',factura.id);
+}
+// ── Abonos (pagos parciales) a facturas de proveedor ──
+// Cada abono es un gasto de mercadería desde la cuenta elegida; la factura queda
+// "pagada" cuando los abonos suman el total.
+async function abrirAbonoFactura(id){
+  const [fR,aR]=await Promise.all([supa.from('facturas_compra').select('*').eq('id',id).limit(1),
+    supa.from('abonos_factura').select('*').eq('factura_id',id).order('fecha').order('id')]);
+  if(aR.error){ toast('Falta instalar los abonos en el servidor (migración 031): '+aR.error.message,true); return; }
+  const f=(fR.data||[])[0]; if(!f) return;
+  const abonos=aR.data||[];
+  const pagado=Number(f.pagado)||0, saldo=Math.max(0,Number(f.total)-pagado);
+  const ctaTxt=c=>CUENTAS_PAGO?.[c]||c;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${f.estado_pago==='pagada'?'Pagos':'Pagar / abonar'} · ${escapeHtml(f.proveedor_nombre||'')}</h3>
+    <div class="sub-xs">Factura ${escapeHtml(f.numero_factura?'N° '+f.numero_factura:'#'+f.id)} del ${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}</div>
+    <div class="caja-linea" style="margin-top:10px;"><span>Total factura</span><b class="num">${money(f.total)}</b></div>
+    <div class="caja-linea"><span>Abonado</span><b class="num">${money(pagado)}</b></div>
+    <div class="caja-linea"><span><b>Debe</b></span><b class="num" style="color:${saldo>0?'var(--danger)':'var(--ok)'};font-size:17px;">${money(saldo)}</b></div>
+    ${abonos.length?`<div style="margin-top:10px;font-weight:800;font-size:13px;">Abonos</div>
+      ${abonos.map((a,i)=>`<div class="caja-linea"><span>${i+1}. ${new Date(a.fecha+'T12:00:00').toLocaleDateString('es-CL')} · ${escapeHtml(ctaTxt(a.cuenta))}${a.notas?` <span class="sub-xs">${escapeHtml(a.notas)}</span>`:''}</span>
+        <span style="display:flex;align-items:center;gap:8px;"><b class="num">${money(a.monto)}</b><button class="btn danger" style="padding:3px 8px;font-size:11px;" title="Quitar abono" onclick="quitarAbonoFactura(${a.id},${f.id})">✕</button></span></div>`).join('')}`:''}
+    ${saldo>0?`
+    <div style="margin-top:12px;padding:10px;border:1px solid var(--border2);border-radius:var(--r-sm);">
+      <label style="margin-top:0;">Monto a pagar ahora</label>
+      <input type="number" id="abMonto" min="1" step="1" inputmode="numeric" value="${Math.round(saldo)}" oninput="pintarAbonoBtn(${saldo})">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div><label>Pagado desde</label>${selectCuentaPago('abCuenta','bancoestado')}</div>
+        <div><label>Fecha</label><input type="date" id="abFecha" value="${hoyChile()}" max="${hoyChile()}"></div>
+      </div>
+      <label>Nota (opcional)</label><input id="abNota" maxlength="120" placeholder="Ej: transferencia, cheque…">
+    </div>`:''}
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      ${saldo>0?`<button class="btn" id="btnAbono" onclick="confirmarAbonoFactura(${f.id})">Pagar todo (${money(saldo)})</button>`:''}
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function pintarAbonoBtn(saldo){
+  const m=Number(document.getElementById('abMonto')?.value)||0, b=document.getElementById('btnAbono'); if(!b) return;
+  b.textContent=m>=saldo-0.5?`Pagar todo (${money(saldo)})`:`Registrar abono de ${money(m)}`;
+}
+async function confirmarAbonoFactura(id){
+  const monto=Math.round(Number(document.getElementById('abMonto').value)||0);
+  if(!(monto>0)){ toast('Escribe el monto',true); return; }
+  const btn=document.getElementById('btnAbono'); btn.disabled=true;
+  const {data,error}=await supa.rpc('abonar_factura',{p_id:id,p_monto:monto,p_cuenta:document.getElementById('abCuenta').value,
+    p_fecha:document.getElementById('abFecha').value||null,p_usuario:SESSION.usuario,p_notas:sanitize(document.getElementById('abNota').value)||null});
+  btn.disabled=false;
+  if(error){ toast('No se pudo registrar: '+error.message,true); return; }
+  logAudit('Abono a factura de compra','proveedores',`Factura #${id}: ${money(monto)} · abonado ${money(data.abonado)} · debe ${money(data.saldo)}`);
+  toast(data.estado_pago==='pagada'?'Factura pagada completa':`Abono registrado · debe ${money(data.saldo)}`);
+  await loadAll(); renderProveedores(); if(typeof renderGastos==='function') renderGastos();
+  abrirAbonoFactura(id);
+}
+async function quitarAbonoFactura(abonoId,facturaId){
+  if(!confirm('¿Quitar este abono? Se borra también su gasto y la factura vuelve a deber ese monto.')) return;
+  const {error}=await supa.rpc('eliminar_abono_factura',{p_abono:abonoId});
+  if(error){ toast('No se pudo quitar: '+error.message,true); return; }
+  logAudit('Abono a factura quitado','proveedores',`Factura #${facturaId}, abono #${abonoId}`);
+  toast('Abono quitado'); await loadAll(); renderProveedores(); if(typeof renderGastos==='function') renderGastos();
+  abrirAbonoFactura(facturaId);
 }
 function marcarFacturaPagada(id){
   const f=DB.facturasCompra.find(x=>x.id===id);
