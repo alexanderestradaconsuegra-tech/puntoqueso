@@ -799,7 +799,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
     <!-- CUENTAS -->
     <div class="view" id="view-cuentas">
       <div class="topbar"><div><h2>Cuentas</h2><div class="sub">Cuánto debería haber en Efectivo, BancoEstado y Mercado Pago, y conciliación con el saldo real</div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div id="cuentasAcciones" style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn secondary" onclick="abrirModalMovimientoCuenta('traspaso')">Traspaso</button>
           <button class="btn secondary" onclick="abrirModalMovimientoCuenta('ingreso')">+ Ingreso</button>
           <button class="btn secondary" onclick="abrirModalMovimientoCuenta('egreso')">− Salida</button>
@@ -1239,6 +1239,8 @@ Object.defineProperty(window,'currentUser',{get:()=>SESSION});
 function canDo(permKey){
   if(!SESSION) return false;
   if(SESSION.rol==='admin') return true;
+  // Encargado: todo el trabajo del día; usuarios y permisos quedan para el dueño
+  if(SESSION.rol==='encargado') return permKey!=='gestionarUsuarios';
   return !!(SESSION.permisos && SESSION.permisos[permKey]===true);
 }
 
@@ -1364,8 +1366,12 @@ function closeSheet(){ document.getElementById('sheetBg')?.classList.remove('ope
 // ══════════════════════════════════════════════════════════
 // Cuentas y Configuración son solo del dueño (rol Admin)
 function esDueno(){ return SESSION?.rol==='admin'; }
+function esEncargado(){ return SESSION?.rol==='encargado'; }
+// Dueño o encargado: secciones de trabajo (Clientes web, Delivery). Cuentas: el encargado
+// solo ve los saldos que el dueño concilió; Configuración es solo del dueño.
+function esJefe(){ return esDueno()||esEncargado(); }
 function nav(view){
-  if((view==='config'||view==='cuentas'||view==='clientesweb'||view==='delivery')&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
+  if((view==='config'&&!esDueno())||((view==='cuentas'||view==='clientesweb'||view==='delivery')&&!esJefe())){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
   if(view==='toma'&&!canDo('editarInventario')){ toast('No tienes permiso para el inventario',true); view='productos'; }
   currentPage=view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
@@ -1513,10 +1519,10 @@ async function iniciarApp(){
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
-  document.getElementById('navCuentas').style.display=esDueno()?'flex':'none';
+  document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
-  document.getElementById('navClientesWeb').style.display=esDueno()?'flex':'none';
-  document.getElementById('navDelivery').style.display=esDueno()?'flex':'none';
+  document.getElementById('navClientesWeb').style.display=esJefe()?'flex':'none';
+  document.getElementById('navDelivery').style.display=esJefe()?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -5439,7 +5445,8 @@ function openUsuarioModal(id){
     <label>Rol</label>
     <select id="usRol">
       <option value="vendedor" ${u&&u.rol==='vendedor'?'selected':''}>Vendedor</option>
-      <option value="admin" ${u&&u.rol==='admin'?'selected':''}>Admin</option>
+      <option value="encargado" ${u&&u.rol==='encargado'?'selected':''}>Encargado (todo menos usuarios, configuración y saldos al día)</option>
+      <option value="admin" ${u&&u.rol==='admin'?'selected':''}>Admin (dueño)</option>
     </select>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
       <input type="checkbox" id="usActivo" style="width:16px;height:16px;" ${!u||u.activo?'checked':''}> Activo
@@ -6142,7 +6149,7 @@ function renderCajaBar(){
   if(CAJA_HOY.estado==='cerrada'){
     bar.innerHTML=`<span class="caja-chip cerrada"><span class="dot"></span>Caja de hoy cerrada</span>
       <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="imprimirReporteCierre(${CAJA_HOY.id})">Ver reporte</button>
-      ${SESSION?.rol==='admin'?`<button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="reabrirCaja()">Reabrir</button>`:''}`;
+      ${esJefe()?`<button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="reabrirCaja()">Reabrir</button>`:''}`;
     return;
   }
   const b='padding:8px 12px;font-size:12.5px;';
@@ -6552,7 +6559,7 @@ function mostrarResultadoCierre(c,t){
   document.getElementById('modalBg').style.display='flex';
 }
 async function reabrirCaja(){
-  if(SESSION?.rol!=='admin') return;
+  if(!esJefe()) return;
   if(!CAJA_HOY||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
   const {error}=await supa.from('cierres_caja').update({estado:'abierta',cerrada_at:null,cerrada_por:null,total_contado:null,diferencia:null,conteo:null}).eq('id',CAJA_HOY.id);
   if(error){ toast('No se pudo reabrir: '+error.message,true); return; }
@@ -6959,6 +6966,23 @@ const NOMBRE_MEDIO={monto_efectivo:'Ventas en efectivo',monto_transferencia:'Ven
 
 function inicioISO(fecha){ const [y,m,d]=fecha.split('-').map(Number); return new Date(y,m-1,d).toISOString(); }
 
+// Encargado: solo el saldo REAL que el dueño contó en su última conciliación de cada
+// cuenta (con fecha). Lo que pasó después no se ve hasta la próxima conciliación.
+async function renderCuentasConciliadas(){
+  const acc=document.getElementById('cuentasAcciones'); if(acc) acc.style.display='none';
+  document.getElementById('cuentasAviso').innerHTML=`<div class="card" style="padding:12px 16px;margin-bottom:14px;">Saldos de la última conciliación hecha por el dueño. Se actualizan cuando el dueño vuelve a conciliar.</div>`;
+  const cont=document.getElementById('cuentasCards');
+  cont.innerHTML='<div class="empty">Cargando…</div>';
+  const {data,error}=await supa.from('conciliaciones').select('cuenta,fecha,saldo_real,created_at').order('fecha',{ascending:false}).order('id',{ascending:false}).limit(200);
+  if(error){ cont.innerHTML=`<div class="empty">Error: ${escapeHtml(error.message)}</div>`; return; }
+  const ult={}; (data||[]).forEach(c=>{ if(!ult[c.cuenta]) ult[c.cuenta]=c; });
+  cont.innerHTML=Object.entries(CUENTAS_PAGO).map(([k,nom])=>{ const c=ult[k];
+    return `<div class="card" style="padding:16px;"><div class="kpi-label">${escapeHtml(nom)}</div>
+      <div class="kpi-value num">${c?money(c.saldo_real):'—'}</div>
+      <div class="sub-xs">${c?'Conciliado el '+new Date(c.fecha+'T12:00:00').toLocaleDateString('es-CL'):'Aún sin conciliar'}</div></div>`; }).join('');
+  document.getElementById('cuentaMovsTitulo').textContent='Movimientos';
+  document.getElementById('cuentaMovs').innerHTML='<div class="empty">Los movimientos los ve solo el dueño.</div>';
+}
 async function calcularCuentas(){
   const {data:cuentas,error}=await supa.from('cuentas').select('*').order('orden');
   if(error) throw error;
@@ -7017,6 +7041,8 @@ async function calcularCuentas(){
 }
 
 async function renderCuentas(){
+  if(esEncargado()) return renderCuentasConciliadas();
+  const acc=document.getElementById('cuentasAcciones'); if(acc) acc.style.display='flex';
   const cont=document.getElementById('cuentasCards');
   cont.innerHTML='<div class="empty">Calculando…</div>';
   let r;
@@ -7216,10 +7242,10 @@ async function confirmarCajeroPin(){
   document.getElementById('navAuditoria').style.display=canDo('gestionarUsuarios')?'flex':'none';
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
-  document.getElementById('navCuentas').style.display=esDueno()?'flex':'none';
+  document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
-  document.getElementById('navClientesWeb').style.display=esDueno()?'flex':'none';
-  document.getElementById('navDelivery').style.display=esDueno()?'flex':'none';
+  document.getElementById('navClientesWeb').style.display=esJefe()?'flex':'none';
+  document.getElementById('navDelivery').style.display=esJefe()?'flex':'none';
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
@@ -7227,7 +7253,7 @@ async function confirmarCajeroPin(){
   toast(`Ahora operando como ${SESSION.nombre}`);
   closeCajeroSwitch();
   renderCajaBar();
-  if((currentPage==='config'||currentPage==='cuentas'||currentPage==='clientesweb'||currentPage==='delivery')&&!esDueno()) nav('terminal');
+  if((currentPage==='config'&&!esDueno())||((currentPage==='cuentas'||currentPage==='clientesweb'||currentPage==='delivery')&&!esJefe())) nav('terminal');
 }
 
 // ══════════════════════════════════════════════════════════
