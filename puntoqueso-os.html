@@ -1397,7 +1397,7 @@ function nav(view){
 // ══════════════════════════════════════════════════════════
 // ── Fotos de productos: se descargan una sola vez y quedan en memoria ──
 // (antes venían en cada loadAll y eran varios MB cada vez que se cobraba o guardaba algo)
-const PRODUCTO_COLS='id,nombre,categoria,unidad,precio,stock,stock_minimo,sku,codigo_barras,vender_por_peso,activo,created_at,updated_at,costo,descripcion,precio_mayor,en_catalogo,favorito,orden,destacado_web,pieza_nombre,pieza_contenido,pieza_precio';
+const PRODUCTO_COLS='id,nombre,categoria,unidad,precio,stock,stock_minimo,sku,codigo_barras,vender_por_peso,activo,created_at,updated_at,costo,descripcion,precio_mayor,en_catalogo,favorito,orden,destacado_web,pieza_nombre,pieza_contenido,pieza_precio,corte_opcion';
 const IMG_PROD=new Map(); let _imgsCargadas=false, _imgsCargando=null;
 function imgDe(p){ return p?(IMG_PROD.get(p.id)||p.imagen_b64||null):null; }
 function cargarImagenesProductos(){
@@ -4672,6 +4672,27 @@ async function onProductoFotoChange(input){
     renderProductoFotoPreview();
   }catch(e){ toast('No se pudo procesar la imagen: '+e.message,true); }
 }
+// Foto de la pieza completa: se lee al abrir la ficha (no viaja con la lista de productos)
+let _piezaImg=null, _piezaImgOrig=null, _piezaImgId=null;
+async function cargarFotoPieza(id){
+  const {data}=await supa.from('productos').select('pieza_imagen_b64').eq('id',id).limit(1);
+  if(_piezaImgId!==id) return;
+  _piezaImg=_piezaImgOrig=(data&&data[0]&&data[0].pieza_imagen_b64)||null;
+  renderPiezaFotoPreview();
+}
+async function onPiezaFotoChange(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  try{ _piezaImg=await comprimirImagen(file); renderPiezaFotoPreview(); }
+  catch(e){ toast('No se pudo procesar la imagen: '+e.message,true); }
+}
+function quitarPiezaFoto(){
+  _piezaImg=null; const i=document.getElementById('prPiezaFotoInput'); if(i) i.value='';
+  renderPiezaFotoPreview();
+}
+function renderPiezaFotoPreview(){
+  const box=document.getElementById('prPiezaFotoPreview'); if(!box) return;
+  box.innerHTML=_piezaImg?`<img class="prod-foto-preview" src="${_piezaImg}" alt="">`:`<div class="prod-foto-preview-ph">📷</div>`;
+}
 function quitarProductoFoto(){
   _prodImagenB64=null;
   const input=document.getElementById('prFotoInput');
@@ -4688,6 +4709,8 @@ function renderProductoFotoPreview(){
 function openProductoModal(id){
   const p=id?DB.productos.find(x=>x.id===id):{};
   _prodImagenB64=imgDe(p); _prodImagenOrig=_prodImagenB64;
+  _piezaImg=null; _piezaImgOrig=null; _piezaImgId=id||null;
+  if(id) cargarFotoPieza(id);
   document.getElementById('modalContent').innerHTML=`
     <h3>${id?'Editar':'Nuevo'} producto</h3>
     <label>Nombre</label><input id="prNombre" value="${p.nombre||''}">
@@ -4719,6 +4742,10 @@ function openProductoModal(id){
       <input type="checkbox" id="prVenderPeso" style="width:16px;height:16px;" ${p.vender_por_peso?'checked':''} onchange="pintarAyudaPieza()">
       Se vende por peso (kg)
     </label>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+      <input type="checkbox" id="prCorte" style="width:16px;height:16px;" ${p.corte_opcion?'checked':''}>
+      Al detal el cliente elige: laminado o trozo
+    </label>
     <div style="margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--mint);">
       <div style="font-weight:800;font-size:13.5px;">Venta por pieza (precio por mayor)</div>
       <div class="sub-xs" style="margin:2px 0 6px;">Para vender la pieza entera: barra de queso, pieza de jamón, caja de bebidas… Sale en la tienda web en "Por pieza". Déjalo vacío si no se vende así.</div>
@@ -4732,6 +4759,14 @@ function openProductoModal(id){
       <label id="prPiezaPrecioLbl">${p.vender_por_peso?'Precio por mayor, por kg':'Precio de la pieza completa'}</label>
       <input oninput="pintarAyudaPieza()" id="prPiezaPrecio" type="number" step="1" min="0" placeholder="${p.vender_por_peso?'Ej: 8900':'Ej: 28000'}" value="${p.pieza_precio??''}">
       <div class="sub-xs" id="prPiezaAyuda" style="margin-top:4px;"></div>
+      <label>Foto de la pieza completa <span style="font-weight:500;color:var(--muted);">(opcional; si no hay, usa la foto del producto)</span></label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div id="prPiezaFotoPreview"><div class="prod-foto-preview-ph">📷</div></div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <input type="file" id="prPiezaFotoInput" accept="image/*" onchange="onPiezaFotoChange(this)">
+          <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="quitarPiezaFoto()">Quitar foto</button>
+        </div>
+      </div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
       <input type="checkbox" id="prEnCatalogo" style="width:16px;height:16px;" ${p.en_catalogo?'checked':''}>
@@ -4794,6 +4829,7 @@ async function guardarProducto(id){
     vender_por_peso:document.getElementById('prVenderPeso').checked,
     en_catalogo:document.getElementById('prEnCatalogo').checked,
     favorito:document.getElementById('prFavorito').checked,
+    corte_opcion:!!document.getElementById('prCorte')?.checked,
     ...leerPiezaProducto(),
     updated_at:new Date().toISOString()
   };
@@ -4801,6 +4837,7 @@ async function guardarProducto(id){
   // la foto solo viaja si cambió (pesa mucho y así no se pisa una foto que aún no cargaba)
   const fotoCambio=!id||(_prodImagenB64||null)!==(_prodImagenOrig||null);
   if(fotoCambio) row.imagen_b64=_prodImagenB64||null;
+  if((_piezaImg||null)!==(_piezaImgOrig||null)) row.pieza_imagen_b64=_piezaImg||null;
   // El stock solo se guarda si se cambió en esta ventana: así editar el precio
   // no pisa el stock real con el valor que la pantalla tenía guardado.
   const stEl=document.getElementById('prStock');

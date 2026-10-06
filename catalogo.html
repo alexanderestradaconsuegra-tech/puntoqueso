@@ -257,6 +257,9 @@ button{cursor:pointer;}
 .wpick{display:none;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
 .wpick.open{display:flex;}
 .wpick-chip{flex:1;min-width:52px;height:38px;border:1.5px solid var(--line-2);border-radius:10px;background:var(--paper);font-size:12.5px;font-weight:800;display:flex;align-items:center;justify-content:center;color:var(--ink);}
+.corte-sel{flex-basis:100%;display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--cream,#f6f1e3);}
+.corte-sel button{flex:1;height:32px;border:none;border-radius:8px;background:transparent;font-size:12px;font-weight:800;color:var(--muted);}
+.corte-sel button.on{background:var(--ink);color:var(--yellow);}
 .wpick-chip:hover{background:var(--yellow);border-color:var(--yellow);}
 .wpick-custom{display:flex;gap:6px;margin-bottom:8px;}
 .wpick-custom input{flex:1;min-width:0;height:38px;padding:0 10px;border:1.5px solid var(--line-2);border-radius:10px;}
@@ -868,8 +871,9 @@ if(DOMINIO_VE){
 async function cargarProductos(){
   // Primero los datos (liviano) para mostrar el menú al tiro; las fotos llegan después.
   const COLS='id,nombre,categoria,unidad,precio,vender_por_peso,descripcion,activo,orden,destacado_web';
-  let {data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio').eq('activo','true').order('nombre',{ascending:true});
+  let {data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio,corte_opcion').eq('activo','true').order('nombre',{ascending:true});
   // servidor sin la venta por pieza (migración 029): la tienda carga igual
+  if(error) ({data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio').eq('activo','true').order('nombre',{ascending:true}));
   if(error) ({data,error}=await supa.from('productos').select(COLS).eq('activo','true').order('nombre',{ascending:true}));
   if(error){
     document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo en un momento.</p>';
@@ -888,6 +892,9 @@ async function cargarFotosProductos(){
   const m=new Map(data.map(r=>[r.id,r.imagen_b64]));
   PRODUCTOS.forEach(p=>{ if(m.has(p.id)) p.imagen_b64=m.get(p.id); });
   renderPromos(); renderPiezas(); renderTiles(); renderGrid();
+  // foto propia de la pieza completa (si el dueño la subió)
+  const {data:pz}=await supa.from('productos').select('id,pieza_imagen_b64').eq('activo','true').or('(pieza_imagen_b64.not.is.null)');
+  if(pz&&pz.length){ const mp=new Map(pz.map(r=>[r.id,r.pieza_imagen_b64])); PRODUCTOS.forEach(p=>{ if(mp.has(p.id)) p.pieza_img=mp.get(p.id); }); renderPiezas(); }
 }
 // Agotado / últimas unidades según el stock del sistema (sin mostrar cantidades).
 // Lo agotado queda al final de su categoría.
@@ -1137,7 +1144,7 @@ function renderPiezas(){
     const nom=esc(p.nombre);
     return `<article class="card${p.agotado?' agotado':''}">
       <button class="card-img" onclick="abrirDetalle(${p.id})" aria-label="Ver detalle de ${nom}">
-        ${p.imagen_b64?`<img src="${p.imagen_b64}" alt="${nom}" loading="lazy">`:`<span class="ph">${inicial(p)}</span>`}
+        ${(p.pieza_img||p.imagen_b64)?`<img src="${p.pieza_img||p.imagen_b64}" alt="${nom}" loading="lazy">`:`<span class="ph">${inicial(p)}</span>`}
         ${p.agotado?'<span class="stock-badge">Agotado</span>':''}
       </button>
       <div class="card-body">
@@ -1156,7 +1163,7 @@ function ajustarPieza(id,delta){
   if(idx<0){
     if(delta<=0) return;
     CARRITO.push({producto_id:p.id,nombre:`${p.nombre} · ${piezaDesc(p).toLowerCase()}`,precio:piezaPrecio(p),cantidad:1,unidad:'pieza',
-      vender_por_peso:false,qtyLabel:'pieza',pieza:true,aprox:!!p.vender_por_peso,imagen_b64:p.imagen_b64||null});
+      vender_por_peso:false,qtyLabel:'pieza',pieza:true,aprox:!!p.vender_por_peso,imagen_b64:p.pieza_img||p.imagen_b64||null});
     toast(`${piezaNombre(p)} de ${p.nombre} agregada`);
   }else{
     CARRITO[idx].cantidad+=delta;
@@ -1208,6 +1215,7 @@ function renderProdCard(p){
   }else if(p.vender_por_peso){
     control=`
       <div class="wpick" id="wpick-${p.id}">
+        ${corteSelHTML(p)}
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g')">250g</button>
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},0.5,'500g')">500g</button>
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},1,'1kg')">1kg</button>
@@ -1270,6 +1278,7 @@ function abrirDetalle(id){
   }else if(p.vender_por_peso){
     controls=`
       <div class="wpick open">
+        ${corteSelHTML(p)}
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},0.25,'250g');cerrarDetalle();">250g</button>
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},0.5,'500g');cerrarDetalle();">500g</button>
         <button class="wpick-chip" onclick="seleccionarPeso(${p.id},1,'1kg');cerrarDetalle();">1kg</button>
@@ -1288,7 +1297,7 @@ function abrirDetalle(id){
     <div class="detail-price num">${precioTxt(p)}</div>
     <p class="detail-desc${desc?'':' empty'}">${desc?esc(desc):'Pregúntanos por WhatsApp si quieres saber más de este producto.'}</p>
     ${controls}
-    ${tienePieza(p)&&!p.agotado?`<div class="detail-pieza"><b>${esc(piezaDesc(p))} · precio por mayor</b>${piezaPrecioHTML(p)}
+    ${tienePieza(p)&&!p.agotado?`<div class="detail-pieza">${p.pieza_img?`<img src="${p.pieza_img}" alt="" style="width:100%;border-radius:12px;margin-bottom:8px;aspect-ratio:4/3;object-fit:cover;">`:''}<b>${esc(piezaDesc(p))} · precio por mayor</b>${piezaPrecioHTML(p)}
       <button class="btn dark block" style="height:48px;" onclick="ajustarPieza(${p.id},1);cerrarDetalle();">Agregar ${esc(piezaNombre(p).toLowerCase())} completa</button></div>`:''}`;
   document.getElementById('detailOverlay').classList.add('open');
 }
@@ -1320,11 +1329,24 @@ function agregarAlCarrito(id){
   agregarAlCarritoConCantidad(p,1,null);
   refrescarControl(id);
 }
+// Al detal: laminado o trozo (solo productos por kilo que lo ofrecen)
+const CORTE={};
+function corteDe(p){ return p.vender_por_peso&&p.corte_opcion?(CORTE[p.id]||'trozo'):null; }
+function corteSelHTML(p){
+  if(!(p.vender_por_peso&&p.corte_opcion)) return '';
+  const c=corteDe(p);
+  return `<div class="corte-sel" data-corte="${p.id}">${['trozo','laminado'].map(k=>`<button type="button" class="${c===k?'on':''}" onclick="elegirCorte(${p.id},'${k}')">${k==='trozo'?'En trozo':'Laminado'}</button>`).join('')}</div>`;
+}
+function elegirCorte(id,k){
+  CORTE[id]=k;
+  document.querySelectorAll(`.corte-sel[data-corte="${id}"] button`).forEach(b=>b.classList.toggle('on',b.textContent===(k==='trozo'?'En trozo':'Laminado')));
+}
 function agregarAlCarritoConCantidad(p,cantidad,qtyLabel){
   if(p.agotado){ toast(`${p.nombre} está agotado por ahora`,true); return; }
+  const corte=corteDe(p);
   const existente=CARRITO.find(i=>i.producto_id===p.id&&i.qtyLabel===qtyLabel);
   if(existente&&!p.vender_por_peso){ existente.cantidad+=cantidad; }
-  else CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad,unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel,imagen_b64:p.imagen_b64||null});
+  else CARRITO.push({producto_id:p.id,nombre:p.nombre+(corte?` (${corte})`:''),corte,precio:Number(p.precio),cantidad,unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel,imagen_b64:p.imagen_b64||null});
   toast(`${p.nombre} agregado`);
   renderCartBar();
 }
@@ -1645,7 +1667,8 @@ function repetirUltimoPedido(){
     const p=PRODUCTOS.find(x=>x.id===i.producto_id);
     if(!p||p.agotado||(i.pieza&&!tienePieza(p))){ faltan++; return; }
     if(i.pieza){ CARRITO.push({producto_id:p.id,nombre:`${p.nombre} · ${piezaDesc(p).toLowerCase()}`,precio:piezaPrecio(p),cantidad:Number(i.cantidad),unidad:'pieza',vender_por_peso:false,qtyLabel:'pieza',pieza:true,aprox:!!p.vender_por_peso,imagen_b64:p.imagen_b64||null}); return; }
-    CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:Number(i.cantidad),unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel:i.qtyLabel??null,imagen_b64:p.imagen_b64||null});
+    const corte=i.corte&&p.corte_opcion?i.corte:null;
+    CARRITO.push({producto_id:p.id,nombre:p.nombre+(corte?` (${corte})`:''),corte,precio:Number(p.precio),cantidad:Number(i.cantidad),unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel:i.qtyLabel??null,imagen_b64:p.imagen_b64||null});
   });
   renderCartBar(); renderGrid(); renderPiezas(); pintarRepetir();
   toast(faltan?`Agregamos tu pedido. ${faltan} producto${faltan===1?'':'s'} no está${faltan===1?'':'n'} disponible${faltan===1?'':'s'} hoy.`:'Agregamos tu último pedido. Revísalo y continúa.');
@@ -1694,12 +1717,12 @@ async function enviarPedido(){
       nombre,telefono,calle:calle||null,depto:depto||null,comuna:comuna||null,notas:notas||null,
       entrega:ENTREGA,lat:punto?punto.lat:null,lng:punto?punto.lng:null,ref,
       promos:!!document.getElementById('chkPromos')?.checked,
-      items:CARRITO.map(i=>i.pieza?{producto_id:i.producto_id,cantidad:i.cantidad,pieza:true}:{producto_id:i.producto_id,cantidad:i.cantidad})
+      items:CARRITO.map(i=>i.pieza?{producto_id:i.producto_id,cantidad:i.cantidad,pieza:true}:{producto_id:i.producto_id,cantidad:i.cantidad,...(i.corte?{corte:i.corte}:{})})
     }});
     if(error||!r||!r.id){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
     if(ref) olvidarRef();
     recordarCliente({nombre,telefono,calle,depto,comuna,entrega:ENTREGA,punto:ENTREGA==='delivery'&&DELIV.punto?DELIV.punto:null});
-    guardarLS('pq_ultimo_pedido',{fecha:Date.now(),items:CARRITO.map(i=>({producto_id:i.producto_id,nombre:i.nombre,cantidad:i.cantidad,qtyLabel:i.qtyLabel??null,pieza:!!i.pieza}))});
+    guardarLS('pq_ultimo_pedido',{fecha:Date.now(),items:CARRITO.map(i=>({producto_id:i.producto_id,nombre:i.nombre,cantidad:i.cantidad,qtyLabel:i.qtyLabel??null,pieza:!!i.pieza,corte:i.corte||null}))});
     document.getElementById('successOrderNum').textContent='#'+String(r.id).padStart(4,'0');
     const lejos=r.tipo==='coordinar'&&r.km!=null;
     const delTxt=r.tipo==='retiro'?'Retiro en tienda':Number(r.delivery)===0&&r.delivery!=null?'<span class="gratis">Gratis 🎁</span>':r.delivery==null?(lejos?'Por coordinar':'Según distancia'):money(r.delivery);
