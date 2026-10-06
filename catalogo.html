@@ -856,7 +856,10 @@ if(DOMINIO_VE){
 // ══════════════════════════════════════════════════════════
 async function cargarProductos(){
   // Primero los datos (liviano) para mostrar el menú al tiro; las fotos llegan después.
-  const {data,error}=await supa.from('productos').select('id,nombre,categoria,unidad,precio,vender_por_peso,descripcion,activo,orden,destacado_web').eq('activo','true').order('nombre',{ascending:true});
+  const COLS='id,nombre,categoria,unidad,precio,vender_por_peso,descripcion,activo,orden,destacado_web';
+  let {data,error}=await supa.from('productos').select(COLS+',favorito').eq('activo','true').order('nombre',{ascending:true});
+  // servidor sin la migración 027 (favorito no visible): se carga igual, sin favoritos
+  if(error) ({data,error}=await supa.from('productos').select(COLS).eq('activo','true').order('nombre',{ascending:true}));
   if(error){
     document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo en un momento.</p>';
     document.getElementById('promoRow').innerHTML='';
@@ -1073,11 +1076,13 @@ function accionSlide(a){
 // ══════════════════════════════════════════════════════════
 function renderPromos(){
   // Primero los que el dueño ordenó; entre el resto, con foto y más caros primero.
-  // Si el dueño eligió "Lo más pedido" (panel → Productos), se muestran esos, en su orden.
-  const elegidos=PRODUCTOS.filter(p=>p.destacado_web!=null).sort((a,b)=>a.destacado_web-b.destacado_web);
+  // Primero los que el dueño eligió para "Lo más pedido" (en su orden), después los ★ favoritos
+  // del sistema. Nunca se muestra uno agotado.
+  const elegidos=PRODUCTOS.filter(p=>!p.agotado&&p.destacado_web!=null).sort((a,b)=>a.destacado_web-b.destacado_web);
+  PRODUCTOS.filter(p=>!p.agotado&&p.favorito&&p.destacado_web==null).sort(compararOrden).forEach(p=>elegidos.push(p));
   let lista=PRODUCTOS.filter(p=>!p.agotado).sort((a,b)=>((ordenDe(a)-ordenDe(b))||0)||(ES_QUESO(b.categoria)-ES_QUESO(a.categoria))||(!!b.imagen_b64-!!a.imagen_b64)||((ES_VE(b.categoria)-ES_VE(a.categoria))*(DOMINIO_VE?1:0))||(Number(b.precio)-Number(a.precio)));
   if(DOMINIO_VE&&productosVE().length) lista=lista.filter(p=>ES_VE(p.categoria)||ES_VE(p.nombre));
-  lista=elegidos.length?elegidos.slice(0,6):lista.slice(0,6);
+  lista=elegidos.length?elegidos.slice(0,10):lista.slice(0,6);
   const row=document.getElementById('promoRow');
   document.getElementById('destacados').style.display=lista.length?'':'none';
   document.getElementById('promoArrows').style.display=lista.length>3?'flex':'none';
