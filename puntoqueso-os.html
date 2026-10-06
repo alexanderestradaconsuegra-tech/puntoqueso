@@ -1397,7 +1397,7 @@ function nav(view){
 // ══════════════════════════════════════════════════════════
 // ── Fotos de productos: se descargan una sola vez y quedan en memoria ──
 // (antes venían en cada loadAll y eran varios MB cada vez que se cobraba o guardaba algo)
-const PRODUCTO_COLS='id,nombre,categoria,unidad,precio,stock,stock_minimo,sku,codigo_barras,vender_por_peso,activo,created_at,updated_at,costo,descripcion,precio_mayor,en_catalogo,favorito,orden,destacado_web';
+const PRODUCTO_COLS='id,nombre,categoria,unidad,precio,stock,stock_minimo,sku,codigo_barras,vender_por_peso,activo,created_at,updated_at,costo,descripcion,precio_mayor,en_catalogo,favorito,orden,destacado_web,pieza_nombre,pieza_contenido,pieza_precio';
 const IMG_PROD=new Map(); let _imgsCargadas=false, _imgsCargando=null;
 function imgDe(p){ return p?(IMG_PROD.get(p.id)||p.imagen_b64||null):null; }
 function cargarImagenesProductos(){
@@ -1777,7 +1777,7 @@ function renderPosProductos(filter=''){
       ${imgDe(p)?`<img class="pos-prod-img" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
       <div class="pp-nombre">${p.nombre}</div>
       <div class="pp-precio num">${money(p.precio)}/${p.unidad||'kg'}</div>
-      ${Number(p.precio_mayor)>0?`<div class="pp-mayor num">Mayor ${money(p.precio_mayor)}</div>`:''}
+      ${precioMayorDe(p)>0?`<div class="pp-mayor num">Mayor ${money(precioMayorDe(p))}${p.vender_por_peso?'/kg':''}</div>`:''}
       <div class="pp-stock">Stock: ${Number(p.stock).toLocaleString('es-CL')} ${p.unidad||'kg'}</div>
     </button>`).join('')||vacio;
   // cliente select
@@ -1794,7 +1794,7 @@ function agregarAlCarrito(id){
   const existente=CARRITO.find(i=>i.producto_id===id&&!i.es_mayor&&!i.qtyLabel);
   if(existente) existente.cantidad+=1;
   else CARRITO.push({producto_id:id,nombre:p.nombre,precio:Number(p.precio),cantidad:1,unidad:p.unidad||'kg',
-    precio_normal:Number(p.precio),precio_mayor:Number(p.precio_mayor)||0,es_mayor:false});
+    precio_normal:Number(p.precio),precio_mayor:precioMayorDe(p),es_mayor:false});
   renderCarrito();
 }
 // Cambia una línea entre precio normal y mayorista. Es por línea (no por venta)
@@ -1843,6 +1843,13 @@ function renderCarrito(){
 // General: % o monto sobre los productos (no sobre el delivery); queda como línea "Descuento" negativa.
 let DESCUENTO_VENTA=null;   // {tipo:'%'|'$', valor}
 function puedeDescontar(){ return canDo('aplicarDescuentos'); }
+// Precio mayorista en caja: el de la ficha; si no tiene, el de la venta por pieza
+// (por kg en productos por peso; por unidad = precio de la pieza / unidades que trae).
+function precioMayorDe(p){
+  if(Number(p.precio_mayor)>0) return Number(p.precio_mayor);
+  if(Number(p.pieza_precio)>0) return p.vender_por_peso?Number(p.pieza_precio):(Number(p.pieza_contenido)>0?Math.round(Number(p.pieza_precio)/Number(p.pieza_contenido)):0);
+  return 0;
+}
 function precioLista(i){ return Number(i.precio_lista!=null?i.precio_lista:(i.es_mayor?i.precio_mayor:(i.precio_normal!=null?i.precio_normal:i.precio))); }
 function baseDescuento(){ return CARRITO.filter(i=>!i.es_delivery).reduce((s,i)=>s+i.precio*i.cantidad,0); }
 function descuentoVentaMonto(){
@@ -1970,7 +1977,7 @@ function vaciarCarrito(){ CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; rend
 
 function agregarPesoAlCarrito(p,kg,label){
   CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:kg,qtyLabel:label,unidad:p.unidad||'kg',
-    precio_normal:Number(p.precio),precio_mayor:Number(p.precio_mayor)||0,es_mayor:false});
+    precio_normal:Number(p.precio),precio_mayor:precioMayorDe(p),es_mayor:false});
   renderCarrito();
 }
 
@@ -4709,9 +4716,23 @@ function openProductoModal(id){
       </div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px;">
-      <input type="checkbox" id="prVenderPeso" style="width:16px;height:16px;" ${p.vender_por_peso?'checked':''}>
+      <input type="checkbox" id="prVenderPeso" style="width:16px;height:16px;" ${p.vender_por_peso?'checked':''} onchange="pintarAyudaPieza()">
       Se vende por peso (kg)
     </label>
+    <div style="margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:var(--r-sm);background:var(--mint);">
+      <div style="font-weight:800;font-size:13.5px;">Venta por pieza (precio por mayor)</div>
+      <div class="sub-xs" style="margin:2px 0 6px;">Para vender la pieza entera: barra de queso, pieza de jamón, caja de bebidas… Sale en la tienda web en "Por pieza". Déjalo vacío si no se vende así.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div><label style="margin-top:0;">Nombre de la pieza</label>
+          <input oninput="pintarAyudaPieza()" id="prPiezaNombre" list="prPiezaNombres" placeholder="Barra, Pieza, Caja…" value="${escapeHtml(p.pieza_nombre||'')}">
+          <datalist id="prPiezaNombres"><option value="Barra"><option value="Pieza"><option value="Caja"><option value="Bandeja"><option value="Paquete"><option value="Rueda"></datalist></div>
+        <div><label style="margin-top:0;" id="prPiezaContLbl">${p.vender_por_peso?'Peso aprox. (kg)':'Unidades que trae'}</label>
+          <input oninput="pintarAyudaPieza()" id="prPiezaContenido" type="number" step="0.1" min="0" placeholder="${p.vender_por_peso?'Ej: 6':'Ej: 24'}" value="${p.pieza_contenido??''}"></div>
+      </div>
+      <label id="prPiezaPrecioLbl">${p.vender_por_peso?'Precio por mayor, por kg':'Precio de la pieza completa'}</label>
+      <input oninput="pintarAyudaPieza()" id="prPiezaPrecio" type="number" step="1" min="0" placeholder="${p.vender_por_peso?'Ej: 8900':'Ej: 28000'}" value="${p.pieza_precio??''}">
+      <div class="sub-xs" id="prPiezaAyuda" style="margin-top:4px;"></div>
+    </div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
       <input type="checkbox" id="prEnCatalogo" style="width:16px;height:16px;" ${p.en_catalogo?'checked':''}>
       Mostrar en la tienda web
@@ -4726,6 +4747,7 @@ function openProductoModal(id){
     </div>`;
   renderProductoFotoPreview();
   document.getElementById('modalBg').style.display='flex';
+  pintarAyudaPieza();
   if(document.getElementById('prMargen')) actualizarMargenProducto();
 }
 function actualizarMargenProducto(){
@@ -4736,6 +4758,25 @@ function actualizarMargenProducto(){
   const margen=precio-costo;
   const pct=precio>0?((margen/precio)*100).toFixed(1)+'%':'—';
   el.textContent=`Margen: ${money(margen)} (${pct})`;
+}
+// Venta por pieza: por kilo → precio por kg (se cobra lo que pese la pieza real);
+// por unidad → precio fijo de la pieza (caja de 24, etc.)
+function leerPiezaProducto(){
+  const n=sanitize(document.getElementById('prPiezaNombre')?.value||'');
+  const c=Number(document.getElementById('prPiezaContenido')?.value)||0;
+  const pr=Number(document.getElementById('prPiezaPrecio')?.value)||0;
+  if(!(pr>0)) return {pieza_nombre:null,pieza_contenido:null,pieza_precio:null};
+  return {pieza_nombre:n||'Pieza',pieza_contenido:c>0?c:null,pieza_precio:pr};
+}
+function pintarAyudaPieza(){
+  const peso=document.getElementById('prVenderPeso')?.checked;
+  const set=(id,t)=>{ const el=document.getElementById(id); if(el) el.textContent=t; };
+  set('prPiezaContLbl',peso?'Peso aprox. (kg)':'Unidades que trae');
+  set('prPiezaPrecioLbl',peso?'Precio por mayor, por kg':'Precio de la pieza completa');
+  const c=Number(document.getElementById('prPiezaContenido')?.value)||0, pr=Number(document.getElementById('prPiezaPrecio')?.value)||0;
+  const nom=(document.getElementById('prPiezaNombre')?.value||'pieza').toLowerCase();
+  set('prPiezaAyuda',!(c>0&&pr>0)?'':peso?`En la web: ${nom} de ~${c} kg a ${money(pr)}/kg (aprox. ${money(Math.round(c*pr))}). Se cobra lo que pese al prepararla.`
+    :`En la web: ${nom} de ${c} unidades a ${money(pr)} (sale a ${money(Math.round(pr/c))} c/u).`);
 }
 async function guardarProducto(id){
   if(!canDo('editarInventario')){ toast('No tienes permiso para editar productos',true); return; }
@@ -4753,8 +4794,10 @@ async function guardarProducto(id){
     vender_por_peso:document.getElementById('prVenderPeso').checked,
     en_catalogo:document.getElementById('prEnCatalogo').checked,
     favorito:document.getElementById('prFavorito').checked,
+    ...leerPiezaProducto(),
     updated_at:new Date().toISOString()
   };
+  if(row.pieza_precio&&!row.pieza_contenido){ toast(row.vender_por_peso?'Escribe cuánto pesa la pieza (kg aprox.)':'Escribe cuántas unidades trae la pieza',true); return; }
   // la foto solo viaja si cambió (pesa mucho y así no se pisa una foto que aún no cargaba)
   const fotoCambio=!id||(_prodImagenB64||null)!==(_prodImagenOrig||null);
   if(fotoCambio) row.imagen_b64=_prodImagenB64||null;

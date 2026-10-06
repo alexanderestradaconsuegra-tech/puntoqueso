@@ -236,6 +236,11 @@ button{cursor:pointer;}
 .card-name{font-weight:800;font-size:14.5px;line-height:1.25;color:var(--ink);background:none;border:none;text-align:left;padding:0;margin-bottom:4px;}
 .card-desc{font-size:12.5px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:8px;}
 .card-price{font-family:var(--disp);font-size:21px;color:var(--ink);margin:auto 0 10px;}
+.pz-tag{display:inline-block;align-self:flex-start;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:var(--ink);color:var(--yellow);padding:3px 8px;border-radius:7px;margin-bottom:6px;}
+.pz-normal{font-size:12px;color:var(--muted);text-decoration:line-through;margin:-6px 0 2px;}
+.pz-aprox{font-size:12.5px;font-weight:700;color:var(--ink);margin:-4px 0 10px;}
+.detail-pieza{margin-top:14px;padding:12px;border:1.5px solid var(--yellow);border-radius:var(--r);background:var(--yellow-soft);}
+.detail-pieza b{display:block;font-size:14px;margin-bottom:2px;}
 .card-price small{font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700;color:var(--muted);}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:44px;padding:0 16px;border:none;border-radius:12px;background:var(--yellow);color:var(--ink);font-weight:800;font-size:14px;transition:background .15s,transform .1s;}
 .btn:hover{background:var(--yellow-2);}
@@ -519,6 +524,12 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
       </div>
     </div>
     <div class="promo-row" id="promoRow"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  </section>
+
+  <section class="sec" id="piezas" style="display:none;">
+    <div class="sec-head"><div><div class="sec-eyebrow">Precio por mayor</div><h2>Por pieza</h2></div></div>
+    <p class="tiles-note" style="margin:-6px 0 12px;">Lleva la pieza completa a precio por mayor. Las piezas por kilo se pesan al preparar tu pedido y te confirmamos el total exacto antes de pagar.</p>
+    <div class="grid" id="piezasGrid"></div>
   </section>
 
   <section class="sec" id="explora">
@@ -857,7 +868,9 @@ if(DOMINIO_VE){
 async function cargarProductos(){
   // Primero los datos (liviano) para mostrar el menú al tiro; las fotos llegan después.
   const COLS='id,nombre,categoria,unidad,precio,vender_por_peso,descripcion,activo,orden,destacado_web';
-  const {data,error}=await supa.from('productos').select(COLS).eq('activo','true').order('nombre',{ascending:true});
+  let {data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio').eq('activo','true').order('nombre',{ascending:true});
+  // servidor sin la venta por pieza (migración 029): la tienda carga igual
+  if(error) ({data,error}=await supa.from('productos').select(COLS).eq('activo','true').order('nombre',{ascending:true}));
   if(error){
     document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo en un momento.</p>';
     document.getElementById('promoRow').innerHTML='';
@@ -874,7 +887,7 @@ async function cargarFotosProductos(){
   if(error||!data||!data.length) return;
   const m=new Map(data.map(r=>[r.id,r.imagen_b64]));
   PRODUCTOS.forEach(p=>{ if(m.has(p.id)) p.imagen_b64=m.get(p.id); });
-  renderPromos(); renderTiles(); renderGrid();
+  renderPromos(); renderPiezas(); renderTiles(); renderGrid();
 }
 // Agotado / últimas unidades según el stock del sistema (sin mostrar cantidades).
 // Lo agotado queda al final de su categoría.
@@ -891,7 +904,7 @@ function ordenDe(p){ return p.orden==null?Infinity:Number(p.orden); }
 function compararOrden(a,b){
   return (ordenDe(a)-ordenDe(b))||String(a.nombre||'').localeCompare(String(b.nombre||''),'es');
 }
-function renderTodo(){ publicarProductosSEO(); renderCarrusel(); renderCatBar(); renderPromos(); renderTiles(); renderGrid(); renderCartBar(); }
+function renderTodo(){ publicarProductosSEO(); renderCarrusel(); renderCatBar(); renderPromos(); renderPiezas(); renderTiles(); renderGrid(); renderCartBar(); }
 
 async function cargarConfig(){
   try{
@@ -965,6 +978,7 @@ function productosVE(){ return PRODUCTOS.filter(p=>ES_VE(p.categoria)||ES_VE(p.n
 
 function renderCatBar(){
   document.getElementById('catBar').innerHTML=`<a href="#top" data-cat="">Inicio</a>`+
+    (PRODUCTOS.some(tienePieza)?`<a href="#piezas" data-cat="piezas">Por pieza</a>`:'')+
     categorias().map(c=>`<a href="#cat-${slug(c)}" data-cat="${slug(c)}">${esc(c)}</a>`).join('');
   observarSecciones();
 }
@@ -1092,6 +1106,65 @@ function renderPromos(){
       </span>
     </button>`).join('');
 }
+// ── VENTA POR PIEZA (precio por mayor) ──
+// por kilo: precio por kg y se cobra lo que pese la pieza; por unidad: precio fijo de la pieza
+function tienePieza(p){ return Number(p.pieza_precio)>0&&Number(p.pieza_contenido)>0; }
+function piezaNombre(p){ return (p.pieza_nombre||'Pieza').trim()||'Pieza'; }
+function piezaDesc(p){ const c=Number(p.pieza_contenido); return p.vender_por_peso?`${piezaNombre(p)} de ~${kgTxt(c)} kg`:`${piezaNombre(p)} de ${c} unidades`; }
+function kgTxt(n){ return Number(n).toLocaleString('es-CL',{maximumFractionDigits:2}); }
+function piezaPrecio(p){ return p.vender_por_peso?Math.round(Number(p.pieza_precio)*Number(p.pieza_contenido)):Number(p.pieza_precio); }
+function piezaPrecioHTML(p){
+  if(p.vender_por_peso) return `<div class="card-price num">${money(p.pieza_precio)}<small>/kg</small></div>
+    ${Number(p.precio)>Number(p.pieza_precio)?`<div class="pz-normal">Normal ${money(p.precio)}/kg</div>`:''}
+    <div class="pz-aprox">${esc(piezaNombre(p))} aprox. ${money(piezaPrecio(p))}</div>`;
+  const cu=Math.round(Number(p.pieza_precio)/Number(p.pieza_contenido));
+  return `<div class="card-price num">${money(p.pieza_precio)}</div>
+    ${Number(p.precio)>cu?`<div class="pz-normal">Por unidad ${money(p.precio)}</div>`:''}
+    <div class="pz-aprox">Sale a ${money(cu)} c/u</div>`;
+}
+function piezasEnCarrito(id){ const it=CARRITO.find(i=>i.producto_id===id&&i.pieza); return it?it.cantidad:0; }
+function controlPieza(p){
+  if(p.agotado) return `<button class="btn block agotado-btn" disabled>Agotado</button>`;
+  const n=piezasEnCarrito(p.id);
+  return n>0?`<div class="qty-stepper"><button onclick="ajustarPieza(${p.id},-1)" aria-label="Quitar una">−</button><span class="qty-n num">${n}</span><button onclick="ajustarPieza(${p.id},1)" aria-label="Agregar una">+</button></div>`
+    :`<button class="btn block" onclick="ajustarPieza(${p.id},1)">Agregar ${esc(piezaNombre(p).toLowerCase())}</button>`;
+}
+function renderPiezas(){
+  const ps=PRODUCTOS.filter(tienePieza);
+  const sec=document.getElementById('piezas'); if(!sec) return;
+  sec.style.display=ps.length?'':'none';
+  document.getElementById('piezasGrid').innerHTML=ps.map(p=>{
+    const nom=esc(p.nombre);
+    return `<article class="card${p.agotado?' agotado':''}">
+      <button class="card-img" onclick="abrirDetalle(${p.id})" aria-label="Ver detalle de ${nom}">
+        ${p.imagen_b64?`<img src="${p.imagen_b64}" alt="${nom}" loading="lazy">`:`<span class="ph">${inicial(p)}</span>`}
+        ${p.agotado?'<span class="stock-badge">Agotado</span>':''}
+      </button>
+      <div class="card-body">
+        <span class="pz-tag">${esc(piezaDesc(p))}</span>
+        <button class="card-name" onclick="abrirDetalle(${p.id})">${nom}</button>
+        ${piezaPrecioHTML(p)}
+        <div id="pzwrap-${p.id}">${controlPieza(p)}</div>
+      </div>
+    </article>`;
+  }).join('');
+}
+function ajustarPieza(id,delta){
+  const p=PRODUCTOS.find(x=>x.id===id); if(!p||!tienePieza(p)) return;
+  if(delta>0&&p.agotado){ toast(`${p.nombre} está agotado por ahora`,true); return; }
+  const idx=CARRITO.findIndex(i=>i.producto_id===id&&i.pieza);
+  if(idx<0){
+    if(delta<=0) return;
+    CARRITO.push({producto_id:p.id,nombre:`${p.nombre} · ${piezaDesc(p).toLowerCase()}`,precio:piezaPrecio(p),cantidad:1,unidad:'pieza',
+      vender_por_peso:false,qtyLabel:'pieza',pieza:true,aprox:!!p.vender_por_peso,imagen_b64:p.imagen_b64||null});
+    toast(`${piezaNombre(p)} de ${p.nombre} agregada`);
+  }else{
+    CARRITO[idx].cantidad+=delta;
+    if(CARRITO[idx].cantidad<=0) CARRITO.splice(idx,1);
+  }
+  renderCartBar();
+  const w=document.getElementById('pzwrap-'+id); if(w) w.innerHTML=controlPieza(p);
+}
 function renderTiles(){
   const cats=categorias();
   document.getElementById('explora').style.display=cats.length?'':'none';
@@ -1176,6 +1249,8 @@ function refrescarControl(id){
   const p=PRODUCTOS.find(x=>x.id===id);
   const wrap=document.getElementById('qwrap-'+id);
   if(p&&wrap) wrap.innerHTML=renderQtyControl(p);
+  const pw=document.getElementById('pzwrap-'+id);
+  if(p&&pw) pw.innerHTML=controlPieza(p);
 }
 function ajustarCantidadSimple(id,delta){
   const idx=CARRITO.findIndex(i=>i.producto_id===id&&i.qtyLabel==null);
@@ -1212,7 +1287,9 @@ function abrirDetalle(id){
     <div class="detail-name">${esc(p.nombre)}</div>
     <div class="detail-price num">${precioTxt(p)}</div>
     <p class="detail-desc${desc?'':' empty'}">${desc?esc(desc):'Pregúntanos por WhatsApp si quieres saber más de este producto.'}</p>
-    ${controls}`;
+    ${controls}
+    ${tienePieza(p)&&!p.agotado?`<div class="detail-pieza"><b>${esc(piezaDesc(p))} · precio por mayor</b>${piezaPrecioHTML(p)}
+      <button class="btn dark block" style="height:48px;" onclick="ajustarPieza(${p.id},1);cerrarDetalle();">Agregar ${esc(piezaNombre(p).toLowerCase())} completa</button></div>`:''}`;
   document.getElementById('detailOverlay').classList.add('open');
 }
 function cerrarDetalle(){ document.getElementById('detailOverlay').classList.remove('open'); }
@@ -1272,7 +1349,7 @@ function renderCartList(){
   if(!CARRITO.length){ el.innerHTML='<p class="empty">Tu pedido está vacío</p>'; document.getElementById('cartTotalTxt').textContent=money(0); return; }
   el.innerHTML=CARRITO.map((i,idx)=>{
     const ph=i.imagen_b64?`<img class="cr-ph" src="${i.imagen_b64}" alt="">`:`<div class="cr-ph">${esc((i.nombre||'?').charAt(0).toUpperCase())}</div>`;
-    const meta=i.vender_por_peso?(i.qtyLabel||`${i.cantidad}kg`):`x${i.cantidad}`;
+    const meta=i.vender_por_peso?(i.qtyLabel||`${i.cantidad}kg`):`x${i.cantidad}`+(i.aprox?' (aprox.)':'');
     return `<div class="cart-row">${ph}
       <div class="cr-info"><div class="cr-name">${esc(i.nombre)}</div><div class="cr-meta">${esc(meta)} · ${money(i.precio)}${i.vender_por_peso?'/kg':''}</div></div>
       <div class="cr-sub num">${money(i.precio*i.cantidad)}</div>
@@ -1566,10 +1643,11 @@ function repetirUltimoPedido(){
   let faltan=0;
   u.items.forEach(i=>{
     const p=PRODUCTOS.find(x=>x.id===i.producto_id);
-    if(!p||p.agotado){ faltan++; return; }
+    if(!p||p.agotado||(i.pieza&&!tienePieza(p))){ faltan++; return; }
+    if(i.pieza){ CARRITO.push({producto_id:p.id,nombre:`${p.nombre} · ${piezaDesc(p).toLowerCase()}`,precio:piezaPrecio(p),cantidad:Number(i.cantidad),unidad:'pieza',vender_por_peso:false,qtyLabel:'pieza',pieza:true,aprox:!!p.vender_por_peso,imagen_b64:p.imagen_b64||null}); return; }
     CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:Number(i.cantidad),unidad:p.unidad||'kg',vender_por_peso:!!p.vender_por_peso,qtyLabel:i.qtyLabel??null,imagen_b64:p.imagen_b64||null});
   });
-  renderCartBar(); renderGrid(); pintarRepetir();
+  renderCartBar(); renderGrid(); renderPiezas(); pintarRepetir();
   toast(faltan?`Agregamos tu pedido. ${faltan} producto${faltan===1?'':'s'} no está${faltan===1?'':'n'} disponible${faltan===1?'':'s'} hoy.`:'Agregamos tu último pedido. Revísalo y continúa.');
   abrirCarrito();
 }
@@ -1616,12 +1694,12 @@ async function enviarPedido(){
       nombre,telefono,calle:calle||null,depto:depto||null,comuna:comuna||null,notas:notas||null,
       entrega:ENTREGA,lat:punto?punto.lat:null,lng:punto?punto.lng:null,ref,
       promos:!!document.getElementById('chkPromos')?.checked,
-      items:CARRITO.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad}))
+      items:CARRITO.map(i=>i.pieza?{producto_id:i.producto_id,cantidad:i.cantidad,pieza:true}:{producto_id:i.producto_id,cantidad:i.cantidad})
     }});
     if(error||!r||!r.id){ toast('No se pudo enviar el pedido: '+(error?.message||'intenta de nuevo'),true); return; }
     if(ref) olvidarRef();
     recordarCliente({nombre,telefono,calle,depto,comuna,entrega:ENTREGA,punto:ENTREGA==='delivery'&&DELIV.punto?DELIV.punto:null});
-    guardarLS('pq_ultimo_pedido',{fecha:Date.now(),items:CARRITO.map(i=>({producto_id:i.producto_id,nombre:i.nombre,cantidad:i.cantidad,qtyLabel:i.qtyLabel??null}))});
+    guardarLS('pq_ultimo_pedido',{fecha:Date.now(),items:CARRITO.map(i=>({producto_id:i.producto_id,nombre:i.nombre,cantidad:i.cantidad,qtyLabel:i.qtyLabel??null,pieza:!!i.pieza}))});
     document.getElementById('successOrderNum').textContent='#'+String(r.id).padStart(4,'0');
     const lejos=r.tipo==='coordinar'&&r.km!=null;
     const delTxt=r.tipo==='retiro'?'Retiro en tienda':Number(r.delivery)===0&&r.delivery!=null?'<span class="gratis">Gratis 🎁</span>':r.delivery==null?(lejos?'Por coordinar':'Según distancia'):money(r.delivery);
@@ -1651,7 +1729,7 @@ function nuevoPedido(){
   pintarQuote(); setEntrega('delivery');
   document.getElementById('checkoutForm').reset();
   document.getElementById('successOverlay').classList.remove('open');
-  renderCartBar(); renderGrid();
+  renderCartBar(); renderGrid(); renderPiezas();
 }
 // Cuando el cliente cambia de pestaña, el título le recuerda volver
 // (y si dejó productos en el carrito, se lo dice). Al volver se restaura.
