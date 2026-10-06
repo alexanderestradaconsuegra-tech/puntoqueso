@@ -693,7 +693,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="bulkClear('productos')">Cancelar</button>
       </div>
       <div class="list-wrap">
-        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th title="1 sale primero en la Terminal y en la tienda web. Vacío = después, por nombre">Orden</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th title="Los que salen en Lo más pedido de la tienda web (máx. 6)">Más pedido</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
+        <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllproductos" onchange="bulkToggleAll('productos',this.checked)"></th><th>Foto</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th class="col-costo">Costo</th><th class="col-costo">Margen</th><th>Stock</th><th title="1 sale primero en la Terminal y en la tienda web. Vacío = después, por nombre">Orden</th><th>Web</th><th title="Favorito: aparece primero en la Terminal">Fav.</th><th title="Los 3 que salen en Lo más pedido de la tienda web (#1 primero)">Más pedido web</th><th></th></tr></thead><tbody id="productosBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('productos',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="productosCards"></div>
       </div>
@@ -4437,7 +4437,7 @@ function flagFavBtn(p,editar){
   return `<button type="button" class="flag-fav${p.favorito?' on':''}" ${editar?'':'disabled'} onclick="toggleFlagProducto(${p.id},'favorito')" title="${p.favorito?'Favorito: aparece primero en la Terminal. Toca para quitarlo':'Toca para marcarlo como favorito'}" aria-label="Favorito">${p.favorito?'★':'☆'}</button>`;
 }
 function flagTopBtn(p,editar){
-  const opts=['<option value="">No</option>'].concat([1,2,3,4,5,6].map(n=>`<option value="${n}"${p.destacado_web===n?' selected':''}>#${n}</option>`)).join('');
+  const opts=['<option value="">No</option>'].concat([1,2,3].map(n=>`<option value="${n}"${p.destacado_web===n?' selected':''}>#${n}</option>`)).join('');
   return `<select class="flag-top${p.destacado_web!=null?' on':''}" ${editar?'':'disabled'} onchange="setMasPedido(${p.id},this.value)" title="Posición en Lo más pedido de la tienda web (#1 sale primero). No = no sale ahí">${opts}</select>`;
 }
 // Lo más pedido de la tienda web: el producto se pone en la posición elegida y los demás se acomodan.
@@ -4448,7 +4448,7 @@ async function setMasPedido(id,val){
   const volver=()=>renderProductos(document.getElementById('prodBuscar')?.value||'');
   if(val!==''){
     if(!p.en_catalogo){ toast('Primero muéstralo en la web (botón "Oculto")',true); volver(); return; }
-    if(lista.length>=6){ toast('Lo más pedido muestra máximo 6. Quita uno primero',true); volver(); return; }
+    if(lista.length>=3){ toast('Lo más pedido muestra 3. Quita uno primero (elige "No")',true); volver(); return; }
     lista.splice(Math.min(Number(val)-1,lista.length),0,p);
   }
   const nuevo=new Map(lista.map((x,i)=>[x.id,i+1]));
