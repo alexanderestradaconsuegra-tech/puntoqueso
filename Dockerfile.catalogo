@@ -17,4 +17,5 @@ COPY hero-arepa.webp /usr/share/nginx/html/hero-arepa.webp
 COPY llanero-campolac.webp /usr/share/nginx/html/llanero-campolac.webp
 COPY mayorista-camion.webp /usr/share/nginx/html/mayorista-camion.webp
 COPY queso-paisa.webp /usr/share/nginx/html/queso-paisa.webp
+COPY og-quesosvenezolanos.jpg /usr/share/nginx/html/og-quesosvenezolanos.jpg
 EXPOSE 80
