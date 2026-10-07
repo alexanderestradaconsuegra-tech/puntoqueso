@@ -2293,8 +2293,8 @@ async function cobrarVenta(){
     cliente_id:clienteId,cliente_nombre:cliente?.nombre||'Cliente mostrador',
     total,metodo_pago:metodo,metodo_pago_detalle:metodoDetalle,...montos,
     delivery_monto:CARRITO.filter(i=>i.es_delivery).reduce((s,i)=>s+i.precio,0),descuento:descTotal,efectivo_recibido:recibido,vuelto,
-    registrado_por:SESSION.usuario,turno_id:POS_FECHA?null:(TURNO_ACTUAL?.id||null),items,venta_uid:VENTA_UID,
-    fecha:POS_FECHA||null
+    registrado_por:SESSION.usuario,turno_id:POS_FECHA||ventaFueraDeCaja()?null:(TURNO_ACTUAL?.id||null),items,venta_uid:VENTA_UID,
+    fecha:POS_FECHA||null,fuera_caja:!!ventaFueraDeCaja()
   }});
   btn.disabled=false; pintarPosFecha();
   if(error){
@@ -2831,12 +2831,14 @@ async function confirmarCobroPedido(){
     if(r>0) recibido=r;
     // el efectivo entra al cajón: caja y turno abiertos
     await cargarCajaHoy(); renderCajaBar();
-    if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'||!TURNO_ACTUAL){ toast('Para cobrar en efectivo abre la caja y tu turno (Terminal de ventas)',true); return; }
-    if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return; }
+    if(!esDueno()){
+      if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'||!TURNO_ACTUAL){ toast('Para cobrar en efectivo abre la caja y tu turno (Terminal de ventas)',true); return; }
+      if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return; }
+    }
   }else await cargarCajaHoy();   // si hay turno abierto, la venta queda en él
   _cobrandoPedido=true;
   const btn=document.getElementById('btnCobroPedido'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
-  const {data,error}=await supa.rpc('cobrar_pedido',{p_id:c.id,p:{metodo_pago:c.metodo,turno_id:TURNO_ACTUAL?.id||null,
+  const {data,error}=await supa.rpc('cobrar_pedido',{p_id:c.id,p:{metodo_pago:c.metodo,turno_id:TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario?TURNO_ACTUAL.id:null,
     registrado_por:SESSION.usuario,entregar:c.entregar,efectivo_recibido:recibido}});
   _cobrandoPedido=false;
   if(error){ if(btn){ btn.disabled=false; btn.textContent=c.entregar?'Cobrar y entregar':'Registrar pago'; } toast('No se pudo registrar el pago: '+error.message,true); return; }
@@ -6160,6 +6162,11 @@ function renderCajaBar(){
     return;
   }
   const ajeno=TURNO_ACTUAL.cajero!==SESSION?.usuario;
+  if(ajeno&&esDueno()){
+    bar.innerHTML=`<span class="caja-chip abierta" title="Tus ventas desde este equipo no entran al cajón de ${escapeHtml(TURNO_ACTUAL.cajero_nombre||TURNO_ACTUAL.cajero)}"><span class="dot"></span>Turno de ${escapeHtml(TURNO_ACTUAL.cajero_nombre||nombreUsuario(TURNO_ACTUAL.cajero))} · tú vendes fuera de caja</span>
+      <button class="btn secondary" style="${b}" onclick="menuReportesCaja()">Reportes</button>`;
+    return;
+  }
   bar.innerHTML=`<span class="caja-chip ${ajeno?'cerrada':'abierta'}" title="Turno ${TURNO_ACTUAL.numero}"><span class="dot"></span>Turno ${TURNO_ACTUAL.numero} · ${escapeHtml(TURNO_ACTUAL.cajero_nombre||nombreUsuario(TURNO_ACTUAL.cajero))} desde ${horaCL(TURNO_ACTUAL.inicio_at)}</span>
     <button class="btn secondary" style="${b}" onclick="abrirModalMovimientoCaja()">Retiro / ingreso</button>
     <button class="btn secondary" style="${b}" onclick="menuReportesCaja()">Reportes</button>
@@ -6172,12 +6179,16 @@ async function verificarCajaTerminal(){
   if(!CAJA_HOY&&currentPage==='terminal') abrirModalAperturaCaja();
   else if(CAJA_HOY&&CAJA_HOY.estado==='abierta'&&!TURNO_ACTUAL&&currentPage==='terminal') abrirModalTurno();
 }
+// El dueño, desde otro equipo, vende sin tocar el turno del cajero: "fuera de la caja"
+// (la venta no entra al cuadre del cajón; esa plata la recibe el dueño).
+function ventaFueraDeCaja(){ return esDueno()&&!POS_FECHA&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero!==SESSION.usuario; }
 async function cajaAbiertaParaVender(rapido){
+  if(rapido&&ventaFueraDeCaja()) return true;
   if(rapido&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===hoyChile()&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
   await cargarCajaHoy(); renderCajaBar();
   if(CAJA_HOY&&CAJA_HOY.estado==='abierta'){
     if(!TURNO_ACTUAL){ toast('Abre tu turno para vender',true); abrirModalTurno(); return false; }
-    if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return false; }
+    if(TURNO_ACTUAL.cajero!==SESSION.usuario){ if(esDueno()) return true; avisoTurnoAjeno(); return false; }
     return true;
   }
   if(!CAJA_HOY){ toast('Primero abre la caja del día',true); abrirModalAperturaCaja(); }
@@ -6398,7 +6409,7 @@ function sumarConteoCaja(){ document.getElementById('conteoTotal').textContent=m
 // Totales de la caja: ventas desde la apertura (sin anuladas) y movimientos.
 // turno: si viene, solo las ventas y movimientos de ese turno
 async function calcularTotalesCaja(caja,hasta,turno){
-  let q=supa.from('ventas').select('id,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago,registrado_por,created_at,boleta_numero').eq('anulada',false);
+  let q=supa.from('ventas').select('id,fuera_caja,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago,registrado_por,created_at,boleta_numero').eq('anulada',false);
   let qm=supa.from('caja_movimientos').select('*').eq('cierre_id',caja.id).order('created_at');
   if(turno){ q=q.eq('turno_id',turno.id); qm=qm.eq('turno_id',turno.id); }
   else{
@@ -6410,6 +6421,7 @@ async function calcularTotalesCaja(caja,hasta,turno){
   if(vR.error) throw vR.error;
   if(mR.error) throw mR.error;
   if(!turno&&caja.fecha) vR.data=(vR.data||[]).filter(v=>hoyChile(new Date(v.created_at))===caja.fecha);
+  vR.data=(vR.data||[]).filter(v=>!v.fuera_caja);   // ventas del dueño fuera de la caja: no están en el cajón
   const t={ventas_efectivo:0,ventas_transferencia:0,ventas_tarjeta:0,ventas_mercadopago:0,ventas_otro_mixto:0,ventas_cantidad:0,ventas_mixtas:0,retiros:0,ingresos:0,total_vendido:0};
   (vR.data||[]).forEach(v=>{
     if(v.estado_pago==='pendiente') return;   // pedido facturado sin pagar: la plata aún no entra
