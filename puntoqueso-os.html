@@ -5675,7 +5675,7 @@ async function openFacturaCompraModal(editId){
     }
     const {data,error}=await supa.from('factura_compra_items').select('*').eq('factura_id',f.id).order('id');
     if(error){ toast('No se pudieron cargar los productos de la factura: '+error.message,true); closeModal(); return; }
-    FC_ITEMS=(data||[]).map(i=>({producto_id:i.producto_id,producto_nombre:i.producto_nombre,cantidad:Number(i.cantidad),costo_unitario:Number(i.costo_unitario),subtotal:Math.round(Number(i.cantidad)*Number(i.costo_unitario)),sin_match:!i.producto_id}));
+    FC_ITEMS=(data||[]).map(i=>({producto_id:i.producto_id,producto_nombre:i.producto_nombre,cantidad:Number(i.cantidad),devuelto:Number(i.devuelto)||0,costo_unitario:Number(i.costo_unitario),subtotal:Math.round((Number(i.cantidad)-(Number(i.devuelto)||0))*Number(i.costo_unitario)),sin_match:!i.producto_id}));
     const suma=FC_ITEMS.reduce((a,i)=>a+i.subtotal,0);
     const tol=Math.max(10,suma*0.01), tot=Number(f.total);
     FC_TOTAL_MODE=Math.abs(tot-suma)<=tol?'suma':(Math.abs(tot-Math.round(suma*1.19))<=tol?'iva':'manual');
@@ -5767,6 +5767,11 @@ function fcRenderItems(){
         <input type="number" step="any" min="0" inputmode="decimal" value="${i.costo_unitario}" onchange="fcEditarLinea(${idx},'costo_unitario',this.value)" style="flex:1;min-width:0;padding:6px 8px;" aria-label="Costo unitario">
         <b style="min-width:72px;text-align:right;">${money(i.subtotal)}</b>
       </div>
+      ${FC_EDIT?`<div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+        <span style="font-size:12px;color:var(--text2);white-space:nowrap;">Devolución</span>
+        <input type="number" step="any" min="0" inputmode="decimal" value="${i.devuelto||''}" placeholder="0" onchange="fcEditarLinea(${idx},'devuelto',this.value===''?0:this.value)" style="width:90px;padding:5px 8px;${i.devuelto?'border-color:var(--danger);':''}" aria-label="Cantidad devuelta">
+        ${i.devuelto?`<span style="font-size:12px;color:var(--danger);">se cobran ${reciboFormatCantidad(i.cantidad-i.devuelto)} (−${money(Math.round(i.devuelto*i.costo_unitario))})</span>`:''}
+      </div>`:''}
     </div>`;
   }).join('');
   fcActualizarTotal();
@@ -5786,7 +5791,13 @@ function fcHintTotal(){
 function fcEditarLinea(idx,campo,valor){
   const i=FC_ITEMS[idx]; const n=parseFloat(valor);
   if(!i||!(n>=0)) { fcRenderItems(); return; }
-  i[campo]=n; i.subtotal=Math.round(i.cantidad*i.costo_unitario);
+  if(campo==='devuelto'&&n>Number(i.cantidad)){ toast('La devolución no puede ser mayor que lo comprado',true); fcRenderItems(); return; }
+  if(campo==='cantidad'&&n<(Number(i.devuelto)||0)){ toast('La cantidad no puede ser menor que lo devuelto',true); fcRenderItems(); return; }
+  const antes=i.subtotal;
+  i[campo]=n; i.subtotal=Math.round((i.cantidad-(Number(i.devuelto)||0))*i.costo_unitario);
+  // total fijado a mano: la devolución igual se descuenta del total de la factura
+  const te=document.getElementById('fcTotalEdit');
+  if(campo==='devuelto'&&FC_TOTAL_MODE==='manual'&&te) te.value=Math.max(0,Math.round(Number(te.value||0)+(i.subtotal-antes)));
   fcRenderItems();
 }
 function fcBuscarLinea(idx,txt){
@@ -5900,7 +5911,7 @@ async function guardarFacturaCompra(){
     if(FC_EDIT.estado_pago==='pagada'&&FC_ESTADO_PAGO==='pendiente'&&!confirm('Esta factura estaba pagada. Al pasarla a Pendiente se elimina el gasto que se había registrado. ¿Continuar?')) return;
     const {data,error}=await supa.rpc('editar_factura_compra',{p_id:FC_EDIT.id,p_usuario:SESSION.usuario,p:{
       proveedor_id:proveedor.id,numero,fecha,total:totalFactura,estado_pago:FC_ESTADO_PAGO,cuenta:document.getElementById('fcCuenta')?.value,
-      items:FC_ITEMS.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad,costo_unitario:i.costo_unitario}))}});
+      items:FC_ITEMS.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad,devuelto:Number(i.devuelto)||0,costo_unitario:i.costo_unitario}))}});
     if(error){ toast('Error: '+error.message,true); return; }
     logAudit('Factura de compra editada','proveedores',`${proveedor.nombre} — Factura ${numero||'#'+FC_EDIT.id} — ${money(totalFactura)}`);
     toast('Factura actualizada'); FC_EDIT=null; closeModal(); await loadAll(); renderProveedores(); renderProductos();
@@ -5953,6 +5964,7 @@ async function abrirAbonoFactura(id){
     <div class="caja-linea" style="margin-top:10px;"><span>Total factura</span><b class="num">${money(f.total)}</b></div>
     <div class="caja-linea"><span>Abonado</span><b class="num">${money(pagado)}</b></div>
     <div class="caja-linea"><span><b>Debe</b></span><b class="num" style="color:${saldo>0?'var(--danger)':'var(--ok)'};font-size:17px;">${money(saldo)}</b></div>
+    ${pagado>Number(f.total)+0.5?`<div class="caja-linea"><span><b>A tu favor</b> <span class="sub-xs">(pagaste de más: descuéntalo en la próxima factura)</span></span><b class="num" style="color:var(--ok);">${money(pagado-Number(f.total))}</b></div>`:''}
     ${abonos.length?`<div style="margin-top:10px;font-weight:800;font-size:13px;">Abonos</div>
       ${abonos.map((a,i)=>`<div class="caja-linea"><span>${i+1}. ${new Date(a.fecha+'T12:00:00').toLocaleDateString('es-CL')} · ${escapeHtml(ctaTxt(a.cuenta))}${a.notas?` <span class="sub-xs">${escapeHtml(a.notas)}</span>`:''}</span>
         <span style="display:flex;align-items:center;gap:8px;"><b class="num">${money(a.monto)}</b><button class="btn danger" style="padding:3px 8px;font-size:11px;" title="Quitar abono" onclick="quitarAbonoFactura(${a.id},${f.id})">✕</button></span></div>`).join('')}`:''}
