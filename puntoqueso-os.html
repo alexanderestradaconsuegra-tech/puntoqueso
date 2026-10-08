@@ -5347,7 +5347,11 @@ async function crearPreferenciaMP(p,token){
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
     body:JSON.stringify({
       items:[{title:`Pedido #${p.id} - ${nombreNegocio()}`,quantity:1,unit_price:Math.round(Number(p.total)||0),currency_id:'CLP'}],
-      external_reference:'PQ-'+p.id
+      external_reference:'PQ-'+p.id,
+      // al pagar, Mercado Pago devuelve al cliente a la tienda con un mensaje de confirmación
+      back_urls:{success:`https://quesosvenezolanos.cl/?pago=ok&pedido=${p.id}`,pending:`https://quesosvenezolanos.cl/?pago=pendiente&pedido=${p.id}`,failure:`https://quesosvenezolanos.cl/?pago=error&pedido=${p.id}`},
+      auto_return:'approved',
+      statement_descriptor:'PUNTO QUESO'
     })
   });
   const data=await res.json().catch(()=>({}));
