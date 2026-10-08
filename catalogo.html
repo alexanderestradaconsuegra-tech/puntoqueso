@@ -473,6 +473,11 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
   .slide.ancho .slide-copy{max-width:780px;}
   .slide.ancho h1,.slide.ancho h2{font-size:54px;line-height:1.02;}
   .slide.ancho::before{background:linear-gradient(90deg,rgba(11,10,9,.94) 0%,rgba(11,10,9,.8) 40%,rgba(11,10,9,.35) 62%,rgba(11,10,9,0) 78%);}
+  /* banner principal: la foto completa a la derecha (sin oscurecer los quesos) y el texto sobre el negro */
+  .slide.principal{background-size:auto 100%;background-position:right center;}
+  .slide.principal .slide-copy{max-width:470px;}
+  .slide.principal h1,.slide.principal h2{font-size:56px;line-height:1;}
+  .slide.principal::before{background:linear-gradient(90deg,#0b0a09 0%,#0b0a09 26%,rgba(11,10,9,.55) 40%,rgba(11,10,9,0) 52%);}
   .car-dots{left:0;justify-content:center;}
   .strip a{display:inline-flex;}
   .promo-row{grid-auto-flow:row;grid-template-columns:repeat(3,1fr);overflow:visible;}
@@ -843,6 +848,9 @@ const ES_VE=c=>/venezolan|campolac/i.test(c||'');
 const ES_QUESO=c=>/queso|quesillo/i.test(c||'');
 
 const SLIDES = DOMINIO_VE ? [
+  {tema:'s-photo principal',foto:'hero-principal',fx:'50%',tag:'PUNTO QUESO',titulo:'EL SABOR VENEZOLANO <em>TIENE UN PUNTO</em>',
+   texto:'Quesos venezolanos al mayor y detal en Santiago.',
+   cta:'Quiero mi queso',accion:'menu',pic:'ve'},
   {tema:'s-photo claro',foto:'hero-arepa',fxpc:'41%',tag:'Sabor de casa',titulo:'El queso que tu arepa <em>estaba extrañando</em>',
    texto:'Llanero, de mano, palmita, guayanés, trenza y más. Quesos venezolanos artesanales, frescos y listos para llegar a tu mesa hoy.',
    cta:'Quiero mi queso',accion:'menu',pic:'ve'},
