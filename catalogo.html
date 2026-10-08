@@ -469,6 +469,10 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
   .slide.s-photo .slide-tag{font-size:15px;padding:6px 14px;margin-bottom:14px;}
   .slide.s-photo p{font-size:17px;margin-bottom:20px;}
   .slide.s-photo::before{background:linear-gradient(90deg,rgba(11,10,9,.9) 0%,rgba(11,10,9,.6) 38%,rgba(11,10,9,0) 60%);}
+  /* banner de texto largo (por mayor): título en 2 líneas anchas como el diseño */
+  .slide.ancho .slide-copy{max-width:780px;}
+  .slide.ancho h1,.slide.ancho h2{font-size:54px;line-height:1.02;}
+  .slide.ancho::before{background:linear-gradient(90deg,rgba(11,10,9,.94) 0%,rgba(11,10,9,.8) 40%,rgba(11,10,9,.35) 62%,rgba(11,10,9,0) 78%);}
   .car-dots{left:0;justify-content:center;}
   .strip a{display:inline-flex;}
   .promo-row{grid-auto-flow:row;grid-template-columns:repeat(3,1fr);overflow:visible;}
@@ -848,8 +852,8 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-photo',foto:'fiambres-quesos',tag:'Todo en un pedido',titulo:'Tu mesa completa <em>sin salir de casa</em>',
    texto:'Suma quesos maduros, mortadela, salame y más. Lo pesamos al preparar y te confirmamos el total por WhatsApp antes de pagar.',
    cta:'Armar mi pedido',accion:'menu',pic:'ve2'},
-  {tema:'s-photo',foto:'mayorista-camion',fx:'72%',tag:'Areperas y restaurantes',titulo:'Más margen <em>en cada arepa</em>',
-   texto:'Precio por mayor en llanero, queso de mano y más. Stock constante y despacho refrigerado directo a tu negocio. Cotiza en minutos.',
+  {tema:'s-photo ancho',foto:'mayorista-camion',fx:'72%',tag:'VENTAS AL MAYOR',titulo:'LLENAMOS TU NEGOCIO<br>DEL <em>SABOR QUE MÁS SE VENDE</em>',
+   texto:'Quesos venezolanos al mayor, directo para tu negocio.',
    cta:'Cotizar por mayor',accion:'wa',pic:'logo'},
 ] : [
   {tema:'s-yellow',tag:'Punto Queso',titulo:'Quesos y fiambres <em>a tu puerta</em>',
@@ -858,8 +862,8 @@ const SLIDES = DOMINIO_VE ? [
   {tema:'s-ink',tag:'Quesos venezolanos',titulo:'El sabor de casa, <em>hecho en Chile</em>',
    texto:'Llanero, de mano, palmita, guayanés, trenza y más, elaborados artesanalmente por Campolac.',
    cta:'Ver quesos venezolanos',accion:'ve',pic:'ve'},
-  {tema:'s-photo',foto:'mayorista-camion',fx:'72%',tag:'Para tu negocio',titulo:'Más margen <em>en cada venta</em>',
-   texto:'¿Arepera, restaurante o minimarket? Precio por mayor, stock constante y despacho refrigerado directo. Cotiza en minutos.',
+  {tema:'s-photo ancho',foto:'mayorista-camion',fx:'72%',tag:'VENTAS AL MAYOR',titulo:'LLENAMOS TU NEGOCIO<br>DEL <em>SABOR QUE MÁS SE VENDE</em>',
+   texto:'Quesos venezolanos al mayor, directo para tu negocio.',
    cta:'Cotizar por mayor',accion:'wa',pic:'logo'},
 ];
 
@@ -1069,9 +1073,9 @@ function irSlide(i){
   document.getElementById('carTrack').style.transform=`translateX(-${SLIDE*100}%)`;
   document.querySelectorAll('#carDots button').forEach((b,k)=>b.classList.toggle('on',k===SLIDE));
   const tema=SLIDES[SLIDE].tema;
-  document.getElementById('carDots').style.setProperty('--dot',(tema==='s-ink'||tema==='s-photo')?'#FFD100':'#141210');
-  document.querySelectorAll('#carDots button.on').forEach(b=>b.style.background=(tema==='s-ink'||tema==='s-photo')?'#FFD100':'#141210');
-  document.querySelectorAll('#carDots button:not(.on)').forEach(b=>b.style.background=(tema==='s-ink'||tema==='s-photo')?'rgba(255,255,255,.35)':'rgba(20,18,16,.3)');
+  document.getElementById('carDots').style.setProperty('--dot',(tema==='s-ink'||(/^s-photo/.test(tema)&&!/claro/.test(tema)))?'#FFD100':'#141210');
+  document.querySelectorAll('#carDots button.on').forEach(b=>b.style.background=(tema==='s-ink'||(/^s-photo/.test(tema)&&!/claro/.test(tema)))?'#FFD100':'#141210');
+  document.querySelectorAll('#carDots button:not(.on)').forEach(b=>b.style.background=(tema==='s-ink'||(/^s-photo/.test(tema)&&!/claro/.test(tema)))?'rgba(255,255,255,.35)':'rgba(20,18,16,.3)');
 }
 function moverSlide(d){ irSlide(SLIDE+d); iniciarAutoSlide(); }
 function iniciarAutoSlide(){
