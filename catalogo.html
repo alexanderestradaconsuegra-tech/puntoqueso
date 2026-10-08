@@ -924,7 +924,9 @@ async function marcarDisponibilidad(){
     if(error||!Array.isArray(data)) return;
     const m={}; data.forEach(r=>m[r.id]=r);
     PRODUCTOS.forEach(p=>{ p.agotado=!!m[p.id]?.agotado; p.pocos=!!m[p.id]?.pocos; });
-    PRODUCTOS.sort((a,b)=>(a.agotado-b.agotado)||compararOrden(a,b));
+    // Lo agotado no se muestra: vuelve solo cuando entra stock (al cargar la página de nuevo)
+    PRODUCTOS=PRODUCTOS.filter(p=>!p.agotado);
+    PRODUCTOS.sort(compararOrden);
   }catch(e){}
 }
 function ordenDe(p){ return p.orden==null?Infinity:Number(p.orden); }
