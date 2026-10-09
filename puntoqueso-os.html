@@ -2923,7 +2923,7 @@ async function anularPedido(id){
   toast('Pedido anulado'); closeModal(); await loadAll(); renderPedidos();
 }
 function openPedidoModal(){
-  const prodOpts=DB.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio}">${p.nombre}</option>`).join('');
+  const prodOpts=DB.productos.filter(p=>p.activo!==false).map(p=>`<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join('');
   document.getElementById('modalContent').innerHTML=`
     <h3>Nuevo pedido</h3>
     <label>Nombre del cliente</label><input id="pdNombre">
@@ -2939,9 +2939,11 @@ function openPedidoModal(){
     </div>
     <label>Notas</label><textarea id="pdNotas" rows="2"></textarea>
     <label style="margin-top:14px;">Producto</label>
-    <select id="pdProducto">${prodOpts}</select>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <input id="pdCantidad" type="number" step="0.1" min="0.1" placeholder="Cantidad" style="flex:1;">
+    <select id="pdProducto" onchange="pdSyncProducto()">${prodOpts}</select>
+    <div id="pdPrecios" class="sub-xs" style="margin-top:4px;"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:flex-end;">
+      <div style="flex:1;"><label style="margin-top:0;" id="pdCantLbl">Cantidad</label><input id="pdCantidad" type="number" step="any" min="0" inputmode="decimal" placeholder="Ej: 1"></div>
+      <div style="flex:1;"><label style="margin-top:0;" id="pdPrecioLbl">Precio</label><input id="pdPrecio" type="number" step="1" min="0" inputmode="numeric"></div>
       <button class="btn secondary" onclick="pdAgregarItem()">+ Agregar</button>
     </div>
     <div id="pdItemsList" style="margin-top:10px;"></div>
@@ -2951,16 +2953,44 @@ function openPedidoModal(){
     </div>`;
   document.getElementById('modalBg').style.display='flex';
   PD_ITEMS=[];
+  pdSyncProducto(); pdRenderItems();
+}
+// Al elegir producto: precio normal sugerido (se puede cambiar) y botones de precio mayor / pieza
+function pdSyncProducto(){
+  const p=DB.productos.find(x=>x.id===Number(document.getElementById('pdProducto')?.value)); if(!p) return;
+  const kg=!!p.vender_por_peso;
+  document.getElementById('pdCantLbl').textContent=kg?'Cantidad (kg)':'Cantidad (u)';
+  document.getElementById('pdPrecioLbl').textContent=kg?'Precio por kg':'Precio c/u';
+  document.getElementById('pdPrecio').value=Math.round(Number(p.precio)||0);
+  const op=[[`Normal ${money(p.precio)}`,p.precio]];
+  if(precioMayorDe(p)>0) op.push([`Mayor ${money(precioMayorDe(p))}`,precioMayorDe(p)]);
+  document.getElementById('pdPrecios').innerHTML=op.length>1?op.map(([t,v])=>`<button type="button" class="btn secondary" style="padding:3px 9px;font-size:11.5px;margin-right:6px;" onclick="document.getElementById('pdPrecio').value=${Math.round(v)}">${t}</button>`).join(''):'';
+}
+function pdRenderItems(){
+  const el=document.getElementById('pdItemsList'); if(!el) return;
+  el.innerHTML=PD_ITEMS.length?PD_ITEMS.map((i,idx)=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span style="flex:1;min-width:0;">${escapeHtml(i.producto_nombre)} <span class="sub-xs">× ${reciboFormatCantidad(i.cantidad)}${i.kg?' kg':''}</span></span>
+      <input type="number" step="1" min="0" value="${i.precio_unitario}" onchange="pdEditarPrecio(${idx},this.value)" style="width:96px;padding:5px 8px;text-align:right;" aria-label="Precio">
+      <b style="width:80px;text-align:right;">${money(i.subtotal)}</b>
+      <button type="button" class="lc-more" style="min-width:30px;min-height:30px;color:var(--danger);" aria-label="Quitar" onclick="PD_ITEMS.splice(${idx},1);pdRenderItems()">✕</button>
+    </div>`).join('')+`<div style="display:flex;justify-content:space-between;font-weight:800;padding-top:8px;"><span>Total</span><span class="num">${money(PD_ITEMS.reduce((s,i)=>s+i.subtotal,0))}</span></div>`:'';
+}
+function pdEditarPrecio(idx,v){
+  const i=PD_ITEMS[idx], n=Number(v); if(!i) return;
+  if(!(n>=0)){ toast('Precio inválido',true); pdRenderItems(); return; }
+  i.precio_unitario=Math.round(n); i.subtotal=Math.round(i.precio_unitario*i.cantidad); pdRenderItems();
 }
 let PD_ITEMS=[];
 function pdAgregarItem(){
-  const sel=document.getElementById('pdProducto');
-  const cantidad=parseFloat(document.getElementById('pdCantidad').value);
+  const p=DB.productos.find(x=>x.id===Number(document.getElementById('pdProducto').value));
+  const cantidad=parseFloat(String(document.getElementById('pdCantidad').value).replace(',','.'));
+  const precio=Math.round(Number(document.getElementById('pdPrecio').value));
+  if(!p) return;
   if(!cantidad||cantidad<=0){ toast('Ingresa una cantidad válida',true); return; }
-  const precio=Number(sel.options[sel.selectedIndex].dataset.precio);
-  PD_ITEMS.push({producto_id:Number(sel.value),producto_nombre:sel.options[sel.selectedIndex].text,cantidad,precio_unitario:precio,subtotal:Math.round(precio*cantidad)});
+  if(!(precio>=0)){ toast('Ingresa el precio',true); return; }
+  PD_ITEMS.push({producto_id:p.id,producto_nombre:p.nombre,cantidad,precio_unitario:precio,subtotal:Math.round(precio*cantidad),kg:!!p.vender_por_peso});
   document.getElementById('pdCantidad').value='';
-  document.getElementById('pdItemsList').innerHTML=PD_ITEMS.map((i,idx)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;">${i.producto_nombre} x${i.cantidad} <b>${money(i.subtotal)}</b></div>`).join('');
+  pdRenderItems();
 }
 async function guardarPedido(){
   const nombre=sanitize(document.getElementById('pdNombre').value);
@@ -2977,7 +3007,8 @@ async function guardarPedido(){
   const {data:ped,error}=await supa.from('pedidos').insert({cliente_nombre:nombre,cliente_tel:telefono,tipo_entrega:entrega,
     ...(entrega==='retiro'?{}:{direccion_calle:calle,direccion_depto:depto,direccion_comuna:comuna}),notas,total,estado:'pendiente'}).select();
   if(error){ toast('Error: '+error.message,true); return; }
-  for(const item of PD_ITEMS) await supa.from('pedido_items').insert({...item,pedido_id:ped[0].id});
+  const {error:itErr}=await supa.from('pedido_items').insert(PD_ITEMS.map(({kg,...item})=>({...item,pedido_id:ped[0].id}))).select('id');
+  if(itErr){ toast('El pedido se creó, pero faltan productos: '+itErr.message,true); }
   toast('Pedido guardado'); closeModal(); await loadAll(); renderPedidos();
 }
 // ══════════════════════════════════════════════════════════
@@ -3027,7 +3058,8 @@ async function abrirPedidoDetalle(id){
     return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
       <div style="flex:1;min-width:0;">
         <div style="font-size:13.5px;font-weight:600;">${escapeHtml(it.producto_nombre||'-')}</div>
-        <div style="font-size:11.5px;color:var(--muted);">${money(it.precio_unitario)} ${porPeso?'/ kg':'c/u'}</div>
+        ${editable?`<div style="display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--muted);margin-top:3px;">$<input id="pdiPrecio${i}" type="number" step="1" min="0" value="${Math.round(Number(it.precio_unitario)||0)}" oninput="recalcPedidoDetalle()" style="width:84px;padding:3px 6px;font-size:12.5px;text-align:right;" aria-label="Precio de ${escapeHtml(it.producto_nombre||'')}"> ${porPeso?'/ kg':'c/u'}</div>`
+          :`<div style="font-size:11.5px;color:var(--muted);">${money(it.precio_unitario)} ${porPeso?'/ kg':'c/u'}</div>`}
         ${cambio}
       </div>
       <div style="display:flex;align-items:center;gap:4px;width:110px;">
@@ -3053,7 +3085,7 @@ async function abrirPedidoDetalle(id){
     </div>
     ${pedidoPagado(p)?`<div id="pdiPagoInfo" class="sub-xs" style="margin-bottom:6px;">Pago registrado como venta #${p.venta_id}.</div>`:''}
     ${pasosPedidoHTML(p)}
-    <div style="font-size:12px;color:var(--muted);">Ajusta el peso real que saliste de la balanza. Se guarda en kg; aquí escribes gramos.</div>
+    <div style="font-size:12px;color:var(--muted);">Ajusta el peso real de la balanza (en gramos) y, si hace falta, el precio de cada producto.</div>
     <div style="margin-top:8px;">${filas}</div>
     ${agregarHTML}
     ${p.tipo_entrega==='retiro'?`<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px;font-weight:600;">Retiro en tienda</div>`:`
@@ -3074,7 +3106,7 @@ async function abrirPedidoDetalle(id){
       <span>Total</span><span id="pdiTotal" class="num">${money(p.total)}</span>
     </div>
     ${p.total_original!=null?`<div style="font-size:11.5px;color:var(--muted);text-align:right;">Total original del pedido: ${money(p.total_original)}</div>`:''}
-    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="guardarPesosPedido()">Guardar pesos y delivery</button></div>`:''}
+    ${editable?`<div class="actions"><button class="btn" style="width:100%;" onclick="guardarPesosPedido()">Guardar cambios (pesos, precios y delivery)</button></div>`:''}
     ${botonEtapaDetalleHTML(p)}
     ${editable&&['listo','en_camino','entregado'].includes(p.estado)?`<div class="actions"><button class="btn secondary" style="width:100%;" onclick="enviarBoletaYLinkPago(${p.id})">Reenviar detalle + link de pago</button></div>`:''}
     <div class="actions">
@@ -3121,7 +3153,8 @@ async function avanzarDesdeDetalle(id,sig){
 }
 function hayCambiosDetallePedido(p){
   const cants=leerCantidadesPedidoDetalle();
-  return PEDIDO_DET.items.some((it,i)=>Math.abs(cants[i]-Number(it.cantidad))>1e-9)||deliveryDetalleCambio(p);
+  const precios=leerPreciosPedidoDetalle();
+  return PEDIDO_DET.items.some((it,i)=>Math.abs(cants[i]-Number(it.cantidad))>1e-9||Math.abs(precios[i]-Number(it.precio_unitario))>=0.5)||deliveryDetalleCambio(p);
 }
 async function imprimirVentaPedido(ventaId){
   const [vR,iR]=await Promise.all([supa.from('ventas').select('*').eq('id',ventaId).limit(1),
@@ -3141,6 +3174,13 @@ function leerCantidadesPedidoDetalle(){
     return v;
   });
 }
+// Precio por kg / unidad escrito en el detalle (si no se tocó, el del pedido)
+function leerPreciosPedidoDetalle(){
+  return PEDIDO_DET.items.map((it,i)=>{
+    const v=parseFloat(document.getElementById('pdiPrecio'+i)?.value);
+    return isFinite(v)&&v>=0?Math.round(v):Number(it.precio_unitario)||0;
+  });
+}
 // Delivery escrito en el detalle (vacío = sin monto / por definir).
 function leerDeliveryPedidoDetalle(){
   const el=document.getElementById('pdiDelivery');
@@ -3157,10 +3197,10 @@ function deliveryDetalleCambio(p){
   return nuevo!==actual;
 }
 function recalcPedidoDetalle(){
-  const cants=leerCantidadesPedidoDetalle();
+  const cants=leerCantidadesPedidoDetalle(), precios=leerPreciosPedidoDetalle();
   let total=0;
   PEDIDO_DET.items.forEach((it,i)=>{
-    const sub=Math.round((Number(it.precio_unitario)||0)*cants[i]);
+    const sub=Math.round(precios[i]*cants[i]);
     total+=sub;
     const el=document.getElementById('pdiSub'+i);
     if(el) el.textContent=money(sub);
@@ -3174,21 +3214,22 @@ async function guardarPesosPedido({silencioso=false}={}){
   const id=PEDIDO_DET.id;
   const p=pedidoPorId(id);
   if(!p) return false;
-  const cants=leerCantidadesPedidoDetalle();
+  const cants=leerCantidadesPedidoDetalle(), precios=leerPreciosPedidoDetalle();
   const delivery=leerDeliveryPedidoDetalle();
   const cambioDelivery=deliveryDetalleCambio(p);
   // pesos chilenos: cada línea se redondea al peso (Mercado Pago no acepta decimales)
-  const nuevoTotal=cants.reduce((s,c,i)=>s+Math.round((Number(PEDIDO_DET.items[i].precio_unitario)||0)*c),0)+Math.round(delivery);
-  const cambios=PEDIDO_DET.items.map((it,i)=>({it,nueva:cants[i]})).filter(({it,nueva})=>Math.abs(nueva-Number(it.cantidad))>1e-9);
+  const nuevoTotal=cants.reduce((s,c,i)=>s+Math.round(precios[i]*c),0)+Math.round(delivery);
+  const cambios=PEDIDO_DET.items.map((it,i)=>({it,nueva:cants[i],precio:precios[i]}))
+    .filter(({it,nueva,precio})=>Math.abs(nueva-Number(it.cantidad))>1e-9||Math.abs(precio-Number(it.precio_unitario))>=0.5);
   if(!cambios.length&&!cambioDelivery&&Math.abs(nuevoTotal-Number(p.total))<0.5){ if(!silencioso) toast('No hay cambios que guardar'); return true; }
   // Orden deliberado: primero los items, el pedido (padre) al final. Sin
   // transacciones en PostgREST, si algo falla a mitad de camino los items
   // quedan consistentes y el total es recalculable desde ellos.
-  for(const {it,nueva} of cambios){
-    const patch={cantidad:nueva,subtotal:Math.round((Number(it.precio_unitario)||0)*nueva)};
-    // cantidad_original se fija SOLO en el primer ajuste: es lo que pidió el
+  for(const {it,nueva,precio} of cambios){
+    const patch={cantidad:nueva,precio_unitario:precio,subtotal:Math.round(precio*nueva)};
+    // cantidad_original se fija SOLO en el primer ajuste de peso: es lo que pidió el
     // cliente y no se puede pisar en ediciones posteriores.
-    if(it.cantidad_original==null) patch.cantidad_original=Number(it.cantidad);
+    if(it.cantidad_original==null&&Math.abs(nueva-Number(it.cantidad))>1e-9) patch.cantidad_original=Number(it.cantidad);
     const {error}=await supa.from('pedido_items').update(patch).eq('id',it.id);
     if(error){
       console.error(error);
@@ -3197,7 +3238,7 @@ async function guardarPesosPedido({silencioso=false}={}){
     }
   }
   const patchPedido={total:nuevoTotal};
-  if(cambios.length) patchPedido.pesos_ajustados=true;
+  if(cambios.some(({it,nueva})=>Math.abs(nueva-Number(it.cantidad))>1e-9)) patchPedido.pesos_ajustados=true;
   if(cambioDelivery){
     const txt=document.getElementById('pdiDelivery').value.trim();
     patchPedido.costo_delivery=txt===''?null:delivery;
