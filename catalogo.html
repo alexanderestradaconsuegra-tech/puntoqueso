@@ -400,6 +400,9 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 .entrega-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 4px;}
 .entrega-toggle button{height:46px;border-radius:12px;border:1.5px solid var(--line-2);background:var(--paper);font-weight:800;font-size:14px;color:var(--text2);}
 .entrega-toggle button.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.aviso-hoy{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:700;line-height:1.4;margin-top:14px;padding:11px 13px;border-radius:12px;background:var(--yellow-soft);border:1.5px solid var(--yellow);color:var(--ink);}
+.aviso-hoy.manana{background:var(--cream);border-color:var(--line-2);}
+.aviso-hoy svg{flex-shrink:0;margin-top:1px;}
 .quote{font-size:13px;margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--cream);border:1px solid var(--line);line-height:1.45;}
 .quote b{font-weight:800;}
 .quote.ok{background:#E6F4EA;border-color:#cfe8d6;}
@@ -664,6 +667,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     <div class="sheet-body">
       <div id="cartList"></div>
       <div class="cart-total-row"><span>Productos</span><span class="num" id="cartTotalTxt">$0</span></div>
+      <div class="aviso-hoy" id="avisoHorarioCarro" role="status"></div>
       <div class="cart-note">El delivery se calcula en el siguiente paso según tu dirección. Los productos por kilo se pesan al preparar; te confirmamos el total exacto.</div>
       <button class="btn dark block" id="btnIrCheckout" onclick="abrirCheckout()" style="margin-top:16px;height:52px;">Continuar</button>
     </div>
@@ -687,6 +691,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
           <button type="button" class="on" data-e="delivery" role="radio" aria-checked="true" onclick="setEntrega('delivery')">Delivery</button>
           <button type="button" data-e="retiro" role="radio" aria-checked="false" onclick="setEntrega('retiro')">Retiro en tienda</button>
         </div>
+        <div class="aviso-hoy" id="avisoHorario" role="status"></div>
         <div id="bloqueDelivery">
           <label for="pedidoCalle">Calle y número <span class="req">*</span></label>
           <div class="dir-wrap">
@@ -1416,7 +1421,7 @@ function renderCartBar(){
   document.getElementById('hdrCartBadge').textContent=cantidadCarrito();
 }
 
-function abrirCarrito(){ renderCartList(); document.getElementById('cartOverlay').classList.add('open'); }
+function abrirCarrito(){ pintarHorario(); renderCartList(); document.getElementById('cartOverlay').classList.add('open'); }
 function cerrarCarrito(){ document.getElementById('cartOverlay').classList.remove('open'); }
 function renderCartList(){
   const el=document.getElementById('cartList');
@@ -1485,12 +1490,40 @@ function pintarRef(){
   ['refTop','refCheckout'].forEach(id=>{ const el=document.getElementById(id); if(!el) return; el.innerHTML=c?txt:''; el.classList.toggle('show',!!c); });
 }
 
+// ── Horario y entrega el mismo día (hora de Chile) ──
+// Pedidos hasta las 15:00 se entregan hoy. Horario de atención por día (0 = domingo).
+const CORTE_HOY=15;
+const HORARIO={0:[9,15],1:[9,17],2:[9,17],3:[9,17],4:[9,17],5:[9,17],6:[9,16]};
+function ahoraChile(){
+  const f=new Intl.DateTimeFormat('en-US',{timeZone:'America/Santiago',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+  const g=t=>f.find(x=>x.type===t).value;
+  const dia={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[g('weekday')];
+  return {dia,h:(Number(g('hour'))%24)+Number(g('minute'))/60};
+}
+function avisoEntrega(entrega){
+  const {dia,h}=ahoraChile(), [abre,cierra]=HORARIO[dia];
+  const hh=n=>`${n}:00`;
+  if(entrega==='retiro'){
+    if(h<cierra) return {hoy:true,txt:`Retira hoy en la tienda hasta las ${hh(cierra)}.`};
+    return {hoy:false,txt:`Hoy ya cerramos. Retira mañana desde las ${hh(HORARIO[(dia+1)%7][0])}.`};
+  }
+  if(h<CORTE_HOY) return {hoy:true,txt:`Pides antes de las ${hh(CORTE_HOY)}, recibes hoy.`};
+  return {hoy:false,txt:`Pasadas las ${hh(CORTE_HOY)}, tu pedido se entrega mañana.`};
+}
+const IC_RELOJ='<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+function pintarHorario(){
+  const a=avisoEntrega(ENTREGA);
+  ['avisoHorario','avisoHorarioCarro'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.innerHTML=IC_RELOJ+`<span>${a.txt}</span>`; el.classList.toggle('manana',!a.hoy);
+  });
+}
 function setEntrega(e){
   ENTREGA=e==='retiro'?'retiro':'delivery';
   document.querySelectorAll('.entrega-toggle button').forEach(b=>{ const on=b.dataset.e===ENTREGA; b.classList.toggle('on',on); b.setAttribute('aria-checked',on); });
   document.getElementById('bloqueDelivery').style.display=ENTREGA==='delivery'?'':'none';
   document.getElementById('bloqueRetiro').style.display=ENTREGA==='retiro'?'':'none';
-  pintarResumen();
+  pintarResumen(); pintarHorario();
 }
 // ── Dirección con sugerencias de Google (Places) ──
 // Mientras el cliente escribe se muestran direcciones reales; al elegir una
@@ -1731,7 +1764,7 @@ function abrirCheckout(){
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
   cerrarCarrito();
   prellenarCliente();
-  pintarRef(); pintarResumen();
+  pintarRef(); pintarResumen(); pintarHorario();
   document.getElementById('checkoutOverlay').classList.add('open');
 }
 function cerrarCheckout(){ document.getElementById('checkoutOverlay').classList.remove('open'); }
