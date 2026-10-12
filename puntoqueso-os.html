@@ -1537,6 +1537,8 @@ async function iniciarApp(){
   initWeightKeyboard();
   // Config tiene formularios largos: si el refresco automático la recargara
   // mientras alguien está escribiendo, borraría todo antes de guardar.
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) vigilarCambioDeDia(); });
+  setInterval(vigilarCambioDeDia,60000);
   setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); verificarPagosMP(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
 }
 (function(){
@@ -6195,6 +6197,19 @@ async function cargarCajaHoy(){
   }
   return CAJA_HOY;
 }
+// Pantalla que quedó abierta toda la noche: al cambiar el día la caja de ayer ya no es la de hoy.
+// Se cierra sola la vieja, se limpia el modal de turno que quedó colgado y se pide abrir la de hoy.
+let _vigilandoDia=false;
+async function vigilarCambioDeDia(){
+  if(_vigilandoDia||!CAJA_HOY||CAJA_HOY.fecha===hoyChile()) return;
+  _vigilandoDia=true;
+  try{
+    await cargarCajaHoy(); renderCajaBar();
+    const bg=document.getElementById('modalBg');
+    if(bg&&bg.style.display==='flex'&&/Abrir turno de|Abrir caja de hoy|Turno \d+ cerrado/.test(document.getElementById('modalContent').innerText||'')) closeModal();
+    if(currentPage==='terminal') await verificarCajaTerminal();
+  }finally{ _vigilandoDia=false; }
+}
 const horaCL=ts=>ts?new Date(ts).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):'-';
 function nombreUsuario(u){ return DB.usuarios.find(x=>x.usuario===u)?.nombre||u||'-'; }
 function renderCajaBar(){
@@ -6261,12 +6276,20 @@ async function cerrarCajaViejaSola(c){
     const ahora=new Date().toISOString();
     const t=await calcularTotalesCaja(c,ahora);
     const nota='Cerrada sola por el sistema: quedó abierta de un día anterior (sin conteo)';
+    const {data:todos}=await supa.from('turnos_caja').select('*').eq('cierre_id',c.id).order('numero');
+    const trs=(todos||[]).filter(x=>x.estado==='abierto');
+    const cerr=(todos||[]).filter(x=>x.estado==='cerrado');
+    // si todos los turnos ya se cerraron con conteo, el cajón quedó contado en el último: se usa ese conteo
+    const usaConteo=!trs.length&&cerr.length;
+    const ult=cerr[cerr.length-1];
+    const contado=usaConteo?(Number(ult.total_contado)||0):t.esperado;
+    const dif=usaConteo?contado-t.esperado:0;
     const {data}=await supa.from('cierres_caja').update({estado:'cerrada',cerrada_at:ahora,cerrada_por:SESSION.usuario,
       ventas_efectivo:t.ventas_efectivo,ventas_transferencia:t.ventas_transferencia,ventas_tarjeta:t.ventas_tarjeta,
       ventas_otro_mixto:0,ventas_mercadopago:t.ventas_mercadopago,ventas_cantidad:t.ventas_cantidad,retiros:t.retiros,ingresos:t.ingresos,
-      total_esperado:t.esperado,total_contado:t.esperado,diferencia:0,notas:nota}).eq('id',c.id).eq('estado','abierta').select('id');
-    const {data:trs}=await supa.from('turnos_caja').select('*').eq('cierre_id',c.id).eq('estado','abierto');
-    for(const tu of (trs||[])){
+      conteo:usaConteo?ult.conteo:null,total_esperado:t.esperado,total_contado:contado,diferencia:dif,
+      notas:usaConteo?'Cerrada sola por el sistema: no se cerró el día; se usó el conteo del último turno':nota}).eq('id',c.id).eq('estado','abierta').select('id');
+    for(const tu of trs){
       const tt=await calcularTotalesCaja(c,ahora,tu);
       await supa.from('turnos_caja').update({estado:'cerrado',fin_at:ahora,cerrado_por:SESSION.usuario,
         ventas_efectivo:tt.ventas_efectivo,ventas_transferencia:tt.ventas_transferencia,ventas_tarjeta:tt.ventas_tarjeta,ventas_mercadopago:tt.ventas_mercadopago,
@@ -6366,6 +6389,13 @@ async function confirmarAbrirTurno(){
   if(v===''||Number(v)<0){ toast('Escribe el efectivo con que recibes (puede ser 0)',true); return; }
   const btn=document.getElementById('btnAbrirTurno'); btn.disabled=true;
   await cargarCajaHoy();
+  // pantalla que quedó abierta desde ayer: la caja de hoy no existe, el turno nuevo parte con una caja nueva
+  if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'){
+    btn.disabled=false; closeModal(); renderCajaBar();
+    if(!CAJA_HOY){ toast('Empezó un día nuevo: abre la caja de hoy',true); abrirModalAperturaCaja(); }
+    else toast('La caja de hoy ya está cerrada',true);
+    return;
+  }
   if(TURNO_ACTUAL){ btn.disabled=false; toast('Ya hay un turno abierto',true); closeModal(); renderCajaBar(); return; }
   const numero=(CAJA_TURNOS.reduce((m,t)=>Math.max(m,t.numero),0))+1;
   const fondo=Number(v)||0;
@@ -6561,9 +6591,10 @@ async function confirmarCierreTurno(){
     <div class="caja-linea"><span><b>Debía haber</b></span><b>${money(r.turno.total_esperado)}</b></div>
     <div class="caja-linea"><span><b>Contado</b></span><b>${money(r.turno.total_contado)}</b></div>
     <div class="caja-linea"><span><b>Total vendido</b> <span class="sub-xs">(${r.turno.ventas_cantidad} ventas)</span></span><b>${money(r.turno.total_vendido)}</b></div>
-    <div class="sub-xs" style="margin-top:10px;">Imprime el reporte y entrégalo con el cajón. El siguiente cajero abre su turno contando lo que recibe.</div>
+    <div class="sub-xs" style="margin-top:10px;">Imprime el reporte y entrégalo con el cajón. El siguiente cajero abre su turno contando lo que recibe. Si hoy no se vende más, cierra también el día.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Listo</button>
+      <button class="btn secondary" onclick="abrirModalCierreCaja('dia')">Cerrar el día</button>
       <button class="btn secondary" onclick="closeModal();openCajeroSwitch()">Cambiar de cajero</button>
       <button class="btn" onclick="imprimirReporteTurno(${r.turno.id})">Imprimir turno</button>
     </div>`;
