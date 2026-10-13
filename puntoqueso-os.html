@@ -642,6 +642,10 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
     <!-- VENTAS -->
     <div class="view" id="view-ventas">
       <div class="topbar"><div><h2>Ventas</h2><div class="sub">Historial de ventas del terminal</div></div></div>
+      <div class="cat-chips" id="ventasModoChips" style="margin-bottom:10px;">
+        <button type="button" class="cat-chip active" data-m="lista" onclick="setModoVentas('lista')">Ventas</button>
+        <button type="button" class="cat-chip" data-m="top" onclick="setModoVentas('top')">Más vendidos</button>
+      </div>
       <div class="toolbar">
         <div class="cat-chips" id="ventasPeriodoChips">
           <button type="button" class="cat-chip active" data-p="hoy" onclick="setPeriodoVentas('hoy')">Hoy</button>
@@ -651,6 +655,8 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         </div>
         <label class="periodo-fecha">Fecha… <input type="date" id="filtroFechaVentas" onchange="setFechaVentas(this.value)"></label>
       </div>
+      <div id="ventasTop" style="display:none;"></div>
+      <div id="ventasListaBox">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;">
         <div class="periodo-resumen" id="ventasResumen"></div>
         <button class="btn secondary" style="padding:8px 12px;font-size:12.5px;" onclick="imprimirReporteVentas()">🖨️ Imprimir reporte</button>
@@ -664,6 +670,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <div class="table-scroll"><table><thead><tr><th><input type="checkbox" class="bulk-chk" id="bulkAllventas" onchange="bulkToggleAll('ventas',this.checked)"></th><th>Boleta</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Fecha</th><th></th></tr></thead><tbody id="ventasBody"></tbody></table></div>
         <div class="lc-selall"><input type="checkbox" onchange="bulkToggleAll('ventas',this.checked)"> Seleccionar todo</div>
         <div class="card-list" id="ventasCards"></div>
+      </div>
       </div>
     </div>
 
@@ -4003,7 +4010,7 @@ async function eliminarPedido(id){
 // ══════════════════════════════════════════════════════════
 // Vista por período (Hoy por defecto): las filas se piden al servidor según el
 // período elegido, NO se filtra DB.ventas (que trae solo las últimas 200).
-let VENTAS_VIEW={periodo:'hoy',fecha:'',rows:[],req:0};
+let VENTAS_VIEW={periodo:'hoy',fecha:'',rows:[],req:0,modo:'lista',orden:'monto',top:[]};
 function ventaPorId(id){
   return VENTAS_VIEW.rows.find(v=>v.id===id)||DB.ventas.find(v=>v.id===id)||null;
 }
@@ -4021,6 +4028,7 @@ function setFechaVentas(fecha){
 }
 async function renderVentas(){
   marcarChipsPeriodo('ventasPeriodoChips',VENTAS_VIEW.fecha?null:VENTAS_VIEW.periodo);
+  if(VENTAS_VIEW.modo==='top') return renderMasVendidos();
   const req=++VENTAS_VIEW.req;
   const rango=rangoPeriodo(VENTAS_VIEW.periodo,VENTAS_VIEW.fecha);
   const esTodo=!VENTAS_VIEW.fecha&&VENTAS_VIEW.periodo==='todo';
@@ -4071,6 +4079,77 @@ function pintarVentas(esTodo){
   const seleccionables=new Set(rows.filter(v=>!v.anulada).map(v=>v.id));
   [...BULK.ventas].forEach(id=>{ if(!seleccionables.has(id)) BULK.ventas.delete(id); });
   bulkSyncBar('ventas');
+}
+// ── Más vendidos: por producto, del período elegido (solo lectura, no cambia nada) ──
+function setModoVentas(m){
+  VENTAS_VIEW.modo=m;
+  document.querySelectorAll('#ventasModoChips .cat-chip').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
+  document.getElementById('ventasTop').style.display=m==='top'?'block':'none';
+  document.getElementById('ventasListaBox').style.display=m==='top'?'none':'block';
+  renderVentas();
+}
+function setOrdenMasVendidos(o){ VENTAS_VIEW.orden=o; pintarMasVendidos(); }
+async function renderMasVendidos(){
+  const el=document.getElementById('ventasTop');
+  const req=++VENTAS_VIEW.req;
+  el.innerHTML='<div class="empty">Calculando…</div>';
+  const rango=rangoPeriodo(VENTAS_VIEW.periodo,VENTAS_VIEW.fecha);
+  // anuladas del período (con un día de holgura: los items pueden grabarse segundos después)
+  let qa=supa.from('ventas').select('id').eq('anulada',true);
+  if(rango.desde) qa=qa.gte('created_at',new Date(rango.desde.getTime()-864e5).toISOString());
+  const [itR,anR]=await Promise.all([
+    aplicarRango(supa.from('venta_items').select('venta_id,producto_id,producto_nombre,cantidad,subtotal,costo_unitario'),'created_at',rango),
+    qa,
+  ]);
+  if(req!==VENTAS_VIEW.req) return;
+  if(itR.error||anR.error){ const e=itR.error||anR.error; console.error(e); el.innerHTML=`<div class="empty">No se pudo calcular: ${escapeHtml(e.message)}</div>`; return; }
+  const anuladas=new Set((anR.data||[]).map(v=>v.id));
+  const por={};
+  (itR.data||[]).forEach(it=>{
+    if(anuladas.has(it.venta_id)) return;
+    const n=it.producto_nombre||'—';
+    if(!it.producto_id&&(n==='Delivery'||n.startsWith('Descuento'))) return;   // no son productos
+    const k=it.producto_id?'p'+it.producto_id:'n'+n;
+    const p=it.producto_id?DB.productos.find(x=>x.id===it.producto_id):null;
+    if(!por[k]) por[k]={nombre:p?.nombre||n,peso:p?(!!p.vender_por_peso||p.unidad==='kg'):false,cant:0,monto:0,costo:0,sinCosto:0,ventas:new Set()};
+    const r=por[k], c=Number(it.cantidad)||0, cu=Number(it.costo_unitario)||0;
+    r.cant+=c; r.monto+=Number(it.subtotal)||0; r.costo+=c*cu; if(!cu) r.sinCosto+=Number(it.subtotal)||0;
+    r.ventas.add(it.venta_id);
+  });
+  VENTAS_VIEW.top=Object.values(por).map(r=>({...r,ganancia:r.monto-r.costo,nVentas:r.ventas.size}));
+  pintarMasVendidos();
+}
+function pintarMasVendidos(){
+  const el=document.getElementById('ventasTop');
+  const verC=canDo('verCostos');
+  const o=VENTAS_VIEW.orden==='ganancia'&&!verC?'monto':VENTAS_VIEW.orden;
+  const rows=[...VENTAS_VIEW.top].sort((a,b)=>o==='kg'?((b.peso-a.peso)||(b.cant-a.cant)):o==='ganancia'?b.ganancia-a.ganancia:b.monto-a.monto);
+  if(!rows.length){ el.innerHTML='<div class="empty">Sin ventas en este período</div>'; return; }
+  const tot=rows.reduce((t,r)=>({monto:t.monto+r.monto,gan:t.gan+r.ganancia,kg:t.kg+(r.peso?r.cant:0),u:t.u+(r.peso?0:r.cant)}),{monto:0,gan:0,kg:0,u:0});
+  const fmtCant=r=>r.peso?`${r.cant.toLocaleString('es-CL',{maximumFractionDigits:2})} kg`:`${r.cant.toLocaleString('es-CL',{maximumFractionDigits:2})} u`;
+  const pct=(a,b)=>b?Math.round(a/b*100)+'%':'—';
+  const hayAlerta=verC&&rows.some(r=>r.sinCosto>0);
+  const chip=(k,t)=>`<button type="button" class="cat-chip${o===k?' active':''}" onclick="setOrdenMasVendidos('${k}')">${t}</button>`;
+  el.innerHTML=`
+    <div class="periodo-resumen" style="margin-bottom:8px;"><b class="num">${rows.length}</b> productos · vendido <b class="num">${money(tot.monto)}</b>${tot.kg?` · <b class="num">${tot.kg.toLocaleString('es-CL',{maximumFractionDigits:1})} kg</b>`:''}${tot.u?` · <b class="num">${tot.u.toLocaleString('es-CL',{maximumFractionDigits:0})}</b> unidades`:''}${verC?` · ganancia <b class="num" style="color:${tot.gan<0?'var(--danger)':'var(--ok)'}">${money(tot.gan)}</b> (${pct(tot.gan,tot.monto)})`:''}</div>
+    <div class="cat-chips" style="margin-bottom:10px;"><span class="sub-xs" style="align-self:center;">Ordenar por:</span>${chip('monto','Más plata')}${chip('kg','Más kilos / unidades')}${verC?chip('ganancia','Más ganancia'):''}</div>
+    <div class="list-wrap"><div class="table-scroll"><table>
+      <thead><tr><th>#</th><th>Producto</th><th style="text-align:right;">Cantidad</th><th style="text-align:right;">Vendido</th><th style="text-align:right;">% del total</th>${verC?'<th style="text-align:right;">Ganancia</th><th style="text-align:right;">Margen</th>':''}<th style="text-align:right;">Ventas</th></tr></thead>
+      <tbody>${rows.map((r,i)=>`<tr>
+        <td>${i+1}</td><td>${escapeHtml(r.nombre)}</td>
+        <td class="num" style="text-align:right;white-space:nowrap;">${fmtCant(r)}</td>
+        <td class="num" style="text-align:right;">${money(r.monto)}</td>
+        <td class="num" style="text-align:right;">${pct(r.monto,tot.monto)}</td>
+        ${verC?`<td class="num" style="text-align:right;color:${r.ganancia<0?'var(--danger)':'var(--ok)'};">${money(r.ganancia)}${r.sinCosto>0?' <span title="Hay ventas de este producto sin costo cargado: la ganancia sale más alta de lo real" style="color:var(--danger);">*</span>':''}</td>
+        <td class="num" style="text-align:right;">${pct(r.ganancia,r.monto)}</td>`:''}
+        <td class="num" style="text-align:right;">${r.nVentas}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="card-list">${rows.map((r,i)=>`<div class="lcard"><div class="lc-row"><div class="lc-main">
+      <div class="lc-top"><div class="lc-title">${i+1}. ${escapeHtml(r.nombre)}</div><div class="lc-fig">${money(r.monto)}</div></div>
+      <div class="lc-meta">${fmtCant(r)} · ${pct(r.monto,tot.monto)} del total · ${r.nVentas} venta${r.nVentas===1?'':'s'}${verC?`<br>Ganancia <b style="color:${r.ganancia<0?'var(--danger)':'var(--ok)'};">${money(r.ganancia)}</b> (${pct(r.ganancia,r.monto)})${r.sinCosto>0?' <span style="color:var(--danger);">*</span>':''}`:''}</div>
+    </div></div></div>`).join('')}</div></div>
+    ${hayAlerta?'<div class="sub-xs" style="margin-top:8px;"><span style="color:var(--danger);">*</span> Ese producto tiene ventas sin costo cargado (el costo se toma de la factura de compra al momento de vender): su ganancia sale más alta de lo real.</div>':''}
+    <div class="sub-xs" style="margin-top:6px;">${verC?'Ganancia = lo vendido − lo que costó (costo del producto al momento de cada venta). No descuenta gastos del local. ':''}Las ventas anuladas no cuentan.</div>`;
 }
 function sheetAccionesVenta(id){
   const v=ventaPorId(id);
