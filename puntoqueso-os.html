@@ -434,11 +434,11 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       <div class="sub">Sistema de ventas</div>
     </div>
     <label>Usuario</label>
-    <input id="loginUser" autocomplete="username">
+    <input id="loginUser" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
     <label>Contraseña</label>
     <input id="loginPass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <div id="loginErr">Usuario o contraseña incorrectos.</div>
-    <button class="btn" onclick="doLogin()">Entrar</button>
+    <button class="btn" id="btnLogin" onclick="doLogin()">Entrar</button>
   </div>
 </div>
 
@@ -1305,15 +1305,24 @@ function marcarChipsPeriodo(contId,periodo){
 // ══════════════════════════════════════════════════════════
 //  LOGIN
 // ══════════════════════════════════════════════════════════
+let _logueando=false;
 async function doLogin(){
+  if(_logueando) return;
   const u=sanitize(document.getElementById('loginUser').value);
   const p=document.getElementById('loginPass').value;
   const errBox=document.getElementById('loginErr');
   errBox.style.display='none';
-  if(!u||!p){ errBox.style.display='block'; return; }
-
-  const {data,error}=await supa.rpc('login',{p_usuario:u,p_password:p});
-  if(error||!data||!data.token){ errBox.style.display='block'; return; }
+  if(!u||!p){ errBox.textContent='Escribe tu usuario y tu contraseña.'; errBox.style.display='block'; return; }
+  _logueando=true;
+  const btn=document.getElementById('btnLogin'); if(btn){ btn.disabled=true; btn.textContent='Entrando…'; }
+  try{
+    let r=await supa.rpc('login',{p_usuario:u,p_password:p});
+    // falla de conexión o del servidor (no de la clave): se reintenta una vez antes de avisar
+    if(r.error){ await new Promise(ok=>setTimeout(ok,1500)); r=await supa.rpc('login',{p_usuario:u,p_password:p}); }
+    var {data,error}=r;
+  }finally{ _logueando=false; if(btn){ btn.disabled=false; btn.textContent='Entrar'; } }
+  if(error){ errBox.textContent='No se pudo conectar con el servidor. Revisa tu internet e intenta de nuevo en unos segundos. (Tu clave puede estar bien.)'; errBox.style.display='block'; return; }
+  if(!data||!data.token){ errBox.textContent='Usuario o contraseña incorrectos.'; errBox.style.display='block'; return; }
 
   const us=data.usuario;
   SESSION={id:us.id,usuario:us.usuario,nombre:us.nombre,rol:us.rol,permisos:us.permisos||{},token:data.token};
