@@ -6366,15 +6366,16 @@ async function cerrarCajaViejaSola(c){
 }
 async function abrirModalAperturaCaja(){
   // sugiere el efectivo que quedó contado en el último cierre
-  const {data:ult}=await supa.from('cierres_caja').select('fecha,total_contado').eq('estado','cerrada').order('fecha',{ascending:false}).limit(1);
+  const {data:ult}=await supa.from('cierres_caja').select('fecha,total_contado,deja_en_caja').eq('estado','cerrada').order('fecha',{ascending:false}).limit(1);
   const u=(ult||[])[0];
+  const deja=u&&u.deja_en_caja!=null?Number(u.deja_en_caja):null;   // lo que se dejó en el cajón para el día siguiente
   document.getElementById('modalContent').innerHTML=`
     <h3>Abrir caja de hoy</h3>
     <div style="font-size:15px;font-weight:700;margin-bottom:6px;text-transform:capitalize;">${escapeHtml(fechaLarga(hoyChile(),true))}</div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Cuenta el efectivo con que parte el cajón (el sencillo para dar vuelto) y escríbelo.</div>
     <label>Efectivo inicial</label>
-    <input type="number" id="cajaFondo" min="0" step="10" inputmode="numeric" placeholder="Ej: 30000">
-    ${u?`<div class="sub-xs" style="margin-top:4px;">Al cerrar la caja del ${escapeHtml(fechaLarga(u.fecha,true))} quedaron ${money(u.total_contado)} en el cajón.</div>`:''}
+    <input type="number" id="cajaFondo" min="0" step="10" inputmode="numeric" placeholder="Ej: 30000" value="${deja!=null?deja:''}">
+    ${deja!=null?`<div class="sub-xs" style="margin-top:4px;">Al cerrar la caja del ${escapeHtml(fechaLarga(u.fecha,true))} se dejaron ${money(deja)} en el cajón para hoy.</div>`:''}
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Ahora no</button>
       <button class="btn" id="btnAbrirCaja" onclick="confirmarAperturaCaja()">Abrir caja</button>
@@ -6525,7 +6526,8 @@ async function guardarMovimientoCaja(){
   closeModal(); toast(`${tipo==='retiro'?'Retiro':'Ingreso'} de ${money(monto)} registrado`);
 }
 
-function abrirModalCierreCaja(modo='dia'){
+async function abrirModalCierreCaja(modo='dia'){
+  if(modo==='dia') await cargarDejaSugerido();
   // Cerrar día sin turno abierto: se usa el conteo del último turno (no se cuenta dos veces)
   if(modo==='dia'&&!TURNO_ACTUAL&&CAJA_TURNOS.some(t=>t.estado==='cerrado')) return confirmarCierreDiaSinConteo();
   if(modo==='turno'&&!TURNO_ACTUAL){ toast('No hay un turno abierto',true); return; }
@@ -6540,6 +6542,7 @@ function abrirModalCierreCaja(modo='dia'){
     <div class="sub-xs" style="font-weight:700;margin-top:8px;">Monedas</div>
     <div class="denom-grid">${DENOMINACIONES.filter(d=>d<1000).map(fila).join('')}</div>
     <div class="caja-total"><span>Total contado</span><span class="num" id="conteoTotal">$0</span></div>
+    ${modo==='dia'?bloqueDejaEnCaja():''}
     <label>Notas (opcional)</label>
     <textarea id="cierreNotas" rows="2" maxlength="300" placeholder="Algo que el dueño deba saber"></textarea>
     <div class="actions">
@@ -6556,7 +6559,49 @@ function leerConteoCaja(){
   });
   return {conteo,total};
 }
-function sumarConteoCaja(){ document.getElementById('conteoTotal').textContent=money(leerConteoCaja().total); }
+function sumarConteoCaja(){ document.getElementById('conteoTotal').textContent=money(leerConteoCaja().total); actualizarSaleDeCaja(); }
+// Al cerrar el día: cuánto efectivo queda en el cajón para mañana y a dónde va el resto.
+// El resto se registra solo como retiro, así la cuenta Efectivo no queda inflada.
+let DEJA_SUGERIDO=30000;
+async function cargarDejaSugerido(){
+  const {data}=await supa.from('cierres_caja').select('deja_en_caja').eq('estado','cerrada').order('fecha',{ascending:false}).limit(15);
+  const u=(data||[]).find(x=>x.deja_en_caja!=null);
+  if(u) DEJA_SUGERIDO=Number(u.deja_en_caja)||0;
+}
+function bloqueDejaEnCaja(contadoFijo){
+  return `<div style="margin-top:12px;padding:10px;background:var(--mint);border-radius:var(--r-sm);border:1px solid var(--border2);">
+    <label style="margin-top:0;">Efectivo que queda en el cajón para mañana</label>
+    <input type="number" id="cierreDeja" min="0" step="10" inputmode="numeric" value="${DEJA_SUGERIDO}" oninput="actualizarSaleDeCaja()">
+    <div id="cierreSale" class="sub-xs" style="margin-top:6px;font-weight:700;"></div>
+    <label>El resto del efectivo, ¿a dónde va?</label>
+    <select id="cierreDestino"><option value="dueno">Retiro del dueño</option><option value="bancoestado">Depósito en BancoEstado</option><option value="mercadopago">Depósito en Mercado Pago</option></select>
+    <input type="hidden" id="cierreContadoFijo" value="${contadoFijo!=null?contadoFijo:''}">
+  </div>`;
+}
+function actualizarSaleDeCaja(){
+  const el=document.getElementById('cierreSale'); if(!el) return;
+  const fijo=document.getElementById('cierreContadoFijo')?.value;
+  const contado=fijo!==''&&fijo!=null?Number(fijo):leerConteoCaja().total;
+  const deja=Math.max(0,Number(document.getElementById('cierreDeja').value)||0);
+  const sale=contado-deja;
+  el.textContent=sale>0?`Salen del cajón ${money(sale)} (se registra como retiro)`:(sale<0?`Ojo: en el cajón hay ${money(contado)}, menos de lo que quieres dejar`:'No sale nada del cajón');
+}
+// Devuelve {deja,sale,destino} o null si el dato no es válido
+function leerDejaEnCaja(contado){
+  const inp=document.getElementById('cierreDeja'); if(!inp) return {deja:null,sale:0,destino:null};
+  const v=inp.value; if(v===''||Number(v)<0){ toast('Escribe cuánto queda en el cajón para mañana (puede ser 0)',true); return null; }
+  const deja=Math.min(Math.round(Number(v)),contado);
+  return {deja,sale:Math.max(0,contado-deja),destino:document.getElementById('cierreDestino').value};
+}
+async function registrarSalidaAlCerrar(cierre,d){
+  if(d.deja==null) return;
+  await supa.from('cierres_caja').update({deja_en_caja:d.deja}).eq('id',cierre.id);
+  if(d.sale>0){
+    const {error}=await supa.from('caja_movimientos').insert({cierre_id:cierre.id,tipo:'retiro',monto:d.sale,motivo:'Efectivo del día retirado al cerrar la caja',destino:d.destino,al_cerrar:true,registrado_por:SESSION.usuario}).select('id');
+    if(error){ toast('Se cerró la caja, pero no se registró el retiro del efectivo: '+error.message,true); return; }
+  }
+  logAudit('Efectivo retirado al cerrar','caja',`${cierre.fecha} — quedan ${money(d.deja)} para mañana${d.sale>0?`, salen ${money(d.sale)} (${({dueno:'retiro del dueño',bancoestado:'BancoEstado',mercadopago:'Mercado Pago'})[d.destino]})`:''}`);
+}
 
 // Totales de la caja: ventas desde la apertura (sin anuladas) y movimientos.
 // turno: si viene, solo las ventas y movimientos de ese turno
@@ -6587,7 +6632,7 @@ async function calcularTotalesCaja(caja,hasta,turno){
     t.ventas_tarjeta+=m.monto_tarjeta; t.ventas_mercadopago+=m.monto_mercadopago;
   });
   const movs=mR.data||[];
-  movs.forEach(m=>{ if(m.tipo==='retiro') t.retiros+=Number(m.monto)||0; else t.ingresos+=Number(m.monto)||0; });
+  movs.filter(m=>!m.al_cerrar).forEach(m=>{ if(m.tipo==='retiro') t.retiros+=Number(m.monto)||0; else t.ingresos+=Number(m.monto)||0; });
   t.esperado=Number((turno||caja).fondo_inicial||0)+t.ventas_efectivo+t.ingresos-t.retiros;
   t.movimientos=movs;
   t.ventas=(vR.data||[]).filter(v=>v.estado_pago!=='pendiente');
@@ -6597,6 +6642,7 @@ async function calcularTotalesCaja(caja,hasta,turno){
 async function confirmarCierreCaja(){
   const {conteo,total:contado}=leerConteoCaja();
   if(!contado&&!confirm('El total contado es $0. ¿Cerrar la caja igual?')) return;
+  const dj=leerDejaEnCaja(contado); if(!dj) return;
   await cargarCajaHoy();
   if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'){ toast('La caja no está abierta',true); closeModal(); renderCajaBar(); return; }
   const btn=document.getElementById('btnCerrarCaja'); btn.disabled=true; btn.textContent='Cerrando…';
@@ -6616,6 +6662,7 @@ async function confirmarCierreCaja(){
   if(error||!data||!data.length){ btn.disabled=false; btn.textContent='Cerrar caja'; toast('No se pudo cerrar la caja'+(error?': '+error.message:' (¿ya estaba cerrada?)'),true); await verificarCajaTerminal(); return; }
   if(TURNO_ACTUAL) await guardarCierreTurno(TURNO_ACTUAL,conteo,contado,sanitize(document.getElementById('cierreNotas').value)||null,ahora);
   logAudit('Caja cerrada','caja',`${CAJA_HOY.fecha} — esperado ${money(t.esperado)}, contado ${money(contado)}, diferencia ${money(diferencia)}`);
+  await registrarSalidaAlCerrar(CAJA_HOY,dj);
   const cierre={...CAJA_HOY,...row};
   mostrarResultadoCierre(cierre,t);
   enviarReporteCierreWhatsApp(cierre,t);
@@ -6668,7 +6715,22 @@ async function confirmarCierreTurno(){
 // Día sin turno abierto: el cajón ya quedó contado en el último turno
 async function confirmarCierreDiaSinConteo(){
   const ult=[...CAJA_TURNOS].reverse().find(t=>t.estado==='cerrado');
-  if(!confirm(`Cerrar la caja del día con el conteo del último turno (${ult.cajero_nombre||ult.cajero}: ${money(ult.total_contado)})?`)) return;
+  await cargarDejaSugerido();
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Cerrar caja del ${escapeHtml(fechaLarga(CAJA_HOY?.fecha,true))}</h3>
+    <div class="caja-linea"><span>${escapeHtml(ult.cajero_nombre||ult.cajero)} contó al cerrar su turno</span><b>${money(ult.total_contado)}</b></div>
+    <div class="sub-xs" style="margin-top:6px;">El día se cierra con ese conteo, no hay que contar de nuevo.</div>
+    ${bloqueDejaEnCaja(Number(ult.total_contado)||0)}
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnCerrarCaja" onclick="cerrarDiaConConteoDelUltimoTurno()">Cerrar día</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  actualizarSaleDeCaja();
+}
+async function cerrarDiaConConteoDelUltimoTurno(){
+  const ult=[...CAJA_TURNOS].reverse().find(t=>t.estado==='cerrado');
+  const dj=leerDejaEnCaja(Number(ult.total_contado)||0); if(!dj) return;
   await cargarCajaHoy();
   if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'||TURNO_ACTUAL){ toast('El estado de la caja cambió, revisa e intenta de nuevo',true); renderCajaBar(); return; }
   const ahora=new Date().toISOString();
@@ -6682,6 +6744,7 @@ async function confirmarCierreDiaSinConteo(){
   const {data,error}=await supa.from('cierres_caja').update(row).eq('id',CAJA_HOY.id).eq('estado','abierta').select('id');
   if(error||!data||!data.length){ toast('No se pudo cerrar la caja'+(error?': '+error.message:''),true); return; }
   logAudit('Caja cerrada','caja',`${CAJA_HOY.fecha} — esperado ${money(t.esperado)}, contado ${money(contado)} (último turno)`);
+  await registrarSalidaAlCerrar(CAJA_HOY,dj);
   const cierre={...CAJA_HOY,...row};
   mostrarResultadoCierre(cierre,t);
   enviarReporteCierreWhatsApp(cierre,t);
@@ -6726,7 +6789,8 @@ function mostrarResultadoCierre(c,t){
 async function reabrirCaja(){
   if(!esJefe()) return;
   if(!CAJA_HOY||!confirm('¿Reabrir la caja de hoy? El cierre guardado se descarta y habrá que volver a contar.')) return;
-  const {error}=await supa.from('cierres_caja').update({estado:'abierta',cerrada_at:null,cerrada_por:null,total_contado:null,diferencia:null,conteo:null}).eq('id',CAJA_HOY.id);
+  await supa.from('caja_movimientos').delete().eq('cierre_id',CAJA_HOY.id).eq('al_cerrar',true);   // el retiro del cierre se vuelve a pedir al cerrar
+  const {error}=await supa.from('cierres_caja').update({estado:'abierta',cerrada_at:null,cerrada_por:null,total_contado:null,diferencia:null,conteo:null,deja_en_caja:null}).eq('id',CAJA_HOY.id);
   if(error){ toast('No se pudo reabrir: '+error.message,true); return; }
   logAudit('Caja reabierta','caja',CAJA_HOY.fecha);
   toast('Caja reabierta'); await cargarCajaHoy(); renderCajaBar();
