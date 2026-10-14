@@ -61,6 +61,7 @@ footer a{color:var(--text2)}
   <div class="resumen"><b>En resumen</b>
     <ul>
       <li>Pides en la web, te confirmamos por WhatsApp el total exacto y recién ahí pagas.</li>
+      <li>Delivery se paga antes de la entrega (link o transferencia); efectivo solo al retirar en tienda.</li>
       <li>Los productos por kilo se pesan al preparar: el precio final se ajusta al peso real.</li>
       <li>Son alimentos perecibles: no hay retracto por arrepentimiento, pero si algo llega en mal estado o distinto a lo pedido, lo reponemos o te devolvemos el dinero.</li>
       <li>Si algo falla, avísanos dentro de 24 horas de recibido el pedido, con una foto.</li>
@@ -103,9 +104,9 @@ footer a{color:var(--text2)}
   <ul>
     <li><b>Mercado Pago</b> (link de pago con tarjetas y otros medios disponibles en esa plataforma). El pago se procesa en Mercado Pago: Punto Queso no recibe ni guarda los datos de tu tarjeta.</li>
     <li><b>Transferencia bancaria</b>, a los datos que te enviamos por WhatsApp. Debes enviar el comprobante.</li>
-    <li><b>Efectivo</b> al recibir o al retirar en tienda, cuando esté disponible para tu pedido.</li>
+    <li><b>Efectivo</b>, solo al retirar en tienda. En los pedidos con delivery <b>no recibimos efectivo</b>: el pago se hace antes de la entrega, por link de pago o transferencia.</li>
   </ul>
-  <p>Te entregamos el comprobante de tu compra al momento de la entrega o por WhatsApp.</p>
+  <p><b>Boleta y factura:</b> junto con tu pedido recibes el detalle de la compra y la boleta electrónica. Si necesitas <b>factura</b>, avísanos antes de pagar con los datos de tu empresa (razón social, RUT, giro y dirección).</p>
 
   <h2>7. Entrega y retiro</h2>
   <ul>
@@ -129,7 +130,7 @@ footer a{color:var(--text2)}
   </ul>
   <p>Este plazo es una forma de atender tu reclamo con rapidez y no limita los derechos que la ley te reconoce.</p>
   <h3>Reembolsos</h3>
-  <p>Cuando corresponda devolver dinero, lo hacemos por el mismo medio de pago que usaste, a más tardar dentro de 10 días hábiles desde que aceptamos el reclamo. Mercado Pago o tu banco pueden demorar algunos días adicionales en reflejarlo.</p>
+  <p>Cuando corresponda devolver dinero, lo hacemos por el mismo medio de pago que usaste, normalmente el mismo día en que aceptamos el reclamo y, a más tardar, dentro de 48 horas. Mercado Pago o tu banco pueden demorar algunos días adicionales en reflejarlo en tu cuenta.</p>
   <h3>Cancelaciones</h3>
   <ul>
     <li><b>Por ti:</b> puedes cancelar sin costo mientras tu pedido no esté preparado. Si ya fue cortado, fraccionado o pesado a tu pedido, puede no ser posible cancelarlo ni devolverlo.</li>
@@ -181,8 +182,11 @@ footer a{color:var(--text2)}
     if(C.negocio_rut) partes.push('RUT '+esc(C.negocio_rut));
     partes.push('Domicilio: '+esc(dir));
     var w=wa(); if(w) partes.push('WhatsApp: <a href="https://wa.me/'+w+'">+'+esc(w)+'</a>');
+    partes.push('Correo: <a href="mailto:'+esc(C.negocio_email||'puntoqueso.cl@gmail.com')+'">'+esc(C.negocio_email||'puntoqueso.cl@gmail.com')+'</a>');
     document.querySelectorAll('[data-cfg="proveedor"]').forEach(function(e){e.innerHTML=partes.join(' · ');});
-    document.querySelectorAll('[data-cfg="contacto"]').forEach(function(e){e.innerHTML=w?'por WhatsApp al <a href="https://wa.me/'+w+'">+'+esc(w)+'</a> o en nuestro local ('+esc(dir)+')':'en nuestro local ('+esc(dir)+')';});
+    var mail=C.negocio_email||'puntoqueso.cl@gmail.com';
+    var mailA='<a href="mailto:'+esc(mail)+'">'+esc(mail)+'</a>';
+    document.querySelectorAll('[data-cfg="contacto"]').forEach(function(e){e.innerHTML=(w?'por WhatsApp al <a href="https://wa.me/'+w+'">+'+esc(w)+'</a>, ':'')+'por correo a '+mailA+' o en nuestro local ('+esc(dir)+')';});
     var min=Number(C.referidos_minimo)||20000, tope=Number(C.referidos_tope)||3, dias=Number(C.referidos_dias)||90;
     document.querySelectorAll('[data-cfg="ref_min"]').forEach(function(e){e.textContent='$'+min.toLocaleString('es-CL');});
     document.querySelectorAll('[data-cfg="ref_tope"]').forEach(function(e){e.textContent=tope;});

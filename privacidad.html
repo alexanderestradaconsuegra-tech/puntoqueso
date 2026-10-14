@@ -150,8 +150,11 @@ footer a{color:var(--text2)}
     if(C.negocio_rut) partes.push('RUT '+esc(C.negocio_rut));
     partes.push('Domicilio: '+esc(dir));
     var w=wa(); if(w) partes.push('WhatsApp: <a href="https://wa.me/'+w+'">+'+esc(w)+'</a>');
+    partes.push('Correo: <a href="mailto:'+esc(C.negocio_email||'puntoqueso.cl@gmail.com')+'">'+esc(C.negocio_email||'puntoqueso.cl@gmail.com')+'</a>');
     document.querySelectorAll('[data-cfg="proveedor"]').forEach(function(e){e.innerHTML=partes.join(' · ');});
-    document.querySelectorAll('[data-cfg="contacto"]').forEach(function(e){e.innerHTML=w?'por WhatsApp al <a href="https://wa.me/'+w+'">+'+esc(w)+'</a> o en nuestro local ('+esc(dir)+')':'en nuestro local ('+esc(dir)+')';});
+    var mail=C.negocio_email||'puntoqueso.cl@gmail.com';
+    var mailA='<a href="mailto:'+esc(mail)+'">'+esc(mail)+'</a>';
+    document.querySelectorAll('[data-cfg="contacto"]').forEach(function(e){e.innerHTML=(w?'por WhatsApp al <a href="https://wa.me/'+w+'">+'+esc(w)+'</a>, ':'')+'por correo a '+mailA+' o en nuestro local ('+esc(dir)+')';});
     var min=Number(C.referidos_minimo)||20000, tope=Number(C.referidos_tope)||3, dias=Number(C.referidos_dias)||90;
     document.querySelectorAll('[data-cfg="ref_min"]').forEach(function(e){e.textContent='$'+min.toLocaleString('es-CL');});
     document.querySelectorAll('[data-cfg="ref_tope"]').forEach(function(e){e.textContent=tope;});

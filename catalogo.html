@@ -346,6 +346,9 @@ footer.foot::before{content:'';position:absolute;right:-120px;top:-140px;width:4
 .fcard.dest .fcard-pill{background:var(--yellow);border-color:var(--yellow);color:var(--ink);}
 .foot-bottom{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;font-size:12.5px;color:rgba(255,255,255,.5);position:relative;}
 .chk-row a,.cart-note a{color:var(--ink);font-weight:700;text-underline-offset:2px;}
+.foot-id{flex-basis:100%;order:3;font-size:11.5px;color:rgba(255,255,255,.4);line-height:1.5;}
+.foot-id:empty{display:none;}
+.foot-id a{color:inherit;}
 .foot-legal{display:flex;flex-wrap:wrap;gap:6px 16px;}
 .foot-legal a{color:rgba(255,255,255,.7);text-decoration:underline;text-underline-offset:3px;}
 .foot-legal a:hover,.foot-legal a:focus-visible{color:var(--yellow);outline:none;}
@@ -637,6 +640,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     </div>
     <div class="foot-bottom">
       <span id="footCopy">© Punto Queso</span>
+      <span id="footId" class="foot-id"></span>
       <nav class="foot-legal" aria-label="Información legal">
         <a href="https://quesosvenezolanos.cl/terminos.html" target="_blank" rel="noopener">Términos y condiciones</a>
         <a href="https://quesosvenezolanos.cl/privacidad.html" target="_blank" rel="noopener">Política de privacidad</a>
@@ -969,6 +973,10 @@ async function cargarConfig(){
     const dir=sanitize(CFG.negocio_direccion), tel=sanitize(CFG.negocio_telefono);
     const ig=sanitize(CFG.negocio_instagram).replace(/^@/,''), tt=sanitize(CFG.negocio_tiktok).replace(/^@/,'');
     pintarFooter({dir,tel,ig,tt,wa:numeroWhatsApp()});
+    // Identificación del proveedor (Ley 19.496): sale de Configuración del panel
+    const razon=sanitize(CFG.negocio_razon_social), rut=sanitize(CFG.negocio_rut), mail=sanitize(CFG.negocio_email)||'puntoqueso.cl@gmail.com';
+    const id=[razon,rut?'RUT '+rut:'',dir||'Arturo Prat 2045, Santiago'].filter(Boolean).map(esc).join(' · ');
+    document.getElementById('footId').innerHTML=id+` · <a href="mailto:${esc(mail)}">${esc(mail)}</a>`;
   }catch(e){ /* decorativo: si falla no rompe el pedido */ }
 }
 // ── Pie de página: tarjetas de contacto que funcionan al tocarlas ──
