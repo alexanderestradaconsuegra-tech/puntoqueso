@@ -8,4 +8,16 @@
     <image:image><image:loc>https://quesosvenezolanos.cl/og-quesosvenezolanos.jpg</image:loc></image:image>
     <image:image><image:loc>https://quesosvenezolanos.cl/hero-arepa.webp</image:loc></image:image>
   </url>
+  <url>
+    <loc>https://quesosvenezolanos.cl/terminos.html</loc>
+    <lastmod>2026-10-14</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://quesosvenezolanos.cl/privacidad.html</loc>
+    <lastmod>2026-10-14</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
 </urlset>

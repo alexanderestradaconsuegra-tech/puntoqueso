@@ -5,7 +5,7 @@
 //
 // VERSIONING: bump CACHE_NAME (e.g. pq-catalogo-shell-v3) on every deploy that changes
 // catalogo.html, so old clients pick up the new shell instead of a stale cache.
-const CACHE_NAME = 'pq-catalogo-shell-v29';
+const CACHE_NAME = 'pq-catalogo-shell-v30';
 const SHELL_URLS = ['/', '/index.html'];
 
 self.addEventListener('install', (event) => {
@@ -34,6 +34,9 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
   if (req.mode !== 'navigate' && req.destination !== 'document') return;
+  // Solo la portada es el "shell" de la app. Otras páginas (términos, privacidad)
+  // van directo a la red: antes de esto, una de ellas habría pisado el shell cacheado.
+  if (url.pathname !== '/' && url.pathname !== '/index.html') return;
 
   event.respondWith(
     fetch(req, { cache: 'no-store' })

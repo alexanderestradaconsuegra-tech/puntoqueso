@@ -19,4 +19,6 @@ COPY mayorista-camion.webp /usr/share/nginx/html/mayorista-camion.webp
 COPY queso-paisa.webp /usr/share/nginx/html/queso-paisa.webp
 COPY hero-principal.webp /usr/share/nginx/html/hero-principal.webp
 COPY og-quesosvenezolanos.jpg /usr/share/nginx/html/og-quesosvenezolanos.jpg
+COPY terminos.html /usr/share/nginx/html/terminos.html
+COPY privacidad.html /usr/share/nginx/html/privacidad.html
 EXPOSE 80

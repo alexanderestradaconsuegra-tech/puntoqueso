@@ -39,6 +39,7 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
  {"@type":"Question","name":"¿Dónde comprar quesos venezolanos en Chile?","acceptedAnswer":{"@type":"Answer","text":"En Punto Queso tenemos quesos venezolanos artesanales elaborados por Campolac. Puedes pedirlos online en quesosvenezolanos.cl y te los llevamos a domicilio."}},
+ {"@type":"Question","name":"¿Puedo cambiar o devolver un producto?","acceptedAnswer":{"@type":"Answer","text":"Son alimentos perecibles, por eso no hay devolución por arrepentimiento. Si tu pedido llega en mal estado, con un producto distinto o con faltantes, escríbenos por WhatsApp dentro de las 24 horas de recibido, con una foto, y lo reponemos o te devolvemos el dinero."}},
  {"@type":"Question","name":"¿Qué quesos venezolanos venden?","acceptedAnswer":{"@type":"Answer","text":"Queso llanero, de mano, palmita, guayanés, trenza y más, todos de elaboración artesanal."}},
  {"@type":"Question","name":"¿Cómo se paga el pedido?","acceptedAnswer":{"@type":"Answer","text":"Haces el pedido en la web, te confirmamos por WhatsApp el peso exacto y el total, y recién ahí pagas con Mercado Pago o transferencia."}},
  {"@type":"Question","name":"¿Venden queso venezolano por mayor?","acceptedAnswer":{"@type":"Answer","text":"Sí. Si tienes arepera, restaurante o minimarket, escríbenos por WhatsApp y te cotizamos precios por volumen."}},
@@ -344,6 +345,10 @@ footer.foot::before{content:'';position:absolute;right:-120px;top:-140px;width:4
 .fcard.dest{border-color:rgba(255,209,0,.45);}
 .fcard.dest .fcard-pill{background:var(--yellow);border-color:var(--yellow);color:var(--ink);}
 .foot-bottom{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;font-size:12.5px;color:rgba(255,255,255,.5);position:relative;}
+.chk-row a,.cart-note a{color:var(--ink);font-weight:700;text-underline-offset:2px;}
+.foot-legal{display:flex;flex-wrap:wrap;gap:6px 16px;}
+.foot-legal a{color:rgba(255,255,255,.7);text-decoration:underline;text-underline-offset:3px;}
+.foot-legal a:hover,.foot-legal a:focus-visible{color:var(--yellow);outline:none;}
 .foot-credit{display:inline-flex;align-items:center;gap:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:6px 12px 6px 6px;border-radius:99px;border:1px solid rgba(255,255,255,.12);transition:border-color .2s,color .2s;}
 .foot-credit:hover,.foot-credit:focus-visible{border-color:var(--yellow);color:#fff;outline:none;}
 .foot-credit .ae{height:16px;width:auto;display:block;margin-left:6px;opacity:.95;}
@@ -613,6 +618,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     <details><summary>¿Venden queso venezolano por mayor?</summary><p>Sí. Si tienes arepera, restaurante o minimarket, escríbenos por WhatsApp y te cotizamos precios por volumen.</p></details>
     <details><summary>¿Qué es el queso llanero?</summary><p>Es un queso blanco venezolano, firme y salado, ideal para rallar sobre arepas, cachapas y pabellón.</p></details>
     <details><summary>¿Cuánto cuesta el delivery?</summary><p>Depende de la distancia desde nuestro local en Arturo Prat 2045: hasta 3 km $2.500, de 3 a 5 km $3.500 y de 5 a 7 km $5.000. Más lejos coordinamos por WhatsApp el día que vamos a tu comuna. También puedes retirar gratis en la tienda.</p></details>
+    <details><summary>¿Puedo cambiar o devolver un producto?</summary><p>Son alimentos perecibles, por eso no hay devolución por arrepentimiento. Pero si tu pedido llega en mal estado, con un producto distinto o con faltantes, escríbenos por WhatsApp dentro de las 24 horas de recibido, con una foto, y lo reponemos o te devolvemos el dinero. <a href="https://quesosvenezolanos.cl/terminos.html#cambios" target="_blank" rel="noopener">Ver términos completos</a>.</p></details>
     <details><summary>¿Hacen despacho a regiones?</summary><p>Sí. Escríbenos por WhatsApp y coordinamos el día y la forma de despacho a tu región.</p></details>
     <details><summary>¿Dónde está la tienda?</summary><p>Punto Queso está en Arturo Prat 2045, Santiago. También nos encuentras en Google Maps como Punto Queso.</p></details>
   </section>
@@ -631,6 +637,11 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     </div>
     <div class="foot-bottom">
       <span id="footCopy">© Punto Queso</span>
+      <nav class="foot-legal" aria-label="Información legal">
+        <a href="https://quesosvenezolanos.cl/terminos.html" target="_blank" rel="noopener">Términos y condiciones</a>
+        <a href="https://quesosvenezolanos.cl/privacidad.html" target="_blank" rel="noopener">Política de privacidad</a>
+        <a href="https://quesosvenezolanos.cl/terminos.html#cambios" target="_blank" rel="noopener">Cambios y devoluciones</a>
+      </nav>
       <a class="foot-credit" href="https://alexanderestrada.com/?utm_source=puntoqueso&amp;utm_medium=footer&amp;utm_campaign=credito" target="_blank" rel="noopener" aria-label="Sitio desarrollado por Alexander Estrada (abre alexanderestrada.com)">
         <img class="ae" src="ae-logo.png" alt="" width="38" height="16"><span class="sep" aria-hidden="true"></span><span>Diseño y desarrollo por <b>Alexander Estrada</b></span>
         <svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
@@ -717,6 +728,8 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
         <label class="chk-row"><input type="checkbox" id="chkPromos"><span><b>Quiero recibir ofertas por WhatsApp</b><br>Promos y novedades de Punto Queso. Te puedes dar de baja cuando quieras respondiendo BAJA.</span></label>
         <label class="chk-row"><input type="checkbox" id="chkRecordar" checked><span>Recordar mis datos en este celular para mi próximo pedido</span></label>
         <div class="resumen" id="checkoutResumen"></div>
+        <div class="cart-note" style="margin-top:12px;">Son alimentos perecibles: no aplica retracto, pero si algo llega en mal estado o distinto a lo pedido, avísanos dentro de 24 horas y lo reponemos o te devolvemos el dinero. <a href="https://quesosvenezolanos.cl/terminos.html#cambios" target="_blank" rel="noopener">Ver cambios y devoluciones</a>.</div>
+        <label class="chk-row"><input type="checkbox" id="chkTerminos" required><span>Leí y acepto los <a href="https://quesosvenezolanos.cl/terminos.html" target="_blank" rel="noopener">Términos y condiciones</a> y la <a href="https://quesosvenezolanos.cl/privacidad.html" target="_blank" rel="noopener">Política de privacidad</a>. <span class="req">*</span></span></label>
         <button type="submit" class="btn dark block" id="btnEnviarPedido" style="margin-top:18px;height:54px;">Enviar pedido</button>
       </form>
     </div>
@@ -1779,6 +1792,7 @@ async function enviarPedido(){
   if(!nombre){ toast('Escribe tu nombre',true); return; }
   if(telefono.replace(/\D/g,'').length<8){ toast('Escribe tu WhatsApp',true); return; }
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
+  if(!document.getElementById('chkTerminos')?.checked){ toast('Acepta los términos y la política de privacidad para enviar el pedido',true); document.getElementById('chkTerminos')?.focus(); return; }
   if(ENTREGA==='delivery'&&!calle&&!DELIV.punto){ toast('Escribe tu dirección o usa tu ubicación actual',true); return; }
   if(ENTREGA==='delivery'&&DELIV.estado==='buscando'){
     // se espera un poco al cálculo; si no llega, el pedido sigue y el delivery se confirma por WhatsApp
