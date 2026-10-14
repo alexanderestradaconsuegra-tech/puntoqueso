@@ -2273,6 +2273,7 @@ function setPosFecha(v){
 async function cobrarVenta(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
   if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega al menos un producto: el delivery solo no se cobra',true); return; }
+  if(CARRITO.some(i=>i.es_delivery)&&(METODO_PAGO==='efectivo'||(METODO_PAGO==='mixto'&&leerMixto().efectivo>0))){ toast('Las ventas con delivery no se pagan en efectivo: elige transferencia, tarjeta o link de pago',true); return; }
   // una venta de otro día no necesita la caja de hoy abierta
   if(!POS_FECHA&&!(await cajaAbiertaParaVender(true))) return;
   const clienteId=document.getElementById('posCliente').value||null;
@@ -2560,6 +2561,8 @@ async function reimprimirUltimo(){
 //   retiro:   pendiente → preparando → listo (le llega el cobro) → entregado (retiró)
 const PEDIDO_ETAPAS=['pendiente','preparando','listo','en_camino','entregado'];
 const esRetiro=p=>!!p&&p.tipo_entrega==='retiro';
+// Regla del negocio: el delivery no se paga en efectivo (migración 037)
+const pedidoEsDelivery=p=>!!p&&(p.tipo_entrega==='delivery'||p.tipo_entrega==='coordinar'||(!p.tipo_entrega&&Number(p.costo_delivery)>0));
 function etapasPedido(p){ return esRetiro(p)?['pendiente','preparando','listo','entregado']:PEDIDO_ETAPAS; }
 function siguienteEtapa(p){
   if(!p||p.estado==='anulado') return null;
@@ -2780,7 +2783,7 @@ async function marcarListoPedido(id){
 // Un solo paso: elige cómo pagó el cliente y se crea la venta (descuenta
 // stock, entra a la cuenta que corresponde y, si es efectivo, a la caja).
 const MEDIOS_PEDIDO={efectivo:'Efectivo (caja)',transferencia:'Transferencia',tarjeta:'Tarjeta',mercadopago:'Link de pago Mercado Pago'};
-let COBRO_PED={id:null,entregar:false,metodo:'efectivo',total:0};
+let COBRO_PED={id:null,entregar:false,metodo:'efectivo',total:0,sinEfectivo:false};
 async function abrirCobroPedido(id,entregar){
   const {data:pf}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
   const p=(pf&&pf[0])||pedidoPorId(id);
@@ -2794,16 +2797,18 @@ async function abrirCobroPedido(id,entregar){
   if(pedidoNecesitaDelivery(p)&&!confirm('Este pedido no tiene el monto del delivery. ¿Cobrar igual sin delivery?\n\nSi no, cancela y escribe el monto en "Ver / editar".')) return;
   const total=esRetiro(p)?Number(p.total)-costoDelivery(p):Number(p.total);
   // retiro: el cliente está en el mesón (lo normal es efectivo); delivery con link: Mercado Pago
-  const metodo=(!esRetiro(p)&&p.mp_link)?'mercadopago':'efectivo';
-  COBRO_PED={id:p.id,entregar:!!entregar,metodo,total};
+  const sinEfectivo=pedidoEsDelivery(p);
+  const metodo=sinEfectivo?(p.mp_link?'mercadopago':'transferencia'):((!esRetiro(p)&&p.mp_link)?'mercadopago':'efectivo');
+  COBRO_PED={id:p.id,entregar:!!entregar,metodo,total,sinEfectivo};
   document.getElementById('modalContent').innerHTML=`
     <h3>${entregar&&esRetiro(p)?'Cobrar y entregar':'Registrar pago'} · Pedido #${p.id}</h3>
     <div style="font-size:13px;color:var(--text2);">${escapeHtml(p.cliente_nombre||'-')} · ${escapeHtml(esRetiro(p)?'Retiro en tienda':etiquetaEntrega(p)||'Delivery')}</div>
     <div style="text-align:center;font-size:34px;font-weight:900;margin:12px 0 4px;" class="num">${money(total)}</div>
     <label>¿Cómo pagó?</label>
     <div id="cpMedios" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      ${Object.entries(MEDIOS_PEDIDO).map(([k,v])=>`<button type="button" class="btn ${k===metodo?'':'secondary'}" data-m="${k}" onclick="setMedioCobroPedido('${k}')">${v}</button>`).join('')}
+      ${Object.entries(MEDIOS_PEDIDO).filter(([k])=>!(sinEfectivo&&k==='efectivo')).map(([k,v])=>`<button type="button" class="btn ${k===metodo?'':'secondary'}" data-m="${k}" onclick="setMedioCobroPedido('${k}')">${v}</button>`).join('')}
     </div>
+    ${sinEfectivo?'<div class="sub-xs" style="margin-top:6px;">Los pedidos con delivery no se pagan en efectivo: se cobran antes de la entrega.</div>':''}
     <div id="cpEfectivo" style="margin-top:10px;display:${metodo==='efectivo'?'block':'none'};">
       <label>Recibido (opcional, para el vuelto)</label>
       <input type="number" id="cpRecibido" min="0" step="100" inputmode="numeric" placeholder="${Math.round(total)}" oninput="calcVueltoPedido()">
@@ -2842,6 +2847,7 @@ async function confirmarCobroPedido(){
   if(_cobrandoPedido) return;
   const c=COBRO_PED, p=pedidoPorId(c.id);
   if(!p) return;
+  if(c.metodo==='efectivo'&&(c.sinEfectivo||pedidoEsDelivery(p))){ toast('Los pedidos con delivery no se pagan en efectivo',true); return; }
   let recibido=null;
   if(c.metodo==='efectivo'){
     const r=Number(document.getElementById('cpRecibido')?.value)||0;
