@@ -4508,10 +4508,13 @@ async function verKardex(id){
     const delta=m.tipo==='salida'?-Number(m.cantidad):Number(m.cantidad);
     const s=m.stock_resultante!=null?Number(m.stock_resultante):saldo;
     saldo=s-delta;
-    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border);">
+    // el movimiento que cruzó de 0 o más a negativo: ahí se vendió lo que no había registrado
+    const cruzo=s<-1e-7&&(s-delta)>=-1e-7;
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--border);${cruzo?'background:#fdecea;border-radius:8px;padding-left:8px;padding-right:8px;':''}">
       <div style="flex:1;min-width:0;"><b style="font-size:13px;">${escapeHtml(ORIGEN_MOV[m.origen]||m.origen||m.tipo)}</b> <span class="sub-xs">${new Date(m.created_at).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-        <div class="sub-xs">${escapeHtml(m.motivo||'')}${m.registrado_por?` · ${escapeHtml(nombreUsuario(m.registrado_por))}`:''}</div></div>
-      <div style="text-align:right;white-space:nowrap;"><div style="font-weight:800;color:${delta<0?'var(--danger)':'var(--ok)'};">${delta>0?'+':''}${fmt(delta)}</div><div class="sub-xs">queda ${fmt(s)}</div></div>
+        <div class="sub-xs">${escapeHtml(m.motivo||'')}${m.registrado_por?` · ${escapeHtml(nombreUsuario(m.registrado_por))}`:''}</div>
+        ${cruzo?`<div class="sub-xs" style="color:var(--danger);font-weight:700;">Aquí quedó en negativo: había ${fmt(s-delta)} y salieron ${fmt(Math.abs(delta))}</div>`:''}</div>
+      <div style="text-align:right;white-space:nowrap;"><div style="font-weight:800;color:${delta<0?'var(--danger)':'var(--ok)'};">${delta>0?'+':''}${fmt(delta)}</div><div class="sub-xs" style="${s<-1e-7?'color:var(--danger);font-weight:700;':''}">queda ${fmt(s)}</div></div>
     </div>`;
   }).join('');
   document.getElementById('modalContent').innerHTML=`
