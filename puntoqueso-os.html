@@ -154,6 +154,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
 .toma-bar b{font-size:18px;color:var(--brand);font-variant-numeric:tabular-nums;}
 .costo-inline:disabled{background:var(--mint);color:var(--muted);}
 .pos-prod .pp-mayor{font-size:11px;font-weight:700;color:var(--text2);background:var(--mint);border:1px solid var(--border2);border-radius:99px;padding:1px 7px;display:inline-block;margin-top:3px;}
+.pos-prod.sin-stock{opacity:.55;}
 .pos-prod .pp-stock{font-size:11px;color:var(--muted);margin-top:3px;}
 /* interruptor normal/mayorista por línea del carrito */
 .ci-mayor{display:inline-block;margin-top:4px;padding:3px 9px;min-height:26px;font-family:inherit;font-size:11px;font-weight:700;
@@ -976,6 +977,11 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
           <input type="checkbox" id="cfgWebStock" style="width:16px;height:16px;margin-top:2px;"> No dejar comprar en la web lo que no tiene stock
         </label>
         <div class="sub" style="margin-bottom:14px;">Lo pedido y aún no facturado queda apartado. Los productos sin stock salen como "Agotado". Apágalo si tu stock no está al día.</div>
+        <h3 style="margin:18px 0 8px;">Stock en caja (Terminal y pedidos)</h3>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;font-size:13px;">
+          <input type="checkbox" id="cfgPosStock" style="width:16px;height:16px;margin-top:2px;"> No dejar vender en caja lo que no tiene stock
+        </label>
+        <div class="sub" style="margin-bottom:14px;">Si un producto no tiene stock suficiente, la venta o el cobro del pedido se rechaza. Para vender algo que está en 0, primero cárgalo (factura de compra o toma de inventario). Apágalo solo si tu stock aún no está al día.</div>
         <h3 style="margin:18px 0 12px;">Programa de referidos</h3>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;">
           <input type="checkbox" id="cfgRefActivo" style="width:16px;height:16px;"> Programa activo
@@ -1797,12 +1803,12 @@ function renderPosProductos(filter=''){
     ? `<p class="empty">Aún no hay favoritos. Márcalos con la estrella en Productos${canDo('editarInventario')?` o <a href="#" onclick="marcarFavoritosMasVendidos();return false;">marca los más vendidos</a>`:''}.</p>`
     : '<p class="empty">Sin productos</p>';
   document.getElementById('posProductos').innerHTML=rows.map(p=>`
-    <button class="pos-prod" onclick="${p.vender_por_peso?`openWeightPicker(${p.id})`:`agregarAlCarrito(${p.id})`}">
+    <button class="pos-prod${posControlStock()&&Number(p.stock)<=0?' sin-stock':''}" onclick="${p.vender_por_peso?`openWeightPicker(${p.id})`:`agregarAlCarrito(${p.id})`}">
       ${imgDe(p)?`<img class="pos-prod-img" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
       <div class="pp-nombre">${p.nombre}</div>
       <div class="pp-precio num">${money(p.precio)}/${p.unidad||'kg'}</div>
       ${precioMayorDe(p)>0?`<div class="pp-mayor num">Mayor ${money(precioMayorDe(p))}${p.vender_por_peso?'/kg':''}</div>`:''}
-      <div class="pp-stock">Stock: ${Number(p.stock).toLocaleString('es-CL')} ${p.unidad||'kg'}</div>
+      <div class="pp-stock">${posControlStock()&&Number(p.stock)<=0?'<b style="color:var(--danger);">Sin stock</b>':`Stock: ${Number(p.stock).toLocaleString('es-CL')} ${p.unidad||'kg'}`}</div>
     </button>`).join('')||vacio;
   // cliente select
   const sel=document.getElementById('posCliente');
@@ -1810,9 +1816,37 @@ function renderPosProductos(filter=''){
   sel.innerHTML='<option value="">Sin cliente</option>'+DB.clientes.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
   sel.value=prev;
 }
-function agregarAlCarrito(id){
+// No se vende lo que no hay (migración 038). El servidor es quien garantiza; aquí se avisa antes.
+function posControlStock(){ return String(CONFIG_CACHE.pos_control_stock??'true')!=='false'; }
+const fmtStockN=n=>Number(n).toLocaleString('es-CL',{maximumFractionDigits:3});
+function cantidadEnCarrito(id){ return CARRITO.filter(i=>i.producto_id===id).reduce((s,i)=>s+(Number(i.cantidad)||0),0); }
+// Lee el stock real (otro equipo pudo cargarlo hace un momento) y devuelve lo que falta: [{nombre,hay,pides}]
+async function stockFaltanteCarrito(){
+  if(!posControlStock()) return [];
+  const por={};
+  CARRITO.forEach(i=>{ if(i.producto_id) por[i.producto_id]=(por[i.producto_id]||0)+(Number(i.cantidad)||0); });
+  const ids=Object.keys(por).map(Number); if(!ids.length) return [];
+  const {data,error}=await supa.from('productos').select('id,nombre,stock').in('id',ids);
+  if(error||!data) return [];   // si no se pudo leer, decide el servidor
+  data.forEach(r=>{ const d=DB.productos.find(x=>x.id===r.id); if(d) d.stock=Number(r.stock); });
+  return data.filter(r=>por[r.id]>Number(r.stock||0)+1e-7).map(r=>({nombre:r.nombre,hay:Number(r.stock||0),pides:por[r.id]}));
+}
+function avisoStockFaltante(falt){
+  toast('Sin stock suficiente: '+falt.map(f=>`${f.nombre} (hay ${fmtStockN(f.hay)}, pides ${fmtStockN(f.pides)})`).join(' · '),true);
+}
+async function agregarAlCarrito(id){
   const p=DB.productos.find(x=>x.id===id);
   if(!p) return;
+  if(posControlStock()&&cantidadEnCarrito(id)+1>Number(p.stock||0)+1e-7){
+    // el dato local puede estar viejo: se confirma con el servidor antes de negar la venta
+    const {data}=await supa.from('productos').select('stock').eq('id',id).limit(1);
+    if(data&&data[0]) p.stock=Number(data[0].stock);
+    if(cantidadEnCarrito(id)+1>Number(p.stock||0)+1e-7){
+      toast(`Sin stock de ${p.nombre}${Number(p.stock)>0?` (solo hay ${fmtStockN(p.stock)})`:''}`,true);
+      renderPosProductos(document.getElementById('posBuscar')?.value||'');
+      return;
+    }
+  }
   // Se agrupa por producto Y modo de precio: el mismo producto puede ir dos veces
   // en el ticket, una al detalle y otra al por mayor, y no deben fusionarse.
   const existente=CARRITO.find(i=>i.producto_id===id&&!i.es_mayor&&!i.qtyLabel);
@@ -1847,7 +1881,7 @@ function renderCarrito(){
       <span class="ci-name">${i.nombre}${i.qtyLabel?` <span style="color:var(--muted);font-weight:500;">(${i.qtyLabel})</span>`:''}
         ${Number(i.precio_mayor)>0?`<button type="button" class="ci-mayor${i.es_mayor?' on':''}" onclick="toggleMayorCarrito(${idx})" title="Cambiar entre precio normal y mayorista">${i.es_mayor?`Mayor ${money(i.precio_mayor)}`:`Normal ${money(i.precio_normal)}`}</button>`:''}
         ${puedeDescontar()?`<button type="button" class="ci-mayor${i.precio_manual?' on':''}" onclick="editarPrecioLinea(${idx})" title="Cambiar el precio en esta venta">${i.precio_manual?`${money(i.precio)} · −${Math.round((1-i.precio/precioLista(i))*100)}%`:'Precio'}</button>`:''}</span>
-      <input class="ci-qty num" type="number" step="0.1" min="0.1" value="${i.cantidad}" onchange="actualizarCantidad(${idx},this.value)">
+      <input class="ci-qty num" type="number" step="0.1" min="0.1" value="${i.cantidad}" onchange="actualizarCantidad(${idx},this.value)">${(()=>{ if(!posControlStock()||!i.producto_id) return ''; const pr=DB.productos.find(x=>x.id===i.producto_id); return pr&&cantidadEnCarrito(i.producto_id)>Number(pr.stock||0)+1e-7?`<span style="flex-basis:100%;color:var(--danger);font-size:11.5px;font-weight:700;">Solo hay ${fmtStockN(pr.stock||0)} en stock</span>`:''; })()}
       <span class="ci-sub num">${money(i.precio*i.cantidad)}</span>
       <svg class="ic-sm" style="cursor:pointer;color:var(--danger);" onclick="quitarDelCarrito(${idx})" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </div>`).join('');
@@ -1999,7 +2033,16 @@ function actualizarCantidad(idx,val){ CARRITO[idx].cantidad=Math.max(0.1,parseFl
 function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCarrito(); }
 function vaciarCarrito(){ CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; renderCarrito(); }
 
-function agregarPesoAlCarrito(p,kg,label){
+async function agregarPesoAlCarrito(p,kg,label){
+  const d=DB.productos.find(x=>x.id===p.id)||p;
+  if(posControlStock()&&cantidadEnCarrito(p.id)+kg>Number(d.stock||0)+1e-7){
+    // el dato local puede estar viejo: se confirma con el servidor antes de negar la venta
+    const {data}=await supa.from('productos').select('stock').eq('id',p.id).limit(1);
+    if(data&&data[0]) d.stock=Number(data[0].stock);
+    if(cantidadEnCarrito(p.id)+kg>Number(d.stock||0)+1e-7){
+      toast(`Sin stock de ${p.nombre}: hay ${fmtStockN(d.stock||0)} kg y pides ${fmtStockN(cantidadEnCarrito(p.id)+kg)} kg. Si el stock está desactualizado, cárgalo primero.`,true); return;
+    }
+  }
   CARRITO.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:kg,qtyLabel:label,unidad:p.unidad||'kg',
     precio_normal:Number(p.precio),precio_mayor:precioMayorDe(p),es_mayor:false});
   renderCarrito();
@@ -2274,6 +2317,7 @@ async function cobrarVenta(){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
   if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega al menos un producto: el delivery solo no se cobra',true); return; }
   if(CARRITO.some(i=>i.es_delivery)&&(METODO_PAGO==='efectivo'||(METODO_PAGO==='mixto'&&leerMixto().efectivo>0))){ toast('Las ventas con delivery no se pagan en efectivo: elige transferencia, tarjeta o link de pago',true); return; }
+  { const falt=await stockFaltanteCarrito(); if(falt.length){ avisoStockFaltante(falt); renderCarrito(); return; } }
   // una venta de otro día no necesita la caja de hoy abierta
   if(!POS_FECHA&&!(await cajaAbiertaParaVender(true))) return;
   const clienteId=document.getElementById('posCliente').value||null;
@@ -3821,6 +3865,7 @@ function pintarConfigDelivery(cfg){
   document.getElementById('cfgTramos').dataset.n=filas.length;
   const chk=document.getElementById('cfgRefActivo'); if(chk) chk.checked=String(cfg.referidos_activo??'true')!=='false';
   const chkS=document.getElementById('cfgWebStock'); if(chkS) chkS.checked=String(cfg.web_control_stock??'true')!=='false';
+  const chkP=document.getElementById('cfgPosStock'); if(chkP) chkP.checked=String(cfg.pos_control_stock??'true')!=='false';
   set('cfgRefMinimo',cfg.referidos_minimo??20000);
   set('cfgRefTope',cfg.referidos_tope??3);
   set('cfgRefDias',cfg.referidos_dias??90);
@@ -3889,6 +3934,7 @@ async function guardarConfigDelivery(){
     delivery_tramos:tramos,
     referidos_activo:document.getElementById('cfgRefActivo').checked?'true':'false',
     web_control_stock:document.getElementById('cfgWebStock').checked?'true':'false',
+    pos_control_stock:document.getElementById('cfgPosStock').checked?'true':'false',
     referidos_minimo:String(Math.max(0,Number(document.getElementById('cfgRefMinimo').value)||0)),
     referidos_tope:String(Math.max(1,parseInt(document.getElementById('cfgRefTope').value,10)||3)),
     referidos_dias:String(Math.max(1,parseInt(document.getElementById('cfgRefDias').value,10)||90)),
