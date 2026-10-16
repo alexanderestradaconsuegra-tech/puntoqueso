@@ -1443,7 +1443,54 @@ function renderCartBar(){
   document.getElementById('hdrCartBadge').textContent=cantidadCarrito();
 }
 
-function abrirCarrito(){ pintarHorario(); renderCartList(); document.getElementById('cartOverlay').classList.add('open'); }
+// Antes de seguir: se confirma con el servidor cuánto queda de lo que hay en el carrito.
+// Quita lo que se agotó mientras la página estaba abierta y baja lo que excede el stock.
+// Devuelve true si el carrito quedó igual (se puede continuar).
+async function validarCarritoStock(){
+  if(!CARRITO.length) return true;
+  const {data,error}=await supa.rpc('stock_carrito_web',{p_items:CARRITO.map(i=>({producto_id:i.producto_id}))});
+  if(error||!Array.isArray(data)) return true;   // si no se pudo consultar, el servidor valida al enviar
+  const m=new Map(data.map(r=>[Number(r.id),r]));
+  const msgs=[]; let cambio=false;
+  const ids=[...new Set(CARRITO.map(i=>i.producto_id))];
+  ids.forEach(id=>{
+    const p=PRODUCTOS.find(x=>x.id===id);
+    const nom=p?.nombre||CARRITO.find(i=>i.producto_id===id)?.nombre||'Un producto';
+    const r=m.get(id);
+    if(!r||r.agotado){   // se agotó o ya no se vende
+      CARRITO=CARRITO.filter(i=>i.producto_id!==id); cambio=true; msgs.push(`${nom} se agotó y lo quitamos`);
+      if(p){ p.agotado=true; }
+      return;
+    }
+    let resto=Number(r.disp);   // en kg (por kilo) o unidades
+    const cont=Number(p?.pieza_contenido)||1;
+    const lineas=CARRITO.filter(i=>i.producto_id===id);
+    let recortado=false;
+    lineas.forEach(i=>{
+      const peso=!!i.vender_por_peso;
+      const pide=i.pieza?i.cantidad*cont:i.cantidad;
+      if(pide<=resto+1e-7){ resto-=pide; return; }
+      // no alcanza: se deja lo máximo posible de esta línea
+      let max=i.pieza?Math.floor(resto/cont+1e-7):(peso?Math.floor(resto*10+1e-7)/10:Math.floor(resto+1e-7));
+      recortado=true; cambio=true;
+      if(max<=0){ CARRITO.splice(CARRITO.indexOf(i),1); }
+      else{ i.cantidad=max; resto-=i.pieza?max*cont:max; if(peso&&i.qtyLabel) i.qtyLabel=`${max} kg`; }
+    });
+    if(recortado) msgs.push(`De ${nom} solo quedan ${peso0(p,Number(r.disp))}: ajustamos tu pedido`);
+  });
+  if(cambio){
+    renderCartBar(); renderCartList();
+    ids.forEach(id=>{ try{ refrescarControl(id); }catch(e){} });
+    toast(msgs.join(' · '),true);
+    return false;
+  }
+  return true;
+}
+function peso0(p,disp){ return p&&p.vender_por_peso?`${(Math.floor(disp*10)/10).toLocaleString('es-CL')} kg`:`${Math.floor(disp)} unidad${Math.floor(disp)===1?'':'es'}`; }
+async function abrirCarrito(){
+  pintarHorario(); renderCartList(); document.getElementById('cartOverlay').classList.add('open');
+  validarCarritoStock();   // en segundo plano: si algo cambió, el carrito se actualiza solo y se avisa
+}
 function cerrarCarrito(){ document.getElementById('cartOverlay').classList.remove('open'); }
 function renderCartList(){
   const el=document.getElementById('cartList');
@@ -1782,8 +1829,12 @@ function repetirUltimoPedido(){
   toast(faltan?`Agregamos tu pedido. ${faltan} producto${faltan===1?'':'s'} no está${faltan===1?'':'n'} disponible${faltan===1?'':'s'} hoy.`:'Agregamos tu último pedido. Revísalo y continúa.');
   abrirCarrito();
 }
-function abrirCheckout(){
+async function abrirCheckout(){
   if(!CARRITO.length){ toast('Tu pedido está vacío',true); return; }
+  const btnC=document.getElementById('btnIrCheckout'); if(btnC){ btnC.disabled=true; }
+  const ok=await validarCarritoStock();
+  if(btnC){ btnC.disabled=false; }
+  if(!ok||!CARRITO.length) return;   // el carrito cambió: se queda en él para revisarlo
   cerrarCarrito();
   prellenarCliente();
   pintarRef(); pintarResumen(); pintarHorario();
