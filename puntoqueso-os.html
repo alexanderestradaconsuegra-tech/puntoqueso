@@ -1194,7 +1194,7 @@ function sesionVencida(){
 //  ESTADO GLOBAL
 // ══════════════════════════════════════════════════════════
 let SESSION=null;
-let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[],gastosRecurrentes:[]};
+let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[],gastosRecurrentes:[],cargado:false};
 let PROD_CAT_FILTER='todos';
 // Filtro de la lista de Productos por marca: todos | web | oculto | fav
 let PROD_VIS_FILTER='todos';
@@ -1442,6 +1442,20 @@ function cargarImagenesProductos(){
   })();
   return _imgsCargando;
 }
+// Vuelve a pintar lo que el usuario tiene a la vista, sin abrir modales ni tocar la caja.
+function repintarVistaActual(){
+  try{
+    const v=currentPage;
+    if(v==='terminal') renderPosProductos(document.getElementById('posBuscar')?.value||'');
+    else if(v==='productos') renderProductos(document.getElementById('prodBuscar')?.value||'');
+    else if(v==='dashboard') renderDashboard();
+    else if(v==='pedidos') renderPedidos();
+    else if(v==='clientes') renderClientes();
+    else if(v==='ventas') renderVentas();
+    else if(v==='gastos') renderGastos();
+    else if(v==='proveedores') renderProveedores();
+  }catch(e){ console.error('repintar',e); }
+}
 async function loadAll(){
   const [prod,cli,ped,vent,gas,usr,prov,facCompra,gasRec]=await Promise.all([
     // Sin las fotos: pesan mucho y se piden UNA vez aparte (cargarImagenesProductos)
@@ -1458,6 +1472,7 @@ async function loadAll(){
   DB.productos=prod.data||[]; DB.clientes=cli.data||[]; DB.pedidos=ped.data||[]; DB.ventas=vent.data||[]; DB.gastos=gas.data||[]; DB.usuarios=usr.data||[];
   DB.proveedores=prov.data||[]; DB.facturasCompra=facCompra.data||[]; DB.gastosRecurrentes=gasRec.data||[];
   if(prod.error) toast('Error cargando productos: '+prod.error.message,true);
+  else DB.cargado=true;
   cargarImagenesProductos();
 }
 
@@ -1548,20 +1563,34 @@ async function iniciarApp(){
   document.getElementById('navUsuarios').style.display=canDo('gestionarUsuarios')?'flex':'none';
   const gastosNav=document.querySelector('.nav-item[data-view="gastos"]');
   if(gastosNav) gastosNav.style.display=canDo('verGastos')?'flex':'none';
+  // la pantalla se muestra enseguida: si el usuario ya abrió el Terminal, "Cargando productos…" hasta que lleguen
+  renderPosProductos();
   await loadAll();
-  await cargarConfigForm();
-  if(canDo('verGastos')) await generarGastosRecurrentesPendientes();
-  await enviarConfirmacionesPedidosNuevos();
-  verificarPagosMP();
   document.getElementById('sbCambiarCajero').style.display=DB.usuarios.filter(u=>u.activo).length>1?'block':'none';
+  repintarVistaActual();   // antes solo se repintaba el Dashboard y el Terminal quedaba vacío hasta el refresco de 45 s
   renderDashboard();
+  await cargarConfigForm();
+  // tareas lentas (gastos fijos, WhatsApp, Mercado Pago): en segundo plano, sin hacer esperar al usuario
+  (async()=>{
+    if(canDo('verGastos')) await generarGastosRecurrentesPendientes();
+    await enviarConfirmacionesPedidosNuevos();
+    verificarPagosMP();
+    if(currentPage==='dashboard'||currentPage==='gastos') repintarVistaActual();
+  })().catch(e=>console.error('tareas de inicio',e));
   initBarcodeListener();
   initWeightKeyboard();
   // Config tiene formularios largos: si el refresco automático la recargara
   // mientras alguien está escribiendo, borraría todo antes de guardar.
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) vigilarCambioDeDia(); });
   setInterval(vigilarCambioDeDia,60000);
-  setInterval(async()=>{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); verificarPagosMP(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); },45000);
+  let _refrescando=false;
+  setInterval(async()=>{
+    // en un equipo lento o sin internet, no se apilan refrescos; con la pestaña oculta no se gasta red
+    if(_refrescando||document.hidden) return;
+    _refrescando=true;
+    try{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); verificarPagosMP(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); }
+    finally{ _refrescando=false; }
+  },45000);
 }
 (function(){
   try{
@@ -1799,7 +1828,9 @@ function renderPosProductos(filter=''){
     .filter(p=>!enCat||(p.categoria||'Otros')===enCat)
     .filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()))
     .sort(compararOrden);
-  const vacio=enFav
+  const vacio=!DB.cargado
+    ? '<p class="empty">Cargando productos…</p>'
+    : enFav
     ? `<p class="empty">Aún no hay favoritos. Márcalos con la estrella en Productos${canDo('editarInventario')?` o <a href="#" onclick="marcarFavoritosMasVendidos();return false;">marca los más vendidos</a>`:''}.</p>`
     : '<p class="empty">Sin productos</p>';
   document.getElementById('posProductos').innerHTML=rows.map(p=>`
