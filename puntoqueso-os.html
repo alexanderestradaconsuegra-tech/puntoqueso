@@ -1428,6 +1428,23 @@ function nav(view){
 const PRODUCTO_COLS='id,nombre,categoria,unidad,precio,stock,stock_minimo,sku,codigo_barras,vender_por_peso,activo,created_at,updated_at,costo,descripcion,precio_mayor,en_catalogo,favorito,orden,destacado_web,pieza_nombre,pieza_contenido,pieza_precio,corte_opcion';
 const IMG_PROD=new Map(); let _imgsCargadas=false, _imgsCargando=null;
 function imgDe(p){ return p?(IMG_PROD.get(p.id)||p.imagen_b64||null):null; }
+// Para MOSTRAR la foto: una dirección corta (blob:) en vez del texto base64 completo.
+// Con 300 productos el HTML pesaba decenas de MB y los equipos lentos se congelaban al pintar.
+const _IMG_URL=new Map();   // id -> {src, url}
+function imgSrc(p){
+  const d=imgDe(p); if(!d) return null;
+  if(d.slice(0,5)!=='data:') return d;
+  const c=_IMG_URL.get(p.id);
+  if(c&&c.src===d) return c.url;
+  try{
+    const coma=d.indexOf(','), mime=d.slice(5,d.indexOf(';'))||'image/jpeg';
+    const bin=atob(d.slice(coma+1)), u8=new Uint8Array(bin.length);
+    for(let k=0;k<bin.length;k++) u8[k]=bin.charCodeAt(k);
+    const url=URL.createObjectURL(new Blob([u8],{type:mime}));
+    if(c) URL.revokeObjectURL(c.url);
+    _IMG_URL.set(p.id,{src:d,url}); return url;
+  }catch(e){ return d; }
+}
 function cargarImagenesProductos(){
   if(_imgsCargadas) return Promise.resolve();
   if(_imgsCargando) return _imgsCargando;
@@ -1441,6 +1458,12 @@ function cargarImagenesProductos(){
     if(document.getElementById('view-productos')?.classList.contains('active')) renderProductos(document.getElementById('prodBuscar')?.value||'');
   })();
   return _imgsCargando;
+}
+// Huella rápida de los datos cargados: sirve para saber si el refresco trajo algo nuevo.
+function firmaDB(){
+  const s=JSON.stringify([DB.productos,DB.clientes,DB.usuarios]); let h=5381;
+  for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))|0;
+  return s.length+':'+h;
 }
 // Vuelve a pintar lo que el usuario tiene a la vista, sin abrir modales ni tocar la caja.
 function repintarVistaActual(){
@@ -1548,6 +1571,8 @@ async function enviarConfirmacionesPedidosNuevos(){
     }
   }catch(e){ console.error('Error en enviarConfirmacionesPedidosNuevos:',e); }
 }
+// Al girar el celular o cambiar el tamaño de la ventana, se arma la variante que corresponde.
+matchMedia('(max-width:1023px)').addEventListener('change',()=>{ if(typeof currentPage!=='undefined'&&currentPage==='productos') renderProductos(document.getElementById('prodBuscar')?.value||''); });
 async function iniciarApp(){
   document.getElementById('login').style.display='none';
   document.getElementById('app').style.display='flex';
@@ -1588,7 +1613,10 @@ async function iniciarApp(){
     // en un equipo lento o sin internet, no se apilan refrescos; con la pestaña oculta no se gasta red
     if(_refrescando||document.hidden) return;
     _refrescando=true;
-    try{ await loadAll(); await enviarConfirmacionesPedidosNuevos(); verificarPagosMP(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view; if(activeView&&activeView!=='config') nav(activeView); }
+    try{ const firmaAntes=firmaDB(); await loadAll(); await enviarConfirmacionesPedidosNuevos(); verificarPagosMP(); notificarPremiosReferidos(); const activeView=document.querySelector('.nav-item.active')?.dataset.view;
+      // en equipos lentos, repintar 300 productos cada 45 s congela la pantalla: si nada cambió, no se repinta
+      const soloDB=['terminal','productos','clientes','toma'].includes(activeView);
+      if(activeView&&activeView!=='config'&&!(soloDB&&firmaDB()===firmaAntes)) nav(activeView); }
     finally{ _refrescando=false; }
   },45000);
 }
@@ -1835,7 +1863,7 @@ function renderPosProductos(filter=''){
     : '<p class="empty">Sin productos</p>';
   document.getElementById('posProductos').innerHTML=rows.map(p=>`
     <button class="pos-prod${posControlStock()&&Number(p.stock)<=0?' sin-stock':''}" onclick="${p.vender_por_peso?`openWeightPicker(${p.id})`:`agregarAlCarrito(${p.id})`}">
-      ${imgDe(p)?`<img class="pos-prod-img" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
+      ${imgSrc(p)?`<img class="pos-prod-img" src="${imgSrc(p)}" alt="" loading="lazy">`:`<div class="pos-prod-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
       <div class="pp-nombre">${p.nombre}</div>
       <div class="pp-precio num">${money(p.precio)}/${p.unidad||'kg'}</div>
       ${precioMayorDe(p)>0?`<div class="pp-mayor num">Mayor ${money(precioMayorDe(p))}${p.vender_por_peso?'/kg':''}</div>`:''}
@@ -4889,11 +4917,13 @@ function renderProductos(filter=''){
     .filter(p=>PROD_CAT_FILTER==='todos'||normalizarCategoria(p.categoria)===PROD_CAT_FILTER)
     .filter(pasaFiltroVis)
     .sort(compararOrden);
-  document.getElementById('productosBody').innerHTML=rows.map(p=>{
+  // Solo se construye lo que se ve: tabla en PC, tarjetas en celular (antes se armaban las dos: el doble de trabajo).
+  const movil=matchMedia('(max-width:1023px)').matches;
+  document.getElementById('productosBody').innerHTML=movil?'':rows.map(p=>{
     const m=margenProducto(p);
     return `
     <tr><td><input type="checkbox" class="bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)"></td>
-    <td>${imgDe(p)?`<img class="prod-thumb" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
+    <td>${imgSrc(p)?`<img class="prod-thumb" src="${imgSrc(p)}" alt="" loading="lazy">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}</td>
     <td>${p.nombre}</td><td style="text-transform:capitalize;">${p.categoria}</td>
     <td class="num">${money(p.precio)}/${p.unidad}</td>
     ${verC?`<td class="num"><input class="costo-inline num" type="number" step="1" min="0" value="${Number(p.costo)||0}" ${editar?'':'disabled'} onchange="guardarCostoInline(${p.id},this.value)" title="Editar costo"></td>
@@ -4909,11 +4939,11 @@ function renderProductos(filter=''){
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarProducto(${p.id})">Eliminar</button>`:''}
     </td></tr>`;}).join('')||`<tr><td colspan="${verC?12:10}" class="empty">Sin productos</td></tr>`;
 
-  document.getElementById('productosCards').innerHTML=rows.map(p=>`
+  document.getElementById('productosCards').innerHTML=!movil?'':rows.map(p=>`
     <div class="lcard">
       <div class="lc-row">
         <input type="checkbox" class="lc-chk bulk-chk" data-id="${p.id}" ${bulkChecked('productos',p.id)?'checked':''} onchange="bulkToggle('productos',${p.id},this.checked)">
-        ${imgDe(p)?`<img class="prod-thumb" src="${imgDe(p)}" alt="" loading="lazy">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
+        ${imgSrc(p)?`<img class="prod-thumb" src="${imgSrc(p)}" alt="" loading="lazy">`:`<div class="prod-thumb-ph">${(p.nombre||'?').trim().charAt(0).toUpperCase()}</div>`}
         <div class="lc-main">
           <div class="lc-top"><div class="lc-title">${p.nombre}</div><div class="lc-fig">${money(p.precio)}<span class="lc-fig-sub">/${p.unidad}</span></div></div>
           <div class="lc-meta" style="text-transform:capitalize;">${p.categoria}</div>
