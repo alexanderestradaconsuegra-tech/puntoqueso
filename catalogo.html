@@ -579,7 +579,7 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
     <div class="sec-head"><h2>Menú</h2></div>
     <div class="search">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input type="search" id="buscarInput" placeholder="Buscar: queso de mano, jamón, gouda…" oninput="renderGrid()" aria-label="Buscar producto">
+      <input type="search" id="buscarInput" placeholder="Buscar: queso de mano, jamón, gouda…" oninput="buscarDebounce()" onkeydown="buscarTecla(event)" enterkeyhint="search" autocomplete="off" aria-label="Buscar producto">
     </div>
     <div id="grid"><div class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
   </section>
@@ -1268,10 +1268,60 @@ function renderTiles(){
 // ══════════════════════════════════════════════════════════
 //  MENÚ
 // ══════════════════════════════════════════════════════════
+// ── Buscador: sin tildes ni mayúsculas, por palabras sueltas y tolerante a letras que faltan ──
+const normBusq=s=>String(s??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+const terminosBusq=q=>normBusq(q).split(' ').filter(Boolean);
+const _idxBusq=new WeakMap();
+function textoBusq(p){ let t=_idxBusq.get(p); if(!t){ t={n:normBusq(p.nombre),c:normBusq(p.categoria),d:normBusq(p.descripcion)}; t.w=t.n.split(' '); _idxBusq.set(p,t); } return t; }
+function subsecBusq(texto,q){ let i=0; for(let k=0;k<texto.length&&i<q.length;k++) if(texto[k]===q[i]) i++; return i===q.length; }
+function puntajeBusq(p,terms){
+  const t=textoBusq(p); let total=0;
+  for(const q of terms){
+    let s=0;
+    if(t.n.startsWith(q)) s=100;
+    else if(t.w.some(w=>w.startsWith(q))) s=80;
+    else if(t.n.includes(q)) s=55;
+    else if(t.c.includes(q)) s=35;
+    else if(q.length>=3&&t.d.includes(q)) s=25;
+    else if(q.length>=4&&subsecBusq(t.n,q)) s=15;     // "chedar" → Cheddar
+    if(!s) return 0;
+    total+=s;
+  }
+  return total;
+}
+let _verTodoBusq=false, _tBusq=null, BUSQ_MAX=24;
+function buscarDebounce(){ _verTodoBusq=false; clearTimeout(_tBusq); _tBusq=setTimeout(renderGrid,140); }
+function buscarTecla(e){
+  if(e.key==='Enter'){ e.preventDefault(); clearTimeout(_tBusq); renderGrid(); e.target.blur(); document.getElementById('grid').scrollIntoView({behavior:'smooth',block:'start'}); }   // se cierra el teclado y se ve el resultado
+  else if(e.key==='Escape'){ e.target.value=''; renderGrid(); e.target.blur(); }
+}
+// "/" lleva el cursor al buscador (en el computador)
+document.addEventListener('keydown',e=>{
+  if(e.key!=='/'||e.ctrlKey||e.metaKey||e.altKey) return;
+  const tag=(e.target&&e.target.tagName)||''; if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  if(document.querySelector('.overlay.open')) return;
+  const i=document.getElementById('buscarInput'); if(!i) return;
+  e.preventDefault(); document.getElementById('menu').scrollIntoView({behavior:'smooth'}); setTimeout(()=>i.focus(),250);
+});
 function renderGrid(){
-  const filtro=(document.getElementById('buscarInput').value||'').toLowerCase().trim();
-  const rows=PRODUCTOS.filter(p=>!filtro||(p.nombre||'').toLowerCase().includes(filtro)||(p.categoria||'').toLowerCase().includes(filtro));
+  const raw=(document.getElementById('buscarInput').value||'');
+  const terms=terminosBusq(raw);
   const grid=document.getElementById('grid');
+  if(terms.length){
+    // buscando: lo más parecido primero (no por categoría), y no más de BUSQ_MAX para que el celular no se trabe
+    let ps=PRODUCTOS.map(p=>({p,s:puntajeBusq(p,terms)})).filter(x=>x.s>0);
+    const mejor=Math.max(0,...ps.map(x=>x.s)); if(mejor>=terms.length*35) ps=ps.filter(x=>x.s>=terms.length*35);   // lo aproximado solo si no hay nada mejor
+    ps.sort((a,b)=>b.s-a.s||compararOrden(a.p,b.p));
+    if(!ps.length){
+      const wa=waLink(`Hola! Busco "${raw.trim()}" y no lo encuentro en la tienda`);
+      grid.innerHTML=`<p class="empty">No encontramos "${esc(raw.trim())}". Prueba con otra palabra${wa?` o <a href="${wa}" target="_blank" rel="noopener"><b>escríbenos por WhatsApp</b></a> y te ayudamos`:''}.</p>`; return;
+    }
+    const ver=_verTodoBusq?ps:ps.slice(0,BUSQ_MAX), total=ps.length;
+    grid.innerHTML=`<div class="cat-sec"><h3>${total} resultado${total===1?'':'s'}</h3><div class="grid">${ver.map(x=>renderProdCard(x.p)).join('')}</div>${total>ver.length?`<button class="btn block" style="margin-top:14px;" onclick="_verTodoBusq=true;renderGrid()">Ver los ${total} resultados</button>`:''}</div>`;
+    return;
+  }
+  _verTodoBusq=false;
+  const rows=PRODUCTOS;
   if(!rows.length){ grid.innerHTML=`<p class="empty">${PRODUCTOS.length?'No encontramos productos con esa búsqueda':'Pronto tendremos productos disponibles'}</p>`; return; }
   grid.innerHTML=categorias().map(c=>{
     const ps=rows.filter(p=>(p.categoria||'Otros')===c);
