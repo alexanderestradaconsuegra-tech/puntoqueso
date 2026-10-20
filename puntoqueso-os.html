@@ -118,6 +118,27 @@ tr:last-child td{border-bottom:none;}
 .dash-card h3{font-size:14px;margin-bottom:14px;}
 
 /* modal */
+/* Buscador rápido (Ctrl+K) */
+#qsOverlay{display:none;position:fixed;inset:0;background:rgba(28,26,21,.55);z-index:10000;align-items:flex-start;justify-content:center;padding:10vh 12px 12px;}
+#qsOverlay.open{display:flex;}
+.qs-box{background:#fff;border-radius:16px;width:100%;max-width:640px;max-height:78vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;}
+.qs-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);}
+.qs-head input{flex:1;border:none;outline:none;font-size:18px;padding:6px 2px;background:transparent;min-width:0;}
+.qs-modo{font-size:11px;font-weight:800;background:var(--mint);border:1px solid var(--border2);border-radius:99px;padding:3px 9px;white-space:nowrap;}
+.qs-list{overflow-y:auto;padding:6px;flex:1;}
+.qs-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:transparent;border-radius:10px;padding:9px 10px;cursor:pointer;font:inherit;}
+.qs-row[aria-selected="true"]{background:var(--mint);outline:2px solid var(--brand);}
+.qs-row .qs-n{flex:1;min-width:0;}
+.qs-row .qs-n b{display:block;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.qs-row .qs-n span{font-size:12px;color:var(--muted);}
+.qs-row .qs-p{text-align:right;white-space:nowrap;font-weight:800;font-size:14px;}
+.qs-row .qs-p small{display:block;font-weight:600;font-size:11.5px;color:var(--muted);}
+.qs-row .qs-p small.sin{color:var(--danger);font-weight:800;}
+.qs-pie{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 14px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted);}
+.qs-pie b{color:var(--text);}
+.qs-ayuda{padding:10px 12px;font-size:12.5px;color:var(--text2);line-height:1.6;}
+.qs-kbd{font-size:11px;font-weight:700;border:1px solid var(--border);border-bottom-width:2px;border-radius:6px;padding:0 5px;background:#fff;color:var(--text2);}
+@media (hover:none){ .qs-solo-pc{display:none;} }
 #modalBg{display:none;position:fixed;inset:0;background:rgba(28,26,21,.55);z-index:100;align-items:center;justify-content:center;padding:16px;overflow-y:auto;}
 #modalContent{background:#fff;border-radius:var(--r-lg);padding:26px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;}
 #modalContent h3{margin-bottom:16px;}
@@ -557,8 +578,9 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
 
     <!-- TERMINAL DE VENTAS -->
     <div class="view" id="view-terminal">
-      <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo</div></div>
+      <div class="topbar"><div><h2>Terminal de ventas</h2><div class="sub">Toca un producto para agregarlo, o búscalo con <b>Ctrl+K</b> o <b>/</b></div></div>
         <div id="cajaBar" class="caja-bar"></div>
+        <button type="button" class="btn secondary" onclick="abrirBuscador()" title="Buscador rápido (Ctrl+K)">🔍 Buscar <span class="qs-kbd qs-solo-pc">Ctrl K</span></button>
         <input id="posBuscar" placeholder="Buscar producto..." oninput="renderPosProductos(this.value)" style="padding:10px 13px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
       </div>
       <div class="cat-chips pos-tabs" id="posTabs"></div>
@@ -1101,6 +1123,18 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
 </div>
 
 <div id="modalBg" onclick="if(event.target===this)closeModal()"><div id="modalContent"></div></div>
+<div id="qsOverlay" onclick="if(event.target===this)cerrarBuscador()">
+  <div class="qs-box" role="dialog" aria-modal="true" aria-label="Buscador rápido">
+    <div class="qs-head">
+      <svg class="ic" viewBox="0 0 24 24" style="width:20px;height:20px;flex-shrink:0;" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="qsInput" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Busca un producto, código o cliente…" role="combobox" aria-expanded="true" aria-controls="qsList" oninput="qsActualizar()" onkeydown="qsTecla(event)">
+      <span class="qs-modo" id="qsModo">Productos</span>
+      <button type="button" class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="cerrarBuscador()" aria-label="Cerrar">Esc</button>
+    </div>
+    <div class="qs-list" id="qsList" role="listbox"></div>
+    <div class="qs-pie"><span><span class="qs-kbd">↑</span> <span class="qs-kbd">↓</span> elegir · <span class="qs-kbd">Enter</span> agregar · <span class="qs-kbd">Shift+Enter</span> ficha · <span class="qs-kbd">Esc</span> cerrar</span><span id="qsCarrito"></span></div>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -1857,8 +1891,8 @@ function renderPosProductos(filter=''){
   const rows=DB.productos
     .filter(p=>!enFav||p.favorito)
     .filter(p=>!enCat||(p.categoria||'Otros')===enCat)
-    .filter(p=>(p.nombre||'').toLowerCase().includes(filter.toLowerCase()))
-    .sort(compararOrden);
+    .filter(p=>!buscando||coincideProducto(p,filter))
+    .sort(buscando?(a,b)=>puntajeProducto(b,qsTerminos(filter))-puntajeProducto(a,qsTerminos(filter)):compararOrden);
   const vacio=!DB.cargado
     ? '<p class="empty">Cargando productos…</p>'
     : enFav
@@ -2097,6 +2131,152 @@ function vaciarCarrito(){
   if(TICKET_ACTUAL){ const t=TICKET_ACTUAL; TICKET_ACTUAL=null; supa.from('tickets_espera').update({en_uso_por:null,en_uso_at:null}).eq('id',t.id).then(()=>cargarTicketsEspera()); }   // el ticket sigue guardado en espera
   CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; renderCarrito(); pintarTicketActual();
 }
+
+// ══════════════════════════════════════════════════════════
+//  BUSCADOR RÁPIDO (inspirado en el "Spotlight" de Homarr): Ctrl+K o "/" abre un cuadro,
+//  se escribe y con ↑↓ + Enter se agrega el producto, sin buscarlo con la vista.
+//   · sin tildes ni mayúsculas, por palabras sueltas ("q ll" → Queso llanero)
+//   · también por código de barras / SKU, y tolera letras faltantes ("chedar" → Cheddar)
+//   · ">" va a una sección · "@" elige un cliente
+// ══════════════════════════════════════════════════════════
+const normQ=s=>String(s??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+const _qsIdx=new WeakMap();
+function qsTexto(p){
+  let t=_qsIdx.get(p);
+  if(!t){ t={n:normQ(p.nombre),c:normQ(p.categoria),k:normQ((p.sku||'')+' '+(p.codigo_barras||''))}; t.w=t.n.split(' '); _qsIdx.set(p,t); }
+  return t;
+}
+const qsTerminos=q=>normQ(q).split(' ').filter(Boolean);
+function subsecuencia(texto,q){ let i=0; for(let k=0;k<texto.length&&i<q.length;k++) if(texto[k]===q[i]) i++; return i===q.length; }
+function puntajeProducto(p,terms){
+  if(!terms.length) return 1;
+  const t=qsTexto(p); let total=0;
+  for(const q of terms){
+    let s=0;
+    if(t.k&&t.k.split(' ').includes(q)) s=120;                 // código exacto
+    else if(t.n.startsWith(q)) s=100;
+    else if(t.w.some(w=>w.startsWith(q))) s=80;
+    else if(t.n.includes(q)) s=55;
+    else if(t.c.includes(q)) s=35;
+    else if(q.length>=3&&t.k.includes(q)) s=45;
+    else if(q.length>=4&&subsecuencia(t.n,q)) s=15;            // letras faltantes
+    if(!s) return 0;
+    total+=s;
+  }
+  if(p.favorito) total+=5;
+  if(!(Number(p.stock)>0)) total-=3;
+  return total;
+}
+function coincideProducto(p,filtro){ return puntajeProducto(p,qsTerminos(filtro))>0; }
+
+const QS={abierto:false,modo:'prod',res:[],sel:0};
+function abrirBuscador(texto){
+  const ov=document.getElementById('qsOverlay'); if(!ov||typeof SESSION==='undefined'||!SESSION) return;
+  ov.classList.add('open'); QS.abierto=true;
+  const inp=document.getElementById('qsInput'); inp.value=texto||''; qsActualizar();
+  setTimeout(()=>{ inp.focus(); inp.select(); },20);
+}
+function cerrarBuscador(){
+  document.getElementById('qsOverlay')?.classList.remove('open'); QS.abierto=false;
+  // al cerrar en el Terminal, el foco vuelve a la pantalla (el lector de código de barras sigue activo)
+  document.activeElement?.blur?.();
+}
+function qsSecciones(){
+  const items=[...document.querySelectorAll('.nav-item[data-view]')].filter(n=>n.style.display!=='none').map(n=>({tipo:'vista',view:n.dataset.view,nombre:n.textContent.trim().replace(/\s+/g,' ')}));
+  const t=currentPage==='terminal';
+  if(t){ items.push({tipo:'accion',nombre:'Guardar ticket en espera',sub:'Guarda el carrito con un nombre',run:()=>abrirGuardarTicket()}); items.push({tipo:'accion',nombre:'Reimprimir último ticket',sub:'Vuelve a imprimir la última venta',run:()=>reimprimirUltimo()}); }
+  return items;
+}
+function qsActualizar(){
+  const inp=document.getElementById('qsInput'), lista=document.getElementById('qsList'), modo=document.getElementById('qsModo');
+  let q=inp.value, res=[], ayuda='';
+  if(q.startsWith('>')){
+    QS.modo='cmd'; modo.textContent='Ir a…';
+    const terms=qsTerminos(q.slice(1));
+    res=qsSecciones().filter(x=>terms.every(w=>normQ(x.nombre).includes(w))).slice(0,12);
+  }else if(q.startsWith('@')){
+    QS.modo='cli'; modo.textContent='Cliente';
+    const terms=qsTerminos(q.slice(1));
+    res=DB.clientes.filter(c=>terms.every(w=>normQ((c.nombre||'')+' '+(c.telefono||'')).includes(w))).slice(0,12).map(c=>({tipo:'cliente',c}));
+    if(!res.length) ayuda=terms.length?'Ningún cliente coincide.':'Escribe el nombre o teléfono del cliente.';
+  }else{
+    QS.modo='prod'; modo.textContent='Productos';
+    if(!DB.cargado) ayuda='Cargando productos…';
+    else{
+      const terms=qsTerminos(q);
+      if(!terms.length) res=DB.productos.filter(p=>p.favorito).sort(compararOrden).slice(0,8).map(p=>({tipo:'prod',p}));
+      else{
+        let ps=DB.productos.map(p=>({p,s:puntajeProducto(p,terms)})).filter(x=>x.s>0);
+        // las coincidencias "aproximadas" (letras faltantes) solo se muestran si no hay nada mejor
+        const mejor=Math.max(0,...ps.map(x=>x.s)); if(mejor>=terms.length*35) ps=ps.filter(x=>x.s>=terms.length*35);
+        res=ps.sort((a,b)=>b.s-a.s||String(a.p.nombre).localeCompare(String(b.p.nombre),'es')).slice(0,12).map(x=>({tipo:'prod',p:x.p}));
+      }
+      if(!terms.length) ayuda='<b>Favoritos</b> — escribe para buscar. <span class="qs-kbd">&gt;</span> va a una sección · <span class="qs-kbd">@</span> elige un cliente';
+      else if(!res.length) ayuda='Nada coincide con "'+escapeHtml(q)+'". Prueba con otra palabra o parte del nombre.';
+    }
+  }
+  QS.res=res; QS.sel=0;
+  lista.innerHTML=(ayuda&&!res.length?`<div class="qs-ayuda">${ayuda}</div>`:(ayuda?`<div class="qs-ayuda" style="padding-bottom:2px;">${ayuda}</div>`:''))+res.map((r,i)=>{
+    let nombre,sub,der='';
+    if(r.tipo==='prod'){
+      const p=r.p, peso=!!p.vender_por_peso||p.unidad==='kg', st=Number(p.stock)||0, ctl=posControlStock();
+      nombre=p.nombre; sub=(p.categoria||'')+(p.sku?' · '+p.sku:'');
+      der=`${money(p.precio)}<small${ctl&&st<=0?' class="sin"':''}>${ctl&&st<=0?'Sin stock':'Stock '+st.toLocaleString('es-CL',{maximumFractionDigits:2})+' '+(peso?'kg':'u')}</small>`;
+    }else if(r.tipo==='cliente'){ nombre=r.c.nombre||'—'; sub=r.c.telefono||''; }
+    else{ nombre=r.nombre; sub=r.sub||'Ir a esta sección'; }
+    return `<button type="button" class="qs-row" role="option" id="qs-r${i}" aria-selected="${i===0}" data-i="${i}" onmousemove="qsSeleccionar(${i},true)" onclick="qsElegir(${i},false)">
+      <span class="qs-n"><b>${escapeHtml(nombre)}</b><span>${escapeHtml(sub)}</span></span><span class="qs-p">${der}</span></button>`;
+  }).join('');
+  qsPie();
+}
+function qsPie(){
+  const el=document.getElementById('qsCarrito'); if(!el) return;
+  const n=CARRITO.filter(i=>!i.es_delivery).length;
+  el.innerHTML=n?`Carrito: <b>${n}</b> producto${n===1?'':'s'} · <b>${money(carritoTotal())}</b>`:'Carrito vacío';
+}
+function qsSeleccionar(i,soloMarcar){
+  const n=QS.res.length; if(!n) return;
+  QS.sel=(i+n)%n;
+  document.querySelectorAll('#qsList .qs-row').forEach((b,k)=>b.setAttribute('aria-selected',k===QS.sel?'true':'false'));
+  const b=document.getElementById('qs-r'+QS.sel); if(b&&!soloMarcar) b.scrollIntoView({block:'nearest'});
+  document.getElementById('qsInput').setAttribute('aria-activedescendant','qs-r'+QS.sel);
+}
+function qsTecla(e){
+  if(e.key==='ArrowDown'){ e.preventDefault(); qsSeleccionar(QS.sel+1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); qsSeleccionar(QS.sel-1); }
+  else if(e.key==='Enter'){ e.preventDefault(); qsElegir(QS.sel,e.shiftKey); }
+  else if(e.key==='Escape'){ e.preventDefault(); cerrarBuscador(); }
+}
+async function qsElegir(i,ficha){
+  const r=QS.res[i]; if(!r) return;
+  if(r.tipo==='vista'){ cerrarBuscador(); nav(r.view); return; }
+  if(r.tipo==='accion'){ cerrarBuscador(); r.run(); return; }
+  if(r.tipo==='cliente'){
+    cerrarBuscador(); if(currentPage!=='terminal') nav('terminal');
+    const sel=document.getElementById('posCliente'); if(sel){ sel.value=r.c.id; toast('Cliente: '+(r.c.nombre||'')); }
+    return;
+  }
+  const p=r.p; if(!p) return;
+  if(ficha){
+    if(canDo('editarInventario')){ cerrarBuscador(); nav('productos'); setTimeout(()=>openProductoModal(p.id),60); }
+    else toast('No tienes permiso para editar productos',true);
+    return;
+  }
+  const enTerminal=currentPage==='terminal';
+  if(!enTerminal){ cerrarBuscador(); nav('terminal'); }
+  if(p.vender_por_peso){ cerrarBuscador(); openWeightPicker(p.id); return; }
+  await agregarAlCarrito(p.id);
+  if(enTerminal&&QS.abierto){
+    const inp=document.getElementById('qsInput'); inp.value=''; qsActualizar(); inp.focus();   // listo para el siguiente producto
+  }
+}
+document.addEventListener('keydown',e=>{
+  if(typeof SESSION==='undefined'||!SESSION) return;
+  const tag=(e.target&&e.target.tagName)||'';
+  const escribiendo=tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(e.target&&e.target.isContentEditable);
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='k'){ e.preventDefault(); QS.abierto?cerrarBuscador():abrirBuscador(); return; }
+  if(e.key==='/'&&!escribiendo&&!QS.abierto&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&document.getElementById('modalBg').style.display!=='flex'){ e.preventDefault(); abrirBuscador(); }
+});
 
 // ══════════════════════════════════════════════════════════
 //  TICKETS EN ESPERA — guardar el carrito con un nombre, atender a otro y retomarlo.
