@@ -565,7 +565,8 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       <div class="pos-grid">
         <div class="pos-products" id="posProductos"></div>
         <div class="pos-cart card" style="padding:16px;">
-          <h3 style="margin-bottom:6px;">Carrito</h3>
+          <div id="posEspera"></div>
+          <h3 style="margin-bottom:6px;">Carrito<span id="posTicketNombre" class="sub-xs" style="font-weight:700;margin-left:6px;"></span></h3>
           <div id="posCarrito"><p class="empty" style="padding:16px 0;">Vacío</p></div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <button type="button" class="btn secondary" style="flex:1;padding:8px;font-size:13px;" onclick="toggleDeliveryBox()" id="btnPosDelivery">+ Delivery</button>
@@ -607,6 +608,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
             <div id="posFechaAviso" class="sub-xs" style="margin-top:4px;"></div>
           </div>
           <button class="btn" id="btnCobrar" style="width:100%;justify-content:center;margin-top:14px;" onclick="cobrar()">Cobrar</button>
+          <button class="btn secondary" id="btnGuardarTicket" style="width:100%;justify-content:center;margin-top:8px;" onclick="abrirGuardarTicket()">Guardar ticket en espera</button>
           <button class="btn secondary" style="width:100%;justify-content:center;margin-top:8px;" onclick="vaciarCarrito()">Vaciar carrito</button>
           <button class="btn secondary" id="btnImprimirUltimaBoleta" style="width:100%;justify-content:center;margin-top:8px;" onclick="reimprimirUltimo()">🖨️ Reimprimir último ticket</button>
         </div>
@@ -1402,7 +1404,7 @@ function nav(view){
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+view));
   document.querySelector('.sidebar').classList.remove('open');
   if(view==='dashboard') renderDashboard();
-  if(view==='terminal'){ renderPosProductos(); verificarCajaTerminal(); pintarPosFecha(); }
+  if(view==='terminal'){ renderPosProductos(); verificarCajaTerminal(); pintarPosFecha(); cargarTicketsEspera(); }
   if(view==='pedidos') renderPedidos();
   if(view==='referidos') renderReferidos();
   if(view==='clientesweb') renderClientesWeb();
@@ -1608,6 +1610,7 @@ async function iniciarApp(){
   // mientras alguien está escribiendo, borraría todo antes de guardar.
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) vigilarCambioDeDia(); });
   setInterval(vigilarCambioDeDia,60000);
+  setInterval(()=>{ if(!document.hidden&&currentPage==='terminal') cargarTicketsEspera(); },20000);   // ver los tickets que guardan otros equipos
   let _refrescando=false;
   setInterval(async()=>{
     // en un equipo lento o sin internet, no se apilan refrescos; con la pestaña oculta no se gasta red
@@ -2090,7 +2093,126 @@ function agregarDeliveryCarrito(val){
 }
 function actualizarCantidad(idx,val){ CARRITO[idx].cantidad=Math.max(0.1,parseFloat(val)||1); renderCarrito(); }
 function quitarDelCarrito(idx){ CARRITO.splice(idx,1); renderCarrito(); }
-function vaciarCarrito(){ CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; renderCarrito(); }
+function vaciarCarrito(){
+  if(TICKET_ACTUAL){ const t=TICKET_ACTUAL; TICKET_ACTUAL=null; supa.from('tickets_espera').update({en_uso_por:null,en_uso_at:null}).eq('id',t.id).then(()=>cargarTicketsEspera()); }   // el ticket sigue guardado en espera
+  CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; renderCarrito(); pintarTicketActual();
+}
+
+// ══════════════════════════════════════════════════════════
+//  TICKETS EN ESPERA — guardar el carrito con un nombre, atender a otro y retomarlo.
+//  No reserva stock ni toca caja: el stock se descuenta al cobrar, como siempre.
+//  Se comparten entre equipos (tabla tickets_espera, migración 040).
+// ══════════════════════════════════════════════════════════
+let TICKETS_ESPERA=[], TICKET_ACTUAL=null, _ticketsDisponibles=true;
+const TAB_ID=Math.random().toString(36).slice(2,7);
+const quienTicket=()=>`${SESSION?.usuario||'?'}#${TAB_ID}`;
+async function cargarTicketsEspera(){
+  try{
+    // los de más de 3 días ya no sirven (los precios y el stock cambiaron)
+    supa.from('tickets_espera').delete().lt('created_at',new Date(Date.now()-3*864e5).toISOString()).then(()=>{});
+    const {data,error}=await supa.from('tickets_espera').select('id,nombre,total,items,cliente_id,descuento,creado_por,created_at,en_uso_por,en_uso_at').order('created_at',{ascending:true});
+    if(error){ _ticketsDisponibles=false; TICKETS_ESPERA=[]; }
+    else{ _ticketsDisponibles=true; TICKETS_ESPERA=data||[]; }
+  }catch(e){ TICKETS_ESPERA=[]; }
+  pintarTicketsEspera();
+}
+function haceCuanto(ts){
+  const m=Math.max(0,Math.round((Date.now()-new Date(ts).getTime())/60000));
+  return m<1?'recién':m<60?`hace ${m} min`:m<1440?`hace ${Math.floor(m/60)} h`:`hace ${Math.floor(m/1440)} d`;
+}
+function pintarTicketsEspera(){
+  const el=document.getElementById('posEspera'); if(!el) return;
+  const btn=document.getElementById('btnGuardarTicket'); if(btn) btn.style.display=_ticketsDisponibles?'':'none';
+  if(!TICKETS_ESPERA.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="sub-xs" style="font-weight:800;margin-bottom:4px;">EN ESPERA (${TICKETS_ESPERA.length})</div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${TICKETS_ESPERA.map(t=>{
+      const ocupado=t.en_uso_por&&t.en_uso_por!==quienTicket()&&new Date(t.en_uso_at).getTime()>Date.now()-30*60000;
+      const mio=TICKET_ACTUAL&&TICKET_ACTUAL.id===t.id;
+      const n=(t.items||[]).filter(i=>!i.es_delivery).length;
+      return `<div style="display:flex;gap:6px;align-items:stretch;">
+        <button type="button" class="btn secondary" style="flex:1;min-width:0;justify-content:space-between;padding:8px 10px;font-size:12.5px;${mio?'border-color:var(--brand);background:var(--mint);':''}${ocupado?'opacity:.55;':''}" onclick="reanudarTicket(${t.id})" title="${ocupado?'Lo está atendiendo '+escapeHtml(String(t.en_uso_por).split('#')[0]):'Retomar este ticket'}">
+          <span style="text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b>${escapeHtml(t.nombre)}</b><br><span class="sub-xs">${n} producto${n===1?'':'s'} · ${haceCuanto(t.created_at)}${ocupado?' · en uso':''}${mio?' · abierto':''}</span></span>
+          <b class="num">${money(t.total)}</b></button>
+        <button type="button" class="btn secondary" style="padding:0 10px;color:var(--danger);" onclick="borrarTicketEspera(${t.id})" title="Borrar este ticket" aria-label="Borrar ticket">&times;</button></div>`; }).join('')}</div>`;
+}
+function pintarTicketActual(){
+  const el=document.getElementById('posTicketNombre'); if(!el) return;
+  el.textContent=TICKET_ACTUAL?`· ${TICKET_ACTUAL.nombre}`:'';
+  pintarTicketsEspera();
+}
+function abrirGuardarTicket(){
+  if(!CARRITO.some(i=>!i.es_delivery)){ toast('Agrega productos antes de guardar el ticket',true); return; }
+  const sug=TICKET_ACTUAL?.nombre||('Cliente '+(TICKETS_ESPERA.length+1));
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Guardar ticket en espera</h3>
+    <div style="font-size:13px;color:var(--text2);">${CARRITO.filter(i=>!i.es_delivery).length} producto(s) · <b class="num">${money(carritoTotal())}</b>. Queda guardado para retomarlo; no descuenta stock ni registra venta.</div>
+    <label>Nombre del cliente o referencia</label>
+    <input id="tkNombre" maxlength="40" value="${escapeHtml(sug)}" onkeydown="if(event.key==='Enter')confirmarGuardarTicket()">
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnTkGuardar" onclick="confirmarGuardarTicket()">Guardar y atender a otro</button>
+    </div>`;
+  document.getElementById('modalBg').style.display='flex';
+  setTimeout(()=>{ const i=document.getElementById('tkNombre'); if(i){ i.focus(); i.select(); } },50);
+}
+// Guarda el carrito actual (nuevo o actualizando el que se había retomado). Devuelve true si quedó guardado.
+async function guardarCarritoComoTicket(nombre){
+  const fila={nombre,items:CARRITO,cliente_id:document.getElementById('posCliente')?.value||null,descuento:DESCUENTO_VENTA||null,total:Math.round(carritoTotal()),updated_at:new Date().toISOString(),en_uso_por:null,en_uso_at:null};
+  let r;
+  if(TICKET_ACTUAL) r=await supa.from('tickets_espera').update(fila).eq('id',TICKET_ACTUAL.id).select('id');
+  else r=await supa.from('tickets_espera').insert({...fila,creado_por:SESSION.usuario}).select('id');
+  if(r.error||!r.data||!r.data.length){ toast('No se pudo guardar el ticket'+(r.error?': '+r.error.message:' (¿lo borraron desde otro equipo?)'),true); return false; }
+  return true;
+}
+async function confirmarGuardarTicket(){
+  const nombre=sanitize(document.getElementById('tkNombre')?.value||'').slice(0,40);
+  if(!nombre){ toast('Escribe un nombre para reconocer el ticket',true); return; }
+  const btn=document.getElementById('btnTkGuardar'); if(btn) btn.disabled=true;
+  if(!(await guardarCarritoComoTicket(nombre))){ if(btn) btn.disabled=false; return; }
+  logAudit('Ticket en espera','ventas',`"${nombre}" — ${money(carritoTotal())}`);
+  TICKET_ACTUAL=null;
+  CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null;
+  const sel=document.getElementById('posCliente'); if(sel) sel.value='';
+  renderCarrito(); pintarTicketActual(); closeModal();
+  toast(`Ticket "${nombre}" guardado en espera`);
+  await cargarTicketsEspera();
+}
+async function reanudarTicket(id){
+  if(TICKET_ACTUAL&&TICKET_ACTUAL.id===id){ toast('Ese ticket ya está abierto'); return; }
+  // lo que haya en el carrito no se pierde: se guarda en espera antes de abrir el otro
+  if(CARRITO.some(i=>!i.es_delivery)){
+    const nombre=TICKET_ACTUAL?.nombre||('Ticket '+new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}));
+    if(!(await guardarCarritoComoTicket(nombre))) return;
+    toast(`Lo que tenías quedó guardado como "${nombre}"`);
+    TICKET_ACTUAL=null;
+  }
+  const {data,error}=await supa.rpc('abrir_ticket_espera',{p_id:id,p_quien:quienTicket()});
+  if(error){ toast(error.message,true); await cargarTicketsEspera(); return; }
+  const faltan=[];
+  const items=(data.items||[]).filter(i=>{ if(i.es_delivery||!i.producto_id) return true; const ok=DB.productos.some(p=>p.id===i.producto_id); if(!ok) faltan.push(i.nombre); return ok; });
+  CARRITO=items; DESCUENTO_VENTA=data.descuento||null; VENTA_UID=null;
+  TICKET_ACTUAL={id:data.id,nombre:data.nombre};
+  const sel=document.getElementById('posCliente'); if(sel) sel.value=data.cliente_id||'';
+  renderCarrito(); pintarTicketActual();
+  toast(faltan.length?`Ticket "${data.nombre}" abierto. Ya no existen: ${faltan.join(', ')}`:`Ticket "${data.nombre}" abierto`,!!faltan.length);
+  await cargarTicketsEspera();
+}
+async function borrarTicketEspera(id){
+  const t=TICKETS_ESPERA.find(x=>x.id===id); if(!t) return;
+  if(!confirm(`¿Borrar el ticket "${t.nombre}" (${money(t.total)})? No se puede deshacer.`)) return;
+  const {error}=await supa.from('tickets_espera').delete().eq('id',id);
+  if(error){ toast('No se pudo borrar: '+error.message,true); return; }
+  if(TICKET_ACTUAL&&TICKET_ACTUAL.id===id){ TICKET_ACTUAL=null; CARRITO=[]; DESCUENTO_VENTA=null; VENTA_UID=null; renderCarrito(); }
+  logAudit('Ticket en espera borrado','ventas',`"${t.nombre}" — ${money(t.total)}`);
+  pintarTicketActual(); await cargarTicketsEspera();
+}
+// Al cobrar un ticket retomado, el ticket ya cumplió su función: se borra.
+async function cerrarTicketCobrado(){
+  if(!TICKET_ACTUAL) return;
+  const id=TICKET_ACTUAL.id; TICKET_ACTUAL=null;
+  await supa.from('tickets_espera').delete().eq('id',id);
+  cargarTicketsEspera();
+}
 
 async function agregarPesoAlCarrito(p,kg,label){
   const d=DB.productos.find(x=>x.id===p.id)||p;
@@ -2354,7 +2476,7 @@ function nuevoUid(){ return (crypto.randomUUID?crypto.randomUUID():Date.now().to
 async function cobrar(){
   if(_cobrando) return;
   _cobrando=true;
-  try{ await cobrarVenta(); } finally { _cobrando=false; const b=document.getElementById('btnCobrar'); if(b&&METODO_PAGO!=='mixto') efActualizar(); }
+  try{ await cobrarVenta(); } finally { _cobrando=false; pintarPosFecha(); const b=document.getElementById('btnCobrar'); if(b&&METODO_PAGO!=='mixto') efActualizar(); }   // pintarPosFecha vuelve a poner "Cobrar" en el botón (se quedaba en "Cobrando…")
 }
 // Venta de otro día (solo administrador): queda con esa fecha y no entra a la caja de hoy.
 let POS_FECHA=null;
@@ -2431,6 +2553,7 @@ async function cobrarVenta(){
   if(descTotal>0) logAudit('Descuento en venta','ventas',`Boleta ${venta.boleta_numero||venta.id} — descuento ${money(descTotal)} (${CARRITO.filter(i=>i.precio_manual).map(i=>i.nombre+' '+money(i.precio)).join(', ')||'general'}${descVenta>0?' + descuento general':''})`);
   LAST_VENTA=venta; LAST_VENTA_ITEMS=itemsParaBoleta;
   VENTA_UID=null;   // el próximo carrito es otra venta
+  cerrarTicketCobrado();   // si venía de un ticket en espera, ya se cobró: se borra
   vaciarCarrito();
   document.getElementById('efRecibido').value='';
   setMetodoPago('efectivo');
