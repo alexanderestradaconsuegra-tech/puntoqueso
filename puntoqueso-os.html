@@ -1726,6 +1726,7 @@ async function renderDashboard(){
     ${canDo('verCostos')?`<div class="kpi-card" id="kpiGananciaMes" title="Margen bruto (ventas − costo de lo vendido) − gastos de operación. Los gastos fijos del mes (arriendo, sueldos, servicios…) se cuentan según los días que van del mes."><div class="kpi-label">Ganancia del mes</div><div class="kpi-value num">…</div><div class="kpi-sub">margen − gastos de operación</div></div>`:''}
     ${canDo('verCostos')?'<div class="kpi-card" id="kpiMargenBrutoMes"><div class="kpi-label">Margen bruto (venta - costo mercadería)</div><div class="kpi-value num">…</div></div>':''}
     <div class="kpi-card"><div class="kpi-label">Pedidos pendientes</div><div class="kpi-value num">${pendientes.length}</div></div>
+    ${(()=>{ const r=resumenSinPagar(DB.pedidos); return r?`<div class="kpi-card" style="cursor:pointer;" onclick="nav('pedidos')" title="Pedidos que ya salieron y no se han cobrado"><div class="kpi-label">Salieron sin pagar</div><div class="kpi-value num" style="color:var(--danger);">${money(r.total)}</div><div class="kpi-sub">${r.n} pedido${r.n===1?'':'s'} · el más antiguo hace ${r.viejo}</div></div>`:''; })()}
     <div class="kpi-card"><div class="kpi-label">Stock bajo</div><div class="kpi-value num" style="color:${bajoStock.length?'var(--danger)':'inherit'}">${bajoStock.length}</div></div>
   `;
 
@@ -3015,6 +3016,21 @@ function fmtCantidadPedido(cantidad,porPeso){
 // estado fantasma 'facturado' de antes de esta migración. En ambos casos no se
 // vuelve a ofrecer "Facturar": re-facturar descontaría el stock dos veces.
 function pedidoFacturado(p){ return !!p.venta_id||p.estado==='facturado'; }
+// Salió del local (en camino o entregado) y todavía no está pagado: la plata y el stock quedan sin registrar.
+function pedidoSalioSinPagar(p){ return !!p&&(p.estado==='en_camino'||p.estado==='entregado')&&p.estado_pago!=='pagado'; }
+function badgeCobro(p){
+  if(pedidoPagado(p)) return `<span class="badge pagado" style="margin-left:5px;">Pagado</span>`;
+  if(p.estado==='anulado') return '';
+  if(pedidoSalioSinPagar(p)) return `<span class="badge por-cobrar" style="margin-left:5px;background:#fdecea;color:var(--danger);" title="El pedido ya salió y no se ha cobrado">Salió sin pagar · ${haceCuanto(p.created_at).replace('hace ','')}</span>`;
+  return `<span class="badge por-cobrar" style="margin-left:5px;">Por cobrar</span>`;
+}
+function resumenSinPagar(lista){
+  const x=lista.filter(pedidoSalioSinPagar);
+  if(!x.length) return '';
+  const total=x.reduce((t,p)=>t+Number(p.total||0),0);
+  const viejo=x.reduce((m,p)=>Math.min(m,new Date(p.created_at).getTime()),Date.now());
+  return {n:x.length,total,viejo:haceCuanto(new Date(viejo)).replace('hace ','')};
+}
 
 // ── "En curso" vs "Historial" ────────────────────────────
 // Un pedido está CERRADO (Historial) si está anulado, o si ya se entregó,
@@ -3102,7 +3118,10 @@ function pintarPedidos(){
       (nAn?` · <span class="pr-anuladas">${nAn} anulado${nAn===1?'':'s'}</span>`:'')+
       (v.esTodo?` <span class="pr-nota">(mostrando los últimos ${LIMITE_TODO})</span>`:'');
   }else{
-    res.innerHTML='';
+    const r=resumenSinPagar(v.rows);
+    res.innerHTML=r?`<div style="background:#fdecea;border:1.5px solid #f3b9b3;color:var(--danger);border-radius:var(--r-sm);padding:10px 14px;font-weight:700;margin-bottom:10px;">
+      ${r.n} pedido${r.n===1?' salió':'s salieron'} del local sin pagar · <span class="num">${money(r.total)}</span> por cobrar (el más antiguo: ${r.viejo}).
+      <div style="font-weight:500;font-size:12.5px;margin-top:2px;">Cóbralos con "Cobrar" (link de pago o transferencia). Mientras no se cobren no aparecen como venta ni descuentan stock.</div></div>`:'';
   }
   const vacio=v.tab==='historial'?'Sin pedidos cerrados en este período':'No hay pedidos en curso';
   document.getElementById('pedidosBody').innerHTML=rows.map(p=>{
@@ -3115,11 +3134,12 @@ function pintarPedidos(){
     <td class="num">${money(p.total)}${p.pesos_ajustados?`<div style="color:var(--muted);font-size:11px;">peso ajustado</div>`:''}</td>
     <td>
       <span class="badge ${p.estado}">${escapeHtml(etiquetaEtapa(p))}</span>
-      ${pedidoPagado(p)?`<span class="badge pagado" style="margin-left:5px;">Pagado</span>`:p.estado!=='anulado'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
+      ${badgeCobro(p)}
     </td>
     <td>${new Date(p.created_at).toLocaleDateString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       ${siguiente?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${escapeHtml(textoBotonEtapa(p,siguiente))}</button>`:''}
+      ${siguiente&&p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn" style="padding:6px 10px;font-size:12px;background:var(--ok);color:#fff;" onclick="abrirCobroPedido(${p.id})" title="Registrar el pago de este pedido">Cobrar</button>`:''}
       ${!siguiente&&p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirCobroPedido(${p.id})">Registrar pago</button>`:''}
       <button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPedidoDetalle(${p.id})">Ver / editar</button>
       ${puedeEliminarPedido(p)?`<button class="btn danger" style="padding:6px 9px;font-size:12px;" title="Eliminar pedido (no se avisa al cliente)" aria-label="Eliminar pedido" onclick="eliminarPedido(${p.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>`:''}
@@ -3137,12 +3157,13 @@ function pintarPedidos(){
         <div class="lc-meta">${escapeHtml(dir||'-')}${p.cliente_tel?` · ${escapeHtml(p.cliente_tel)}`:''}${etiquetaEntrega(p)?`<br>${escapeHtml(etiquetaEntrega(p))}`:''}<br>${new Date(p.created_at).toLocaleDateString('es-CL')}</div>
         <div class="lc-badges">
           <span class="badge ${p.estado}">${escapeHtml(etiquetaEtapa(p))}</span>
-          ${pedidoPagado(p)?`<span class="badge pagado">Pagado</span>`:p.estado!=='anulado'?`<span class="badge por-cobrar">Por cobrar</span>`:''}
+          ${badgeCobro(p)}
         </div>
       </div></div>
       <div class="lc-row" style="gap:8px;">
         <button class="btn" style="flex:1;" onclick="abrirPedidoDetalle(${p.id})">Ver / editar</button>
         ${siguiente?`<button class="btn secondary" style="flex:1;" onclick="avanzarEstadoPedido(${p.id},'${siguiente}')">→ ${escapeHtml(textoBotonEtapa(p,siguiente))}</button>`:''}
+        ${siguiente&&p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn" style="flex:1;background:var(--ok);color:#fff;" onclick="abrirCobroPedido(${p.id})">Cobrar</button>`:''}
         ${!siguiente&&p.estado!=='anulado'&&!pedidoPagado(p)?`<button class="btn secondary" style="flex:1;" onclick="abrirCobroPedido(${p.id})">Registrar pago</button>`:''}
         ${puedeEliminarPedido(p)?`<button class="btn danger" style="padding:8px 11px;" title="Eliminar pedido (no se avisa al cliente)" aria-label="Eliminar pedido" onclick="eliminarPedido(${p.id})"><svg class="ic ic-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></button>`:''}
       </div>
