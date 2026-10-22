@@ -3177,10 +3177,14 @@ async function avanzarEstadoPedido(id,nuevoEstado){
   if(nuevoEstado==='listo') return marcarListoPedido(id);
   // Entregar sin pago registrado: primero se cobra (o se deja por cobrar a propósito)
   if(nuevoEstado==='entregado'&&!pedidoPagado(p)) return abrirCobroPedido(id,true);
-  // El flujo del local es: el cliente paga el link → recién ahí se despacha.
-  // Se avisa, pero NO se bloquea: hay entregas que se pagan contra entrega.
-  if(nuevoEstado==='en_camino'&&!pedidoPagado(p)){
-    if(!confirm('Este pedido aún no está pagado. ¿Despachar de todas formas?\n\n(Cuando el motorizado traiga la plata, regístrala con "Registrar pago".)')) return;
+  // Regla del local: el delivery se cobra ANTES de salir (link de pago o transferencia; no se recibe efectivo).
+  // Los cajeros no pueden despachar un delivery sin pagar: se les abre el cobro. El administrador sí puede, con aviso.
+  if(nuevoEstado==='en_camino'&&p.estado_pago!=='pagado'&&!esRetiro(p)){
+    if(!esJefe()){
+      toast('Este delivery aún no está pagado: cóbralo (link o transferencia) antes de despacharlo. Si no se puede, avisa al administrador.',true);
+      return abrirCobroPedido(id);
+    }
+    if(!confirm('Este delivery aún no está pagado.\n\nLos deliveries se cobran antes de salir (no se recibe efectivo). Si lo despachas igual, queda como "salió sin pagar" y no descuenta stock hasta que lo cobres.\n\n¿Despachar de todas formas?')) return;
   }
   await cambiarEtapaPedido(p,nuevoEstado);
   toast('Estado actualizado'); await loadAll(); renderPedidos();
