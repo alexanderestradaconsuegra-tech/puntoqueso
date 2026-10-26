@@ -5611,6 +5611,8 @@ async function renderGastos(){
   // los pendientes se piden todos (pueden ser más viejos que los últimos 200)
   const {data:pend}=await supa.from('gastos').select('*').eq('estado_pago','pendiente').order('fecha');
   GASTOS_PEND=pend||[];
+  await cargarCajaHoy();
+  const cajaAbierta=!!(CAJA_HOY&&CAJA_HOY.estado==='abierta');
   const ids=new Set(DB.gastos.map(g=>g.id));
   const todos=[...DB.gastos,...GASTOS_PEND.filter(g=>!ids.has(g.id))].sort((a,b)=>a.fecha<b.fecha?1:a.fecha>b.fecha?-1:b.id-a.id);
   const totPend=GASTOS_PEND.reduce((s,g)=>s+Number(g.monto),0);
@@ -5630,7 +5632,7 @@ async function renderGastos(){
     <td>${pend?`<span class="badge por-cobrar">Por pagar</span>`:`<span class="badge pagado">Pagado</span><div class="sub-xs">${escapeHtml(CUENTAS_PAGO[g.cuenta]||g.cuenta||'-')} · ${fechaCL(g.fecha_pago||g.fecha)}</div>`}</td>
     <td style="white-space:nowrap;">
       ${pend?`<button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirPagoGasto(${g.id})">Pagar</button>`
-            :(gastoConOrigen(g)?'':`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" title="Lo marcaste pagado por error" onclick="desmarcarPagoGasto(${g.id})">No pagado</button>`)}
+            :(gastoConOrigen(g)?'':`${cajaAbierta&&g.cuenta==='efectivo'?`<button class="btn" style="padding:6px 10px;font-size:12px;" title="Este gasto salió del cajón de hoy" onclick="salioDeLaCaja(${g.id})">Salió de la caja</button> `:''}<button class="btn secondary" style="padding:6px 10px;font-size:12px;" title="Lo marcaste pagado por error" onclick="desmarcarPagoGasto(${g.id})">No pagado</button>`)}
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarGasto(${g.id})">Eliminar</button>
     </td></tr>`;}).join('')||'<tr><td colspan="6" class="empty">Sin gastos</td></tr>';
   if(vencidos.length&&GASTOS_FILTRO==='todos'&&!renderGastos._avisado){ renderGastos._avisado=true; toast(`Tienes ${vencidos.length} gasto${vencidos.length>1?'s':''} por pagar (${money(vencidos.reduce((s,g)=>s+Number(g.monto),0))})`); }
@@ -5682,8 +5684,9 @@ const CUENTAS_PAGO={efectivo:'Efectivo (caja)',bancoestado:'BancoEstado',mercado
 function selectCuentaPago(id,actual){
   return `<select id="${id}">${Object.entries(CUENTAS_PAGO).map(([k,v])=>`<option value="${k}" ${k===(actual||'bancoestado')?'selected':''}>${v}</option>`).join('')}</select>`;
 }
-function openGastoModal(){
+async function openGastoModal(){
   const hoy=hoyChile();
+  await cargarCajaHoy();
   document.getElementById('modalContent').innerHTML=`
     <h3>Nuevo gasto</h3>
     <label>Fecha</label><input id="gaFecha" type="date" value="${hoy}">
@@ -5697,13 +5700,26 @@ function openGastoModal(){
       <button type="button" data-ep="pendiente" onclick="gaSetEstado('pendiente')">Por pagar</button>
     </div>
     <div id="gaCuentaWrap"><label>Pagado desde</label>${selectCuentaPago('gaCuenta','bancoestado')}
-    <div class="sub-xs" style="margin-top:4px;">Si lo pagaste con plata de la caja durante el día, mejor regístralo en la Terminal con "Retiro / ingreso": así también cuadra el cierre.</div></div>
+    <label id="gaCajaWrap" style="display:none;align-items:center;gap:8px;margin-top:12px;">
+      <input type="checkbox" id="gaDesdeCaja" style="width:16px;height:16px;" ${CAJA_HOY&&CAJA_HOY.estado==='abierta'?'checked':''}>
+      Sale de la plata del cajón (se registra como retiro de la caja de hoy)
+    </label>
+    <div id="gaCajaAviso" class="sub-xs" style="margin-top:4px;display:none;color:var(--danger,#c0392b);"></div></div>
     <div id="gaPendNota" class="sub-xs" style="margin-top:6px;display:none;">Queda en "Por pagar" y no descuenta ninguna cuenta. Cuando lo pagues, tocas <b>Pagar</b> y eliges la cuenta.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" onclick="guardarGasto()">Guardar</button>
+      <button class="btn" id="btnGuardarGasto" onclick="guardarGasto()">Guardar</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
+  const sel=document.getElementById('gaCuenta');
+  const sync=()=>{
+    const ef=sel.value==='efectivo', abierta=!!(CAJA_HOY&&CAJA_HOY.estado==='abierta');
+    document.getElementById('gaCajaWrap').style.display=ef&&abierta?'flex':'none';
+    const av=document.getElementById('gaCajaAviso');
+    av.style.display=ef&&!abierta?'block':'none';
+    av.textContent=ef&&!abierta?'La caja de hoy está cerrada: este gasto descontará el Efectivo de Cuentas sin salir de ningún cajón. Si la plata ya la sacaste al cerrar, elige otra cuenta.':'';
+  };
+  sel.addEventListener('change',sync); sync();
 }
 function gaSetEstado(v){
   document.querySelectorAll('#gaEstado button').forEach(b=>b.classList.toggle('active',b.dataset.ep===v));
@@ -5716,10 +5732,38 @@ async function guardarGasto(){
   if(!descripcion||!monto){ toast('Completa descripción y monto',true); return; }
   const fecha=document.getElementById('gaFecha').value;
   const pagado=document.querySelector('#gaEstado button.active')?.dataset.ep!=='pendiente';
-  const {error}=await supa.from('gastos').insert({fecha,descripcion,categoria:document.getElementById('gaCategoria').value,monto,
-    estado_pago:pagado?'pagado':'pendiente',cuenta:pagado?document.getElementById('gaCuenta').value:null,fecha_pago:pagado?fecha:null});
-  if(error){ toast('Error: '+error.message,true); return; }
-  toast('Gasto guardado'); closeModal(); await loadAll(); renderGastos();
+  const cuenta=pagado?document.getElementById('gaCuenta').value:null;
+  const cajaAbierta=!!(CAJA_HOY&&CAJA_HOY.estado==='abierta');
+  const desdeCaja=cuenta==='efectivo'&&cajaAbierta&&document.getElementById('gaDesdeCaja').checked;
+  if(cuenta==='efectivo'&&!desdeCaja&&!confirm('Este gasto en Efectivo NO sale de la caja de hoy: solo descontará el saldo de Efectivo en Cuentas.\n\nSi la plata ya la habías retirado al cerrar la caja, esto la descuenta dos veces y el saldo puede quedar en negativo.\n\n¿Guardar igual?')) return;
+  const btn=document.getElementById('btnGuardarGasto'); if(btn) btn.disabled=true;
+  const {data:g,error}=await supa.from('gastos').insert({fecha,descripcion,categoria:document.getElementById('gaCategoria').value,monto,
+    estado_pago:pagado?'pagado':'pendiente',cuenta,fecha_pago:pagado?fecha:null,notas:desdeCaja?'Pagado en efectivo desde la caja':null}).select('id');
+  if(error){ if(btn) btn.disabled=false; toast('Error: '+error.message,true); return; }
+  if(desdeCaja){
+    const err=await crearRetiroDeGasto(g?.[0]?.id,monto,descripcion);
+    if(err){ toast('Gasto guardado, pero el retiro de caja falló: '+err.message+'. Usa "Salió de la caja" en el gasto.',true); closeModal(); await loadAll(); renderGastos(); return; }
+  }
+  toast(desdeCaja?'Gasto guardado y retiro de caja registrado':'Gasto guardado'); closeModal(); await loadAll(); renderGastos();
+}
+// Registra en la caja de hoy el retiro que corresponde a un gasto en efectivo; devuelve el error o null
+async function crearRetiroDeGasto(gasto_id,monto,motivo){
+  const {error}=await supa.from('caja_movimientos').insert({cierre_id:CAJA_HOY.id,turno_id:TURNO_ACTUAL?.id||null,tipo:'retiro',monto,motivo,gasto_id,registrado_por:SESSION.usuario});
+  if(!error) logAudit('Retiro de caja','caja',`${money(monto)} — ${motivo}`);
+  return error||null;
+}
+// Gasto en efectivo ya registrado que sí salió del cajón de hoy: se liga a un retiro de la caja abierta
+async function salioDeLaCaja(id){
+  await cargarCajaHoy();
+  if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'){ toast('La caja de hoy no está abierta',true); return; }
+  const g=gastoPorId(id); if(!g) return;
+  const {data:ya}=await supa.from('caja_movimientos').select('id').eq('gasto_id',id).limit(1);
+  if(ya&&ya.length){ toast('Este gasto ya está ligado a un retiro de caja',true); renderGastos(); return; }
+  if(!confirm(`¿"${g.descripcion}" (${money(g.monto)}) salió del cajón de hoy?\n\nSe registra como retiro de la caja de hoy: el cierre esperará ${money(g.monto)} menos en el cajón. El saldo de Efectivo en Cuentas no cambia.`)) return;
+  const err=await crearRetiroDeGasto(id,Number(g.monto),g.descripcion);
+  if(err){ toast('No se pudo registrar: '+err.message,true); return; }
+  await supa.from('gastos').update({notas:'Pagado en efectivo desde la caja'}).eq('id',id);
+  toast('Ligado a la caja de hoy'); await loadAll(); renderGastos();
 }
 async function eliminarGasto(id){
   // un gasto que nace de una factura, del motorizado o de un retiro de caja se corrige en su origen
