@@ -1162,6 +1162,7 @@ class PGQuery{
   ilike(col,val){ this.params.push(`${encodeURIComponent(col)}=ilike.${encodeURIComponent(val)}`); return this; }
   order(col,{ascending=true}={}){ this.params.push(`order=${encodeURIComponent(col)}.${ascending?'asc':'desc'}`); return this; }
   limit(n){ this.params.push('limit='+n); return this; }
+  offset(n){ this.params.push('offset='+n); return this; }
   single(){ this._single=true; this.headers['Accept']='application/vnd.pgrst.object+json'; return this; }
   insert(rows){ this._method='POST'; this._body=rows; this.headers['Prefer']='return=representation'; return this; }
   upsert(rows,{onConflict}={}){ this._method='POST'; this._body=rows; this.headers['Prefer']='resolution=merge-duplicates,return=representation'; if(onConflict) this.params.push('on_conflict='+encodeURIComponent(onConflict)); return this; }
@@ -1305,7 +1306,7 @@ function toast(msg,err=false){
   t.textContent=msg; t.className=err?'err':''; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),3200);
 }
-function money(n){ return '$'+Math.round(Number(n)||0).toLocaleString('es-CL'); }
+function money(n){ return '$'+(Math.round(Number(n)||0)||0).toLocaleString('es-CL'); }   // el "||0" evita "$-0" cuando el número es -0,4
 function sanitize(s){ return (s||'').toString().trim().replace(/<[^>]*>/g,''); }
 function closeModal(){ document.getElementById('modalBg').style.display='none'; }
 
@@ -1685,8 +1686,8 @@ async function renderDashboard(){
   const monthISO=fechaLocalISO(mesD);
 
   const [ventR,gasR,pendR]=await Promise.all([
-    supa.from('ventas').select('total,created_at').eq('anulada',false).gte('created_at',desdeVentas.toISOString()),
-    supa.from('gastos').select('monto,categoria,fecha,fecha_pago,estado_pago,recurrente_id').or(`(fecha.gte.${monthISO},fecha_pago.gte.${monthISO})`),
+    traerTodo(()=>supa.from('ventas').select('total,created_at').eq('anulada',false).gte('created_at',desdeVentas.toISOString())),
+    traerTodo(()=>supa.from('gastos').select('monto,categoria,fecha,fecha_pago,estado_pago,recurrente_id').or(`(fecha.gte.${monthISO},fecha_pago.gte.${monthISO})`)),
     supa.from('gastos').select('monto').eq('estado_pago','pendiente'),
   ]);
   if(ventR.error){ console.error(ventR.error); toast('Error cargando ventas del Dashboard: '+ventR.error.message,true); }
@@ -7744,6 +7745,19 @@ async function renderCuentasConciliadas(){
   document.getElementById('cuentaMovsTitulo').textContent='Movimientos';
   document.getElementById('cuentaMovs').innerHTML='<div class="empty">Los movimientos los ve solo el dueño.</div>';
 }
+// Trae TODAS las filas de una consulta, de a páginas. Si el servidor corta las respuestas (tope de filas),
+// una consulta simple devuelve solo las primeras y los totales quedan "congelados" (el saldo dejaba de moverse).
+// Se pide con un orden fijo por id y se sigue hasta que una página llega vacía.
+async function traerTodo(armar,pagina=1000){
+  let todo=[], off=0;
+  for(let i=0;i<80;i++){
+    const r=await armar().order('id').limit(pagina).offset(off);
+    if(r.error) return r;
+    const d=r.data||[]; if(!d.length) break;
+    todo=todo.concat(d); off+=d.length;
+  }
+  return {data:todo,error:null};
+}
 async function calcularCuentas(){
   const {data:cuentas,error}=await supa.from('cuentas').select('*').order('orden');
   if(error) throw error;
@@ -7755,11 +7769,11 @@ async function calcularCuentas(){
   if(!conf.length) return res;
   const desde=conf.map(c=>c.fecha_inicio).sort()[0];
   const [vR,gR,mR,cmR,ciR]=await Promise.all([
-    supa.from('ventas').select('created_at,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago').eq('anulada',false).gte('created_at',inicioISO(desde)).order('created_at'),
-    supa.from('gastos').select('id,fecha,fecha_pago,estado_pago,descripcion,monto,cuenta').or(`(fecha.gte.${desde},fecha_pago.gte.${desde})`).order('fecha'),
-    supa.from('cuenta_movimientos').select('*').gte('fecha',desde).order('fecha'),
-    supa.from('caja_movimientos').select('*').gte('created_at',inicioISO(desde)).order('created_at'),
-    supa.from('cierres_caja').select('fecha,diferencia,estado').eq('estado','cerrada').gte('fecha',desde),
+    traerTodo(()=>supa.from('ventas').select('id,created_at,total,metodo_pago,estado_pago,monto_efectivo,monto_otro,monto_transferencia,monto_tarjeta,monto_mercadopago').eq('anulada',false).gte('created_at',inicioISO(desde))),
+    traerTodo(()=>supa.from('gastos').select('id,fecha,fecha_pago,estado_pago,descripcion,monto,cuenta').or(`(fecha.gte.${desde},fecha_pago.gte.${desde})`)),
+    traerTodo(()=>supa.from('cuenta_movimientos').select('*').gte('fecha',desde)),
+    traerTodo(()=>supa.from('caja_movimientos').select('*').gte('created_at',inicioISO(desde))),
+    traerTodo(()=>supa.from('cierres_caja').select('id,fecha,diferencia,estado').eq('estado','cerrada').gte('fecha',desde)),
   ]);
   for(const r of [vR,gR,mR,cmR,ciR]) if(r.error) throw r.error;
   const inicio={}; conf.forEach(c=>inicio[c.codigo]=c.fecha_inicio);
@@ -7911,7 +7925,8 @@ async function guardarConciliacion(codigo,sis){
   if(error){ btn.disabled=false; toast('Error: '+error.message,true); return; }
   if(ajustar){
     const mov=dif<0?{tipo:'egreso',cuenta_origen:codigo}:{tipo:'ingreso',cuenta_destino:codigo};
-    const {error:e2}=await supa.from('cuenta_movimientos').insert({...mov,fecha:hoy,monto:Math.abs(dif),descripcion:'Ajuste por conciliación'+(notas?': '+notas:''),registrado_por:SESSION.usuario}).select('id');
+    const exacto=Math.round(Math.abs(real-sis)*100)/100;   // exacto: así la cuenta queda EXACTAMENTE en lo que contaste (antes sobraban decimales)
+    const {error:e2}=await supa.from('cuenta_movimientos').insert({...mov,fecha:hoy,monto:exacto>0?exacto:Math.abs(dif),descripcion:'Ajuste por conciliación'+(notas?': '+notas:''),registrado_por:SESSION.usuario}).select('id');
     if(e2){ btn.disabled=false; toast('La conciliación se guardó, pero no el ajuste: '+e2.message,true); return; }
   }
   logAudit('Conciliación de cuenta','cuentas',`${codigo}: sistema ${money(sis)}, real ${money(real)}, diferencia ${money(dif)}${ajustar?' (ajustada)':''}`);
