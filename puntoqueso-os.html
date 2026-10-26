@@ -982,7 +982,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       </div>
       <div class="card" style="padding:20px;max-width:480px;margin-top:18px;">
         <h3 style="margin-bottom:12px;">Delivery por distancia</h3>
-        <div class="sub" style="margin-bottom:12px;">El precio se calcula por la distancia en línea recta desde el local. Más lejos del último tramo, el pedido queda "por coordinar" y el monto lo pones tú en el pedido.</div>
+        <div class="sub" style="margin-bottom:12px;">El precio se calcula por la distancia en línea recta desde el local. El último tramo es el límite de reparto: la tienda web no acepta delivery más lejos (esos clientes retiran en tienda).</div>
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">API Key de Google Maps</label>
         <input id="cfgGmapsKey" placeholder="AIza..." autocomplete="off" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
         <label style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px;">Ubicación del local (latitud, longitud)</label>
@@ -4234,7 +4234,7 @@ async function pagarMotorizado(){
 function tramosConfig(cfg){
   let t=cfg.delivery_tramos;
   if(typeof t==='string'){ try{ t=JSON.parse(t); }catch(e){ t=null; } }
-  return Array.isArray(t)?t:[{km:3,precio:2500},{km:5,precio:3500},{km:7,precio:5000}];
+  return Array.isArray(t)?t:[{km:3,precio:2500},{km:5,precio:3500}];
 }
 function pintarConfigDelivery(cfg){
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v??''; };
