@@ -615,6 +615,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
           <div id="efectivoBox" style="margin-top:8px;display:none;">
             <label style="display:block;font-size:12.5px;font-weight:600;margin:0 0 5px;">Efectivo recibido <span style="font-weight:500;color:var(--muted);">(opcional, para el vuelto)</span></label>
             <input type="number" id="efRecibido" min="0" step="10" inputmode="numeric" placeholder="Con cuánto paga el cliente" oninput="efActualizar()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);">
+            <div id="efRedondeo" class="sub-xs" style="margin-top:6px;"></div>
             <div id="efChips" class="cat-chips" style="margin-top:6px;"></div>
             <div id="efVuelto" style="margin-top:6px;font-weight:800;font-size:16px;"></div>
           </div>
@@ -2014,6 +2015,9 @@ function descuentoVentaMonto(){
   const m=DESCUENTO_VENTA.tipo==='%'?Math.round(base*v/100):Math.round(v);
   return Math.max(0,Math.min(m,base));
 }
+// Efectivo: en Chile no hay monedas de $1 ni $5, así que lo que se cobra en efectivo se redondea a múltiplos de $10
+function redondeoEfectivo(total){ const t=Math.round(total*100)/100; return Math.round((Math.round(t/10)*10-t)*100)/100; }
+function totalACobrar(){ const t=carritoTotal(); return METODO_PAGO==='efectivo'?Math.round((t+redondeoEfectivo(t))*100)/100:t; }
 function carritoTotal(){ return CARRITO.reduce((s,i)=>s+i.precio*i.cantidad,0)-descuentoVentaMonto(); }
 // Total descontado: diferencia contra el precio de lista en cada línea + el descuento general
 function descuentoTotalVenta(){
@@ -2590,8 +2594,10 @@ function efectivoRecibido(){ const v=document.getElementById('efRecibido')?.valu
 function efSet(n){ document.getElementById('efRecibido').value=n; efActualizar(); }
 function efActualizar(){
   const box=document.getElementById('efectivoBox'); if(!box) return;
-  const total=carritoTotal(), activo=METODO_PAGO==='efectivo'&&CARRITO.length>0&&total>0;
+  const total=totalACobrar(), activo=METODO_PAGO==='efectivo'&&CARRITO.length>0&&total>0;
   box.style.display=activo?'block':'none';
+  const red=activo?redondeoEfectivo(carritoTotal()):0, elRed=document.getElementById('efRedondeo');
+  if(elRed) elRed.innerHTML=red?`Total ${money(carritoTotal())} → <b>cobrar ${money(total)}</b> (redondeo ${red>0?'+':'-'}${money(Math.abs(red))})`:'';
   if(!activo){ if(METODO_PAGO==='efectivo') document.getElementById('btnCobrar').disabled=false; return; }
   const opts=[['Exacto',total]];
   for(const paso of [1000,5000,10000,20000]){ const m=Math.ceil(total/paso)*paso; if(m>total&&!opts.some(o=>o[1]===m)) opts.push([money(m),m]); }
@@ -2686,7 +2692,9 @@ async function cobrarVenta(){
   const clienteId=document.getElementById('posCliente').value||null;
   const cliente=clienteId?DB.clientes.find(c=>c.id==clienteId):null;
   const metodo=METODO_PAGO;
-  const total=carritoTotal();
+  const total0=carritoTotal();
+  const redondeo=metodo==='efectivo'?redondeoEfectivo(total0):0;   // solo efectivo puro; mixto lo cuadra quien cobra
+  const total=Math.round((total0+redondeo)*100)/100;
   const descVenta=descuentoVentaMonto(), descTotal=Math.round(descuentoTotalVenta());
   const recibido=metodo==='efectivo'?efectivoRecibido():null;
   if(recibido!=null&&recibido<total){ toast('El efectivo recibido es menor al total',true); return; }
@@ -2712,6 +2720,7 @@ async function cobrarVenta(){
     const nombreDesc='Descuento'+(DESCUENTO_VENTA.tipo==='%'?` ${DESCUENTO_VENTA.valor}%`:'');
     items.push({producto_id:null,producto_nombre:nombreDesc,cantidad:1,precio_unitario:-descVenta,subtotal:-descVenta});
   }
+  if(redondeo!==0) items.push({producto_id:null,producto_nombre:'Redondeo',cantidad:1,precio_unitario:redondeo,subtotal:redondeo});
   const btn=document.getElementById('btnCobrar'); btn.disabled=true; btn.textContent='Cobrando…';
   if(!VENTA_UID) VENTA_UID=nuevoUid();
   // Una sola operación en el servidor: venta + líneas + stock (o nada si algo falla)
@@ -3242,8 +3251,9 @@ async function abrirCobroPedido(id,entregar){
     </div>
     ${sinEfectivo?'<div class="sub-xs" style="margin-top:6px;">Los pedidos con delivery no se pagan en efectivo: se cobran antes de la entrega.</div>':''}
     <div id="cpEfectivo" style="margin-top:10px;display:${metodo==='efectivo'?'block':'none'};">
+      <div id="cpRedondeo" class="sub-xs" style="margin-bottom:6px;"></div>
       <label>Recibido (opcional, para el vuelto)</label>
-      <input type="number" id="cpRecibido" min="0" step="100" inputmode="numeric" placeholder="${Math.round(total)}" oninput="calcVueltoPedido()">
+      <input type="number" id="cpRecibido" min="0" step="10" inputmode="numeric" placeholder="${Math.round(total+redondeoEfectivo(total))}" oninput="calcVueltoPedido()">
       <div id="cpVuelto" style="font-size:15px;font-weight:700;margin-top:6px;color:var(--ok);"></div>
     </div>
     <div class="sub-xs" style="margin-top:10px;">Se registra como venta: descuenta el stock y la plata queda en ${'<b id="cpCuenta"></b>'}.</div>
@@ -3266,8 +3276,11 @@ function setMedioCobroPedido(m){
 function calcVueltoPedido(){
   const el=document.getElementById('cpVuelto'); if(!el) return;
   const r=Number(document.getElementById('cpRecibido')?.value)||0;
-  el.textContent=r>0?(r>=COBRO_PED.total?`Vuelto: ${money(r-COBRO_PED.total)}`:`Faltan ${money(COBRO_PED.total-r)}`):'';
-  el.style.color=r>0&&r<COBRO_PED.total?'var(--danger)':'var(--ok)';
+  const red=redondeoEfectivo(COBRO_PED.total), aCobrar=COBRO_PED.total+red;   // en efectivo se cobra redondeado a $10
+  const er=document.getElementById('cpRedondeo');
+  if(er) er.innerHTML=red?`Efectivo: <b>cobrar ${money(aCobrar)}</b> (redondeo ${red>0?'+':'-'}${money(Math.abs(red))})`:'';
+  el.textContent=r>0?(r>=aCobrar?`Vuelto: ${money(r-aCobrar)}`:`Faltan ${money(aCobrar-r)}`):'';
+  el.style.color=r>0&&r<aCobrar?'var(--danger)':'var(--ok)';
 }
 async function entregarSinCobrar(id){
   const p=pedidoPorId(id); if(!p) return;
@@ -3283,7 +3296,7 @@ async function confirmarCobroPedido(){
   let recibido=null;
   if(c.metodo==='efectivo'){
     const r=Number(document.getElementById('cpRecibido')?.value)||0;
-    if(r>0&&r<c.total){ toast('El monto recibido es menor que el total',true); return; }
+    if(r>0&&r<c.total+redondeoEfectivo(c.total)){ toast('El monto recibido es menor que el total',true); return; }
     if(r>0) recibido=r;
     // el efectivo entra al cajón: caja y turno abiertos
     await cargarCajaHoy(); renderCajaBar();
@@ -4557,7 +4570,7 @@ async function renderMasVendidos(){
   (itR.data||[]).forEach(it=>{
     if(anuladas.has(it.venta_id)) return;
     const n=it.producto_nombre||'—';
-    if(!it.producto_id&&(n==='Delivery'||n.startsWith('Descuento'))) return;   // no son productos
+    if(!it.producto_id&&(n==='Delivery'||n==='Redondeo'||n.startsWith('Descuento'))) return;   // no son productos
     const k=it.producto_id?'p'+it.producto_id:'n'+n;
     const p=it.producto_id?DB.productos.find(x=>x.id===it.producto_id):null;
     if(!por[k]) por[k]={nombre:p?.nombre||n,peso:p?(!!p.vender_por_peso||p.unidad==='kg'):false,cant:0,monto:0,costo:0,sinCosto:0,ventas:new Set()};
@@ -7459,7 +7472,7 @@ async function productosVendidos(ventaIds){
   }
   const g={};
   items.forEach(it=>{
-    if(!it.producto_id&&(it.producto_nombre==='Delivery'||String(it.producto_nombre||'').startsWith('Descuento'))) return;   // no son productos
+    if(!it.producto_id&&(it.producto_nombre==='Delivery'||it.producto_nombre==='Redondeo'||String(it.producto_nombre||'').startsWith('Descuento'))) return;   // no son productos
     const prod=it.producto_id?DB.productos.find(p=>p.id===it.producto_id):null;
     const nombre=prod?.nombre||String(it.producto_nombre||'—').replace(/\s*\([^)]*\)\s*$/,'');
     const k=it.producto_id||('n:'+nombre);
