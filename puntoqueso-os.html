@@ -7084,7 +7084,7 @@ function abrirModalMovimientoCaja(){
       <div class="sub-xs" style="margin-top:4px;">Desmarca si es un depósito al banco o un retiro del dueño (no es gasto).</div>
       <div id="movDestinoBox" style="display:none;">
         <label>¿A dónde fue la plata?</label>
-        <select id="movDestino"><option value="bancoestado">Depósito en BancoEstado</option><option value="mercadopago">Depósito en Mercado Pago</option><option value="dueno">Retiro del dueño</option></select>
+        <select id="movDestino"><option value="bancoestado">Depósito en BancoEstado</option><option value="mercadopago">Depósito en Mercado Pago</option><option value="dueno">Lo guarda el dueño (sigue en Efectivo)</option></select>
       </div>
     </div>
     <div class="actions">
@@ -7164,7 +7164,7 @@ function bloqueDejaEnCaja(contadoFijo){
     <input type="number" id="cierreDeja" min="0" step="10" inputmode="numeric" value="${DEJA_SUGERIDO}" oninput="actualizarSaleDeCaja()">
     <div id="cierreSale" class="sub-xs" style="margin-top:6px;font-weight:700;"></div>
     <label>El resto del efectivo, ¿a dónde va?</label>
-    <select id="cierreDestino"><option value="dueno">Retiro del dueño</option><option value="bancoestado">Depósito en BancoEstado</option><option value="mercadopago">Depósito en Mercado Pago</option></select>
+    <select id="cierreDestino"><option value="dueno">Lo guarda el dueño (sigue en Efectivo)</option><option value="bancoestado">Depósito en BancoEstado</option><option value="mercadopago">Depósito en Mercado Pago</option></select>
     <input type="hidden" id="cierreContadoFijo" value="${contadoFijo!=null?contadoFijo:''}">
   </div>`;
 }
@@ -7815,6 +7815,7 @@ async function traerTodo(armar,pagina=1000){
   }
   return {data:todo,error:null};
 }
+const EFECTIVO_DUENO_DESDE='2026-10-26';
 async function calcularCuentas(){
   const {data:cuentas,error}=await supa.from('cuentas').select('*').order('orden');
   if(error) throw error;
@@ -7859,6 +7860,9 @@ async function calcularCuentas(){
     const dia=diaDeTimestamp(m.created_at), n=Number(m.monto);
     if(m.tipo==='ingreso'){ add('efectivo',dia,'Ingreso a caja: '+m.motivo,n,'caja'); return; }
     if(m.gasto_id) return;
+    // Desde el 26-10-2026 lo que el dueño retira de la caja SIGUE en Efectivo (es la plata con la que paga proveedores):
+    // solo sale de la cuenta si se deposita en un banco, es un gasto, o se registra una "Salida" en Cuentas.
+    if(m.destino==='dueno'&&dia>=EFECTIVO_DUENO_DESDE) return;
     const dest={bancoestado:'Depósito a BancoEstado',mercadopago:'Depósito a Mercado Pago',dueno:'Retiro del dueño'}[m.destino]||'Retiro de caja';
     add('efectivo',dia,`${dest}: ${m.motivo}`,-n,'caja');
     if(m.destino==='bancoestado'||m.destino==='mercadopago') add(m.destino,dia,'Depósito desde caja: '+m.motivo,n,'caja');
