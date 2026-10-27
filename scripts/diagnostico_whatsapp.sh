@@ -7,6 +7,7 @@ C=postgresql-tnhz-postgresql-1
 q(){ docker exec -i "$C" psql -U "$PGU" -d "$PGD" -At -c "select valor #>> '{}' from config where clave='$1'" | tr -d '\r\n'; }
 URL=$(q evolution_api_url); KEY=$(q evolution_api_key); INST=$(q evolution_instance)
 URL=${URL%/}
+INSTU=${INST// /%20}   # el nombre puede llevar espacios ("Punto Queso")
 echo "URL de Evolution : ${URL:-(vacía)}"
 echo "Instancia        : ${INST:-(vacía)}"
 echo "API key          : $([ -n "$KEY" ] && echo "configurada (${#KEY} caracteres)" || echo "(vacía)")"
@@ -16,11 +17,11 @@ echo "== Contenedores de Evolution"
 docker ps -a --format '{{.Names}}  {{.Status}}' | grep -i evolution || echo "(no hay contenedor con 'evolution' en el nombre)"
 echo
 echo "== Estado de la conexión de la instancia (debe decir \"state\":\"open\")"
-curl -s -m15 -w '\nHTTP %{http_code}\n' -H "apikey: $KEY" "$URL/instance/connectionState/$INST"
+curl -s -m15 -w '\nHTTP %{http_code}\n' -H "apikey: $KEY" "$URL/instance/connectionState/$INSTU"
 if [ -n "$1" ]; then
   N=$(echo "$1" | tr -cd '0-9'); case "$N" in 56*) ;; *) N="56$N";; esac
   echo
   echo "== Mensaje de prueba a +$N"
   curl -s -m20 -w '\nHTTP %{http_code}\n' -X POST -H "apikey: $KEY" -H 'Content-Type: application/json' \
-    -d "{\"number\":\"$N\",\"text\":\"Prueba de diagnóstico de WhatsApp\"}" "$URL/message/sendText/$INST"
+    -d "{\"number\":\"$N\",\"text\":\"Prueba de diagnóstico de WhatsApp\"}" "$URL/message/sendText/$INSTU"
 fi

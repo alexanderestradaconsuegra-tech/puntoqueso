@@ -4161,7 +4161,7 @@ function detenerPromo(){ if(PROMO_RUN) PROMO_RUN.parar=true; }
 async function enviarWhatsAppResultado(tel,msg){
   const url=CONFIG_CACHE.evolution_api_url,key=CONFIG_CACHE.evolution_api_key,instance=CONFIG_CACHE.evolution_instance;
   try{
-    const res=await fetch(`${url.replace(/\/$/,'')}/message/sendText/${instance}`,{method:'POST',headers:{'Content-Type':'application/json','apikey':key},body:JSON.stringify({number:normalizarTelefono(tel),text:msg})});
+    const res=await fetch(`${url.replace(/\/$/,'')}/message/sendText/${encodeURIComponent(instance)}`,{method:'POST',headers:{'Content-Type':'application/json','apikey':key},body:JSON.stringify({number:normalizarTelefono(tel),text:msg})});
     return res.ok;
   }catch(e){ return false; }
 }
@@ -6009,7 +6009,7 @@ async function enviarWhatsApp(telefono,mensaje,{silencioso=false}={}){
   const numero=normalizarTelefono(telefono);
   if(!numero) return falloWhatsApp('el pedido no tiene un teléfono válido.',silencioso);
   try{
-    const res=await fetch(`${url.replace(/\/$/,'')}/message/sendText/${instance}`,{
+    const res=await fetch(`${url.replace(/\/$/,'')}/message/sendText/${encodeURIComponent(instance)}`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':key},
       body:JSON.stringify({number:numero,text:mensaje})
