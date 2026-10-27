@@ -956,6 +956,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <input id="cfgEvoInstance" placeholder="puntoqueso" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);margin-bottom:14px;">
         <div class="sub" style="margin-top:-8px;margin-bottom:14px;">Sugerencia: usa el mismo teléfono del negocio (definido arriba en "Datos del negocio") como número de esta instancia de Evolution API, para mantener consistencia entre WhatsApp y la boleta.</div>
         <button class="btn" onclick="guardarConfig()">Guardar</button>
+        <button class="btn secondary" style="margin-left:8px;" onclick="probarWhatsApp()">Enviar mensaje de prueba</button>
       </div>
       <div class="card" style="padding:20px;max-width:480px;margin-top:18px;">
         <h3 style="margin-bottom:12px;">Mercado Pago</h3>
@@ -4417,15 +4418,15 @@ async function enviarBoletaYLinkPago(id,{listo=false}={}){
   const {data:items,error:itErr}=await supa.from('pedido_items').select('*').eq('pedido_id',id).order('id');
   if(itErr){ console.error(itErr); toast('Error al leer el detalle: '+itErr.message,true); return false; }
   const msg=mensajeBoletaPedido(p,items||[],link,{listo});
-  if(whatsappConfigurado()&&p.cliente_tel){
-    await enviarWhatsApp(p.cliente_tel,msg);
+  const enviado=whatsappConfigurado()&&p.cliente_tel?await enviarWhatsApp(p.cliente_tel,msg,{silencioso:true}):false;
+  if(enviado){
     toast(link?'Detalle y link de pago enviados por WhatsApp':'Detalle enviado por WhatsApp');
     logAudit('Detalle + link enviados','pedidos',`Pedido #${id} a ${p.cliente_tel} por ${money(total)}`);
     closeModal();
   }else{
     // WhatsApp sin configurar (o pedido sin teléfono): nunca dejamos al
     // empleado sin nada — se muestra el mensaje listo para copiar y pegar.
-    mostrarMensajeParaCopiar('Detalle — Pedido #'+id,msg,!p.cliente_tel?'Este pedido no tiene teléfono registrado.':'Evolution API (WhatsApp) no está configurada.');
+    mostrarMensajeParaCopiar('Detalle — Pedido #'+id,msg,!p.cliente_tel?'Este pedido no tiene teléfono registrado.':!whatsappConfigurado()?'Evolution API (WhatsApp) no está configurada.':'No se pudo enviar por WhatsApp (Evolution API no aceptó el mensaje: revisa que la instancia esté conectada).');
     logAudit('Detalle + link generados (envío manual)','pedidos',`Pedido #${id} por ${money(total)}`);
   }
   if(!listo){ await loadAll(); renderPedidos(); }
@@ -5995,18 +5996,40 @@ function normalizarTelefono(tel){
   if(!t.startsWith('+')) t='+56'+t.replace(/^56/,'');
   return t;
 }
-async function enviarWhatsApp(telefono,mensaje){
+// Devuelve true solo si Evolution API aceptó el mensaje. Si falla, avisa en pantalla (salvo silencioso:true,
+// cuando quien llama muestra su propio aviso) y lo deja en la auditoría: antes un fallo no se veía en ningún lado.
+function falloWhatsApp(motivo,silencioso){
+  logAudit('WhatsApp no enviado','whatsapp',motivo);
+  if(!silencioso) toast('WhatsApp NO enviado: '+motivo,true);
+  return false;
+}
+async function enviarWhatsApp(telefono,mensaje,{silencioso=false}={}){
   const url=CONFIG_CACHE.evolution_api_url,key=CONFIG_CACHE.evolution_api_key,instance=CONFIG_CACHE.evolution_instance;
-  if(!url||!key||!instance){ console.warn('Evolution API no configurada — se omite el envío de WhatsApp'); return; }
+  if(!url||!key||!instance) return falloWhatsApp('Evolution API no está configurada (Configuración → WhatsApp). El cliente no recibió el aviso.',silencioso);
   const numero=normalizarTelefono(telefono);
-  if(!numero){ console.warn('Sin teléfono válido — se omite el envío de WhatsApp'); return; }
+  if(!numero) return falloWhatsApp('el pedido no tiene un teléfono válido.',silencioso);
   try{
-    await fetch(`${url.replace(/\/$/,'')}/message/sendText/${instance}`,{
+    const res=await fetch(`${url.replace(/\/$/,'')}/message/sendText/${instance}`,{
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':key},
       body:JSON.stringify({number:numero,text:mensaje})
     });
-  }catch(e){ console.error('Error enviando WhatsApp:',e); }
+    if(!res.ok){
+      const det=(await res.text().catch(()=>'')).replace(/\s+/g,' ').slice(0,160);
+      return falloWhatsApp(`Evolution respondió ${res.status} al enviar a ${numero}${det?' ('+det+')':''}. Revisa que la instancia siga conectada.`,silencioso);
+    }
+    return true;
+  }catch(e){
+    console.error('Error enviando WhatsApp:',e);
+    return falloWhatsApp(`no hay conexión con Evolution API (${e.message||e}).`,silencioso);
+  }
+}
+// Mensaje de prueba desde Configuración: confirma que Evolution está conectada y el número recibe
+async function probarWhatsApp(){
+  const tel=prompt('¿A qué número enviar la prueba? (ej: 912345678)');
+  if(!tel) return;
+  const ok=await enviarWhatsApp(tel,`Prueba de ${nombreNegocio()}: si lees esto, los avisos de pedidos por WhatsApp funcionan ✅`);
+  if(ok) toast('Prueba enviada. Revisa que llegó al celular.');
 }
 // Avisos de etapa: se mantienen CORTOS a propósito. El detalle (items, pesos
 // reales ajustados, total y link de pago) va en el mensaje de boleta
@@ -6092,8 +6115,7 @@ async function enviarLinkPagoWhatsApp(id){
   const p=pedidoPorId(id);
   if(!p) return;
   if(!p.cliente_tel){ toast('Este pedido no tiene teléfono registrado',true); return; }
-  await enviarWhatsApp(p.cliente_tel,`Hola ${p.cliente_nombre||''}! Aquí tienes el link de pago de tu pedido #${p.id} en Punto Queso: ${p.mp_link}`);
-  toast('Mensaje de WhatsApp enviado (si Evolution API está configurada)');
+  if(await enviarWhatsApp(p.cliente_tel,`Hola ${p.cliente_nombre||''}! Aquí tienes el link de pago de tu pedido #${p.id} en Punto Queso: ${p.mp_link}`)) toast('Link de pago enviado por WhatsApp');
 }
 async function regenerarLinkPagoDesdeModal(id){
   const token=CONFIG_CACHE.mercadopago_access_token;
