@@ -2610,7 +2610,20 @@ function efActualizar(){
 }
 // Después de cobrar: siempre se ofrece imprimir el ticket de ESA venta (y el vuelto si hubo).
 // Enter = imprimir; Esc o "Nueva venta" = seguir vendiendo.
+// Ir a Ventas ya filtrado por un día (una venta con fecha anterior no aparece en "Hoy")
+function verVentaEnVentas(fecha){
+  closeModal();
+  VENTAS_VIEW.modo='lista'; VENTAS_VIEW.fecha=fecha;
+  const inp=document.getElementById('filtroFechaVentas'); if(inp) inp.value=fecha;
+  nav('ventas'); renderVentas();
+}
 function mostrarVentaLista(venta,items,total,recibido,vuelto,txtCerrar){
+  const diaVenta=diaDeTimestamp(venta.created_at), esOtroDia=diaVenta&&diaVenta!==hoyChile();
+  const avisoVenta=esOtroDia
+    ?`<div class="quote warn" style="margin-top:12px;font-size:13px;">Quedó registrada con fecha <b>${fechaCL(diaVenta)}</b>, por eso no sale en "Hoy" de Ventas ni entra a la caja de hoy.
+        <div style="margin-top:8px;"><button class="btn secondary" style="padding:6px 12px;font-size:12.5px;" onclick="verVentaEnVentas('${diaVenta}')">Verla en Ventas</button></div></div>`
+    :(venta.fuera_caja&&CAJA_HOY&&CAJA_HOY.estado==='cerrada'
+      ?`<div class="quote warn" style="margin-top:12px;font-size:13px;">Quedó registrada hoy <b>fuera de la caja</b>: la caja de hoy ya estaba cerrada, así que no entra al cierre. Sale en Ventas de hoy.</div>`:'');
   document.getElementById('modalContent').innerHTML=`
     <h3>Venta registrada</h3>
     <div style="text-align:center;color:var(--text2);font-size:13px;">Boleta N° ${escapeHtml(String(venta.boleta_numero||venta.id))} · Total <b>${money(total)}</b></div>
@@ -2618,6 +2631,7 @@ function mostrarVentaLista(venta,items,total,recibido,vuelto,txtCerrar){
       <div style="text-align:center;margin:12px 0 2px;color:var(--text2);font-size:14px;">Entrega de vuelto</div>
       <div style="text-align:center;font-size:44px;font-weight:900;color:var(--ok);line-height:1.1;">${money(vuelto)}</div>
       <div style="text-align:center;margin-top:6px;font-size:13px;color:var(--text2);">Recibido ${money(recibido)}</div>`:''}
+    ${avisoVenta}
     <div class="actions">
       <button class="btn secondary" id="btnVentaNueva" onclick="closeModal()">${txtCerrar||'Nueva venta'}</button>
       <button class="btn" id="btnVentaImprimir" onclick="closeModal();abrirReciboImprimir(LAST_VENTA,LAST_VENTA_ITEMS)">🖨️ Imprimir ticket</button>
@@ -6930,8 +6944,21 @@ async function verificarCajaTerminal(){
 }
 // El dueño, desde otro equipo, vende sin tocar el turno del cajero: "fuera de la caja"
 // (la venta no entra al cuadre del cajón; esa plata la recibe el dueño).
-function ventaFueraDeCaja(){ return esDueno()&&!POS_FECHA&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero!==SESSION.usuario; }
+function cajaHoyCerrada(){ return !!(CAJA_HOY&&CAJA_HOY.estado==='cerrada'&&CAJA_HOY.fecha===hoyChile()); }
+function ventaFueraDeCaja(){ return esDueno()&&!POS_FECHA&&CAJA_HOY&&((CAJA_HOY.estado==='abierta'&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero!==SESSION.usuario)||cajaHoyCerrada()); }
+// Con la caja de hoy ya cerrada, solo el administrador puede seguir vendiendo: la venta queda con la fecha de HOY pero fuera de la caja
+let _okVentaCajaCerrada=false;
 async function cajaAbiertaParaVender(rapido){
+  if(esDueno()&&!POS_FECHA){
+    if(!rapido) await cargarCajaHoy();
+    if(cajaHoyCerrada()){
+      if(!_okVentaCajaCerrada){
+        if(!confirm('La caja de hoy ya está cerrada.\n\nSi sigues, la venta queda registrada HOY pero fuera de la caja: no entra al cierre ni al cajón. (Si cobras en efectivo, esa plata cuenta en Efectivo de Cuentas.)\n\n¿Registrar la venta de todas formas?')) return false;
+        _okVentaCajaCerrada=true;
+      }
+      return true;
+    }
+  }
   if(rapido&&ventaFueraDeCaja()) return true;
   if(rapido&&CAJA_HOY&&CAJA_HOY.estado==='abierta'&&CAJA_HOY.fecha===hoyChile()&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario) return true;
   await cargarCajaHoy(); renderCajaBar();
@@ -6941,7 +6968,7 @@ async function cajaAbiertaParaVender(rapido){
     return true;
   }
   if(!CAJA_HOY){ toast('Primero abre la caja del día',true); abrirModalAperturaCaja(); }
-  else toast('La caja de hoy ya se cerró: no se pueden registrar más ventas',true);
+  else toast('La caja de hoy ya se cerró: solo el administrador puede registrar más ventas (quedan fuera de la caja).',true);
   return false;
 }
 
