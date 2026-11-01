@@ -527,6 +527,10 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20M16 15h2"/><path d="M6 6V4h12v2"/></svg>
       Cuentas
     </div>
+    <div class="nav-item" data-view="empleados" id="navEmpleados" style="display:none;" onclick="nav('empleados')">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+      Empleados
+    </div>
     <div class="nav-item" data-view="usuarios" id="navUsuarios" style="display:none;" onclick="nav('usuarios')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Usuarios
@@ -631,6 +635,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
             <div id="posFechaAviso" class="sub-xs" style="margin-top:4px;"></div>
           </div>
           <button class="btn" id="btnCobrar" style="width:100%;justify-content:center;margin-top:14px;" onclick="cobrar()">Cobrar</button>
+          <button class="btn secondary" id="btnVentaEmpleado" style="width:100%;justify-content:center;margin-top:8px;" onclick="abrirVentaEmpleado()">Venta a empleado (con descuento)</button>
           <button class="btn secondary" id="btnGuardarTicket" style="width:100%;justify-content:center;margin-top:8px;" onclick="abrirGuardarTicket()">Guardar ticket en espera</button>
           <button class="btn secondary" style="width:100%;justify-content:center;margin-top:8px;" onclick="vaciarCarrito()">Vaciar carrito</button>
           <button class="btn secondary" id="btnImprimirUltimaBoleta" style="width:100%;justify-content:center;margin-top:8px;" onclick="reimprimirUltimo()">🖨️ Reimprimir último ticket</button>
@@ -844,6 +849,23 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <h3 id="cuentaMovsTitulo" style="margin-bottom:10px;">Movimientos</h3>
         <div id="cuentaMovs"></div>
       </div>
+    </div>
+
+    <!-- EMPLEADOS -->
+    <div class="view" id="view-empleados">
+      <div class="topbar"><div><h2>Empleados</h2><div class="sub">Compras con descuento (solo al detal) y vales, que se descuentan del sueldo a fin de mes</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn secondary" onclick="copiarResumenEmpleados()">Copiar resumen del mes</button>
+          <button class="btn" onclick="abrirEmpleado()">+ Empleado</button>
+        </div></div>
+      <div class="toolbar" style="gap:10px;align-items:center;">
+        <label style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;">Mes
+          <input type="month" id="empMes" onchange="EMP.mes=this.value||mesActual();renderEmpleados()" style="padding:8px;border:1.5px solid var(--border);border-radius:var(--r-sm);"></label>
+        <div id="empResumen" class="sub" style="margin-left:auto;"></div>
+      </div>
+      <div class="card table-scroll"><table><thead><tr><th>Empleado</th><th>Compras del mes</th><th>Vales del mes</th><th>A descontar</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="empBody"></tbody></table></div>
+      <div class="sub-xs" style="margin-top:10px;">El descuento de sueldo necesita la autorización escrita de cada trabajador, y los descuentos que no son legales no pueden pasar del 15% de su remuneración.</div>
     </div>
 
     <!-- USUARIOS -->
@@ -1433,6 +1455,7 @@ function esEncargado(){ return SESSION?.rol==='encargado'; }
 function esJefe(){ return esDueno()||esEncargado(); }
 function nav(view){
   if((view==='config'&&!esDueno())||((view==='cuentas'||view==='clientesweb'||view==='delivery')&&!esJefe())){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
+  if(view==='empleados'&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
   if(view==='toma'&&!canDo('editarInventario')){ toast('No tienes permiso para el inventario',true); view='productos'; }
   currentPage=view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
@@ -1457,6 +1480,7 @@ function nav(view){
   if(view==='contabilidad'){ renderHistorialCierres(); }
   if(view==='cuentas'){ renderCuentas(); }
   if(view==='usuarios') renderUsuariosPage();
+  if(view==='empleados') renderEmpleados();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1621,6 +1645,7 @@ async function iniciarApp(){
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
   document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
+  document.getElementById('navEmpleados').style.display=esDueno()?'flex':'none';
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navClientesWeb').style.display=esJefe()?'flex':'none';
   document.getElementById('navDelivery').style.display=esJefe()?'flex':'none';
@@ -4535,7 +4560,7 @@ function pintarVentas(esTodo){
     <td>${new Date(v.created_at).toLocaleString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="reimprimirVenta(${v.id})">🖨️ Boleta</button>
-      ${esDueno()&&!v.anulada&&v.estado_pago!=='pendiente'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirCambiarMedioPago(${v.id})" title="Corregir el medio de pago">Medio de pago</button>`:''}
+      ${esDueno()&&!v.anulada&&v.estado_pago!=='pendiente'&&v.metodo_pago!=='empleado'?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirCambiarMedioPago(${v.id})" title="Corregir el medio de pago">Medio de pago</button>`:''}
       ${puedeAnular&&!v.anulada?`<button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="anularVenta(${v.id})">Anular</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">Sin ventas en este período</td></tr>';
 
   document.getElementById('ventasCards').innerHTML=rows.map(v=>`
@@ -4637,7 +4662,7 @@ function sheetAccionesVenta(id){
     ${esDueno()&&v&&!v.anulada?`<button type="button" class="sheet-item" onclick="closeSheet();abrirCambiarFechaVenta(${id})">
       <svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       <span>Cambiar fecha</span></button>`:''}
-    ${esDueno()&&v&&!v.anulada&&v.estado_pago!=='pendiente'?`<button type="button" class="sheet-item" onclick="closeSheet();abrirCambiarMedioPago(${id})">
+    ${esDueno()&&v&&!v.anulada&&v.estado_pago!=='pendiente'&&v.metodo_pago!=='empleado'?`<button type="button" class="sheet-item" onclick="closeSheet();abrirCambiarMedioPago(${id})">
       <svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
       <span>Cambiar medio de pago</span></button>`:''}
     ${canDo('eliminarVentas')&&v&&!v.anulada?`<div class="sheet-sep"></div><button type="button" class="sheet-item danger" onclick="closeSheet();anularVenta(${id})">
@@ -7865,6 +7890,218 @@ async function traerTodo(armar,pagina=1000){
   }
   return {data:todo,error:null};
 }
+
+// ══════════════════════════════════════════════════════════
+//  EMPLEADOS — compras con descuento (solo detal) y vales (migración 044)
+//  El servidor calcula el precio y controla el límite mensual: aquí solo se
+//  muestra y se pide. La compra queda como venta con medio de pago "empleado"
+//  (no entra a ninguna cuenta: se cobra con el descuento de sueldo).
+// ══════════════════════════════════════════════════════════
+let EMP={mes:'',lista:[],ventas:[],vales:[]}, EMP_POS=null, _cobrandoEmp=false;
+const mesActual=()=>hoyChile().slice(0,7);
+function mesSiguiente(m){ const [y,mm]=m.split('-').map(Number); return mm===12?`${y+1}-01`:`${y}-${String(mm+1).padStart(2,'0')}`; }
+function nombreMes(m){ const [y,mm]=m.split('-').map(Number); return new Date(y,mm-1,1).toLocaleDateString('es-CL',{month:'long',year:'numeric'}); }
+const sumaEmp=(arr,k)=>arr.reduce((s,x)=>s+(Number(x[k])||0),0);
+async function traerEmpleadosMes(mes){
+  const ini=mes+'-01', fin=mesSiguiente(mes)+'-01';
+  const [eR,vR,valR]=await Promise.all([
+    supa.from('empleados').select('*').order('nombre'),
+    traerTodo(()=>supa.from('ventas').select('id,empleado_id,total,created_at,anulada,descontado_at,boleta_numero').gt('empleado_id',0).gte('created_at',inicioISO(ini)).lt('created_at',inicioISO(fin))),
+    traerTodo(()=>supa.from('empleado_vales').select('*').gte('fecha',ini).lt('fecha',fin))]);
+  for(const r of [eR,vR,valR]) if(r.error) throw r.error;
+  return {lista:eR.data||[],ventas:(vR.data||[]).filter(v=>!v.anulada),vales:(valR.data||[]).filter(v=>!v.anulado)};
+}
+function resumenEmpleado(e){
+  const vs=EMP.ventas.filter(v=>v.empleado_id===e.id), vl=EMP.vales.filter(v=>v.empleado_id===e.id);
+  const compras=sumaEmp(vs,'total'), vales=sumaEmp(vl,'monto');
+  const pend=sumaEmp(vs.filter(v=>!v.descontado_at),'total')+sumaEmp(vl.filter(v=>!v.descontado_at),'monto');
+  return {vs,vl,compras,vales,total:compras+vales,pend,hay:vs.length+vl.length>0};
+}
+async function renderEmpleados(){
+  if(!esDueno()) return;
+  if(!EMP.mes) EMP.mes=mesActual();
+  const inp=document.getElementById('empMes'); if(inp) inp.value=EMP.mes;
+  const body=document.getElementById('empBody');
+  body.innerHTML='<tr><td colspan="6" class="empty">Cargando…</td></tr>';
+  let d; try{ d=await traerEmpleadosMes(EMP.mes); }catch(e){ console.error(e); body.innerHTML=`<tr><td colspan="6" class="empty">Error: ${escapeHtml(e.message)}</td></tr>`; return; }
+  EMP.lista=d.lista; EMP.ventas=d.ventas; EMP.vales=d.vales;
+  let porDescontar=0;
+  const filas=EMP.lista.filter(e=>e.activo||resumenEmpleado(e).hay).map(e=>{
+    const r=resumenEmpleado(e); porDescontar+=r.pend;
+    const estado=!r.hay?'<span class="sub-xs">Sin movimientos</span>':r.pend>0?'<span class="badge por-cobrar">Por descontar</span>':'<span class="badge pagado">Descontado</span>';
+    const pc=e.limite_compras>0?Math.min(100,Math.round(r.compras/e.limite_compras*100)):0;
+    return `<tr${e.activo?'':' style="opacity:.55;"'}>
+      <td><b>${escapeHtml(e.nombre)}</b>${e.activo?'':' <span class="sub-xs">(inactivo)</span>'}<div class="sub-xs">${escapeHtml(e.rut||'')} · ${Number(e.descuento_pct)}% desc.</div></td>
+      <td class="num">${money(r.compras)} <span class="sub-xs">/ ${money(e.limite_compras)}</span><div class="sub-xs">${pc}% del límite · ${r.vs.length} compra${r.vs.length===1?'':'s'}</div></td>
+      <td class="num">${money(r.vales)} <span class="sub-xs">/ ${money(e.limite_vale)}</span></td>
+      <td class="num"><b>${money(r.pend)}</b>${r.total!==r.pend?`<div class="sub-xs">de ${money(r.total)}</div>`:''}</td>
+      <td>${estado}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="detalleEmpleado(${e.id})">Detalle</button>
+        ${e.activo?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirVale(${e.id})">+ Vale</button>`:''}
+        ${r.pend>0?`<button class="btn" style="padding:6px 10px;font-size:12px;" onclick="descontarEmpleado(${e.id})">Descontar</button>`:''}
+        ${r.hay&&r.pend===0?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="reabrirDescuento(${e.id})">Reabrir</button>`:''}
+        <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirEmpleado(${e.id})">Editar</button>
+      </td></tr>`;
+  }).join('');
+  body.innerHTML=filas||'<tr><td colspan="6" class="empty">Aún no hay empleados. Crea el primero con "+ Empleado".</td></tr>';
+  document.getElementById('empResumen').innerHTML=`${escapeHtml(nombreMes(EMP.mes))} · por descontar del sueldo: <b class="num">${money(porDescontar)}</b>`;
+}
+function abrirEmpleado(id){
+  const e=id?EMP.lista.find(x=>x.id===id):null;
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${e?'Editar':'Nuevo'} empleado</h3>
+    <label>Nombre</label><input id="emNombre" value="${escapeHtml(e?.nombre||'')}">
+    <label>RUT</label><input id="emRut" value="${escapeHtml(e?.rut||'')}" placeholder="12.345.678-9">
+    <label>Descuento en sus compras (%)</label><input id="emPct" type="number" min="0" max="100" step="1" value="${e?Number(e.descuento_pct):15}">
+    <label>Límite de compras por mes ($)</label><input id="emLimC" type="number" min="0" step="1000" value="${e?Number(e.limite_compras):50000}">
+    <label>Límite de vales por mes ($)</label><input id="emLimV" type="number" min="0" step="1000" value="${e?Number(e.limite_vale):50000}">
+    ${e?`<label style="display:flex;align-items:center;gap:8px;margin-top:12px;"><input type="checkbox" id="emActivo" style="width:16px;height:16px;" ${e.activo?'checked':''}> Activo (puede comprar y pedir vales)</label>`:''}
+    <div class="actions"><button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" onclick="guardarEmpleado(${e?e.id:0})">Guardar</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarEmpleado(id){
+  const nombre=sanitize(document.getElementById('emNombre').value);
+  if(!nombre){ toast('Escribe el nombre',true); return; }
+  const row={nombre,rut:sanitize(document.getElementById('emRut').value)||null,
+    descuento_pct:Math.min(100,Math.max(0,Number(document.getElementById('emPct').value)||0)),
+    limite_compras:Math.max(0,Number(document.getElementById('emLimC').value)||0),
+    limite_vale:Math.max(0,Number(document.getElementById('emLimV').value)||0)};
+  if(id) row.activo=document.getElementById('emActivo').checked;
+  const {error}=id?await supa.from('empleados').update(row).eq('id',id):await supa.from('empleados').insert(row);
+  if(error){ toast('Error: '+error.message,true); return; }
+  logAudit(id?'Empleado editado':'Empleado creado','empleados',`${nombre} · ${row.descuento_pct}% · compras ${money(row.limite_compras)} · vales ${money(row.limite_vale)}`);
+  toast('Empleado guardado'); closeModal(); renderEmpleados();
+}
+async function abrirVale(id){
+  const e=EMP.lista.find(x=>x.id===id); if(!e) return;
+  const {data}=await supa.from('empleado_vales').select('monto').eq('empleado_id',id).eq('anulado',false).gte('fecha',mesActual()+'-01');
+  const usado=sumaEmp(data||[],'monto'), disp=Math.max(0,Number(e.limite_vale)-usado);
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Vale · ${escapeHtml(e.nombre)}</h3>
+    <div class="sub-xs">Este mes lleva ${money(usado)} de ${money(e.limite_vale)}. Disponible: <b>${money(disp)}</b>.</div>
+    <label>Monto del vale</label><input id="vlMonto" type="number" min="1" step="1000" inputmode="numeric" max="${disp}">
+    <label>Sale de la cuenta</label>${selectCuentaPago('vlCuenta','efectivo')}
+    <div class="sub-xs" style="margin-top:4px;">Efectivo = la plata tuya que no está en el cajón. Queda como salida en Cuentas.</div>
+    <label>Nota (opcional)</label><input id="vlNota" maxlength="120">
+    <div class="actions"><button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnVale" onclick="guardarVale(${id})">Registrar vale</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function guardarVale(id){
+  const monto=Number(document.getElementById('vlMonto').value);
+  if(!(monto>0)){ toast('Escribe el monto',true); return; }
+  const btn=document.getElementById('btnVale'); btn.disabled=true;
+  const {error}=await supa.rpc('registrar_vale',{p:{empleado_id:id,monto,cuenta:document.getElementById('vlCuenta').value,nota:sanitize(document.getElementById('vlNota').value)||null,registrado_por:SESSION.usuario}});
+  if(error){ btn.disabled=false; toast(error.message,true); return; }
+  const e=EMP.lista.find(x=>x.id===id);
+  logAudit('Vale a empleado','empleados',`${e?.nombre||'#'+id} — ${money(monto)}`);
+  toast('Vale registrado'); closeModal(); renderEmpleados();
+}
+function detalleEmpleado(id){
+  const e=EMP.lista.find(x=>x.id===id); if(!e) return;
+  const r=resumenEmpleado(e);
+  const filasV=r.vs.sort((a,b)=>a.created_at<b.created_at?-1:1).map(v=>`<tr><td>${new Date(v.created_at).toLocaleDateString('es-CL')}</td><td>Compra · boleta ${v.boleta_numero||v.id}</td><td class="num">${money(v.total)}</td><td>${v.descontado_at?'<span class="badge pagado">Descontado</span>':''}</td><td></td></tr>`).join('');
+  const filasL=r.vl.map(v=>`<tr><td>${fechaCL(v.fecha)}</td><td>Vale · ${escapeHtml(CUENTAS_PAGO[v.cuenta]||v.cuenta)}${v.nota?' · '+escapeHtml(v.nota):''}</td><td class="num">${money(v.monto)}</td><td>${v.descontado_at?'<span class="badge pagado">Descontado</span>':''}</td>
+    <td>${v.descontado_at?'':`<button class="btn danger" style="padding:4px 8px;font-size:11px;" onclick="anularVale(${v.id})">Anular</button>`}</td></tr>`).join('');
+  document.getElementById('modalContent').innerHTML=`
+    <h3>${escapeHtml(e.nombre)} · ${escapeHtml(nombreMes(EMP.mes))}</h3>
+    <div class="table-scroll"><table><thead><tr><th>Fecha</th><th>Detalle</th><th>Monto</th><th></th><th></th></tr></thead>
+      <tbody>${filasV+filasL||'<tr><td colspan="5" class="empty">Sin movimientos este mes</td></tr>'}</tbody></table></div>
+    <div class="caja-linea"><span>Compras</span><b>${money(r.compras)}</b></div>
+    <div class="caja-linea"><span>Vales</span><b>${money(r.vales)}</b></div>
+    <div class="caja-linea"><span>Total del mes</span><b>${money(r.total)}</b></div>
+    <div class="caja-linea"><span>Por descontar</span><b>${money(r.pend)}</b></div>
+    <div class="actions"><button class="btn secondary" onclick="closeModal()">Cerrar</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+async function anularVale(id){
+  if(!confirm('¿Anular este vale? La plata vuelve a la cuenta de la que salió.')) return;
+  const {error}=await supa.rpc('anular_vale',{p_id:id});
+  if(error){ toast(error.message,true); return; }
+  logAudit('Vale anulado','empleados','#'+id); toast('Vale anulado'); closeModal(); renderEmpleados();
+}
+async function descontarEmpleado(id){
+  const e=EMP.lista.find(x=>x.id===id); if(!e) return;
+  const r=resumenEmpleado(e);
+  if(!confirm(`¿Marcar como descontado del sueldo de ${e.nombre} (${nombreMes(EMP.mes)})?\n\nPor descontar: ${money(r.pend)}\n\nHazlo cuando ya lo descontaste en la liquidación.`)) return;
+  const {data,error}=await supa.rpc('descontar_empleado',{p_empleado:id,p_mes:EMP.mes});
+  if(error){ toast(error.message,true); return; }
+  logAudit('Descuento de sueldo marcado','empleados',`${e.nombre} ${EMP.mes}: compras ${money(data.compras)} + vales ${money(data.vales)} = ${money(data.total)}`);
+  toast('Marcado como descontado'); renderEmpleados();
+}
+async function reabrirDescuento(id){
+  const e=EMP.lista.find(x=>x.id===id); if(!e) return;
+  if(!confirm(`¿Reabrir el descuento de ${e.nombre} (${nombreMes(EMP.mes)})? Vuelve a quedar "por descontar".`)) return;
+  const {error}=await supa.rpc('reabrir_descuento',{p_empleado:id,p_mes:EMP.mes});
+  if(error){ toast(error.message,true); return; }
+  logAudit('Descuento de sueldo reabierto','empleados',`${e.nombre} ${EMP.mes}`); renderEmpleados();
+}
+function copiarResumenEmpleados(){
+  const lineas=EMP.lista.map(e=>({e,r:resumenEmpleado(e)})).filter(x=>x.r.hay).map(({e,r})=>`• ${e.nombre}${e.rut?' ('+e.rut+')':''}: compras ${money(r.compras)} + vales ${money(r.vales)} = ${money(r.total)}${r.pend===0?' (ya descontado)':''}`);
+  const tot=EMP.lista.reduce((s,e)=>s+resumenEmpleado(e).total,0);
+  mostrarMensajeParaCopiar('Descuentos de sueldo · '+nombreMes(EMP.mes),
+    lineas.length?`Beneficio empleados Punto Queso — ${nombreMes(EMP.mes)}\n\n${lineas.join('\n')}\n\nTotal: ${money(tot)}`:'No hay compras ni vales este mes.',null);
+}
+
+// ── Venta a empleado en la caja ─────────────────────────────────────
+async function abrirVentaEmpleado(){
+  if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
+  if(CARRITO.some(i=>i.es_delivery)){ toast('Las compras de empleados no llevan delivery',true); return; }
+  if(CARRITO.some(i=>i.es_mayor||i.precio_manual||!i.producto_id)||descuentoVentaMonto()>0){ toast('Las compras de empleados son solo al detal: quita el precio por mayor o por pieza, los precios editados y los descuentos',true); return; }
+  let d; try{ d=await traerEmpleadosMes(mesActual()); }catch(e){ console.error(e); toast('Error: '+e.message,true); return; }
+  const act=d.lista.filter(e=>e.activo);
+  if(!act.length){ toast('Aún no hay empleados. El administrador los crea en Empleados.',true); return; }
+  EMP_POS=act.map(e=>({...e,usado:sumaEmp(d.ventas.filter(v=>v.empleado_id===e.id),'total')}));
+  document.getElementById('modalContent').innerHTML=`
+    <h3>Venta a empleado</h3>
+    <label>Empleado</label>
+    <select id="veEmp" onchange="pintarVentaEmpleado()"><option value="">Elige al empleado…</option>${EMP_POS.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)}</option>`).join('')}</select>
+    <div id="veDetalle" style="margin-top:10px;"></div>
+    <div class="actions"><button class="btn secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="btnVeConfirmar" onclick="confirmarVentaEmpleado()" disabled>Registrar compra</button></div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function precioEmpleado(i,pct){ return Math.round(Number(i.precio_normal!=null?i.precio_normal:i.precio)*(1-pct/100)); }
+function pintarVentaEmpleado(){
+  const e=EMP_POS?.find(x=>x.id===Number(document.getElementById('veEmp').value));
+  const box=document.getElementById('veDetalle'), btn=document.getElementById('btnVeConfirmar');
+  if(!e){ box.innerHTML=''; btn.disabled=true; return; }
+  const lineas=CARRITO.map(i=>({i,unit:precioEmpleado(i,Number(e.descuento_pct))}));
+  const total=lineas.reduce((s,l)=>s+Math.round(l.unit*l.i.cantidad),0);
+  const disp=Math.max(0,Number(e.limite_compras)-e.usado), ok=total<=disp;
+  box.innerHTML=`<table style="width:100%;font-size:13px;"><tbody>${lineas.map(l=>`<tr><td>${escapeHtml(l.i.nombre)}${l.i.qtyLabel?' ('+escapeHtml(l.i.qtyLabel)+')':''}</td><td class="num" style="text-align:right;">${money(Math.round(l.unit*l.i.cantidad))}</td></tr>`).join('')}</tbody></table>
+    <div class="caja-linea" style="margin-top:8px;"><span>Descuento ${Number(e.descuento_pct)}% · total a pagar</span><b>${money(total)}</b></div>
+    <div class="caja-linea"><span>Este mes lleva</span><b>${money(e.usado)} de ${money(e.limite_compras)}</b></div>
+    <div class="caja-linea"><span>Disponible</span><b style="color:${ok?'var(--ok)':'var(--danger)'};">${money(disp)}</b></div>
+    ${ok?'<div class="sub-xs" style="margin-top:6px;">Se descuenta del sueldo a fin de mes. No se cobra en caja.</div>':'<div class="sub-xs" style="margin-top:6px;color:var(--danger);font-weight:700;">Esta compra pasa el límite del mes. Quita productos o pide al administrador subir el límite.</div>'}`;
+  btn.disabled=!ok;
+}
+async function confirmarVentaEmpleado(){
+  if(_cobrandoEmp) return;
+  const e=EMP_POS?.find(x=>x.id===Number(document.getElementById('veEmp').value)); if(!e) return;
+  _cobrandoEmp=true;
+  try{
+    const falt=await stockFaltanteCarrito(); if(falt.length){ closeModal(); avisoStockFaltante(falt); renderCarrito(); return; }
+    if(!(await cajaAbiertaParaVender(true))) return;
+    const btn=document.getElementById('btnVeConfirmar'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
+    if(!VENTA_UID) VENTA_UID=nuevoUid();
+    const {data:venta,error}=await supa.rpc('registrar_venta_empleado',{p:{
+      empleado_id:e.id,registrado_por:SESSION.usuario,turno_id:ventaFueraDeCaja()?null:(TURNO_ACTUAL?.id||null),fuera_caja:!!ventaFueraDeCaja(),venta_uid:VENTA_UID,
+      items:CARRITO.map(i=>({producto_id:i.producto_id,producto_nombre:i.nombre+(i.qtyLabel?` (${i.qtyLabel})`:''),cantidad:i.cantidad}))}});
+    if(error){ if(btn){ btn.disabled=false; btn.textContent='Registrar compra'; } toast(error.message,true); return; }
+    CARRITO.forEach(i=>{ const p=i.producto_id&&DB.productos.find(x=>x.id===i.producto_id); if(p) p.stock=Number(p.stock)-Number(i.cantidad); });
+    logAudit('Venta a empleado','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${e.nombre} — ${money(venta.total)}`);
+    const {data:its}=await supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',venta.id).order('id');
+    LAST_VENTA=venta; LAST_VENTA_ITEMS=its||[];
+    VENTA_UID=null; cerrarTicketCobrado(); vaciarCarrito();
+    renderPosProductos(document.getElementById('posBuscar')?.value||'');
+    mostrarVentaLista(venta,LAST_VENTA_ITEMS,Number(venta.total),null,null);
+    loadAll();
+  }finally{ _cobrandoEmp=false; }
+}
+
 const EFECTIVO_DUENO_DESDE='2026-10-26';
 async function calcularCuentas(){
   const {data:cuentas,error}=await supa.from('cuentas').select('*').order('orden');
@@ -8130,6 +8367,7 @@ async function confirmarCajeroPin(){
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
   document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
+  document.getElementById('navEmpleados').style.display=esDueno()?'flex':'none';
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navClientesWeb').style.display=esJefe()?'flex':'none';
   document.getElementById('navDelivery').style.display=esJefe()?'flex':'none';
