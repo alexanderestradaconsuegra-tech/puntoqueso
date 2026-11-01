@@ -741,7 +741,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         </div></div>
       <div class="card" style="padding:14px 16px;margin-bottom:12px;">
         <label style="display:flex;align-items:flex-start;gap:8px;font-size:13.5px;font-weight:600;">
-          <input type="checkbox" id="tomaCero" checked style="width:17px;height:17px;margin-top:1px;" onchange="tomaGuardarBorrador();pintarTomaResumen()">
+          <input type="checkbox" id="tomaCero" style="width:17px;height:17px;margin-top:1px;" onchange="tomaGuardarBorrador();pintarTomaResumen()">
           <span>Los productos que <u>no</u> cuente quedan en 0<br><span class="sub-xs" style="font-weight:500;">Úsalo para empezar de cero: solo queda en inventario lo que escribas aquí.</span></span>
         </label>
       </div>
@@ -5039,12 +5039,13 @@ async function aplicarToma(){
   const quedanCero=cero?todos.filter(p=>!items.some(i=>i.producto_id===p.id)&&Number(p.stock)!==0).length:0;
   const valor=todos.reduce((s,p)=>s+tomaValor(p),0);
   if(!confirm(`Se aplicará la toma de inventario:\n\n• ${items.length} productos con lo contado${canDo('verCostos')?` (valor ${money(valor)})`:''}\n• ${cero?`${quedanCero} productos no contados quedarán en 0`:'Los no contados no cambian'}\n\nNo genera gastos. ¿Continuar?`)) return;
+  if(quedanCero>0&&!confirm(`ATENCIÓN: ${quedanCero} producto${quedanCero===1?'':'s'} que NO contaste se van a poner en 0.\n\nSi solo querías corregir uno o dos productos, cancela y desmarca "dejar en 0 los no contados".\n\n¿Poner en 0 esos ${quedanCero} productos?`)) return;
   const btn=document.getElementById('btnAplicarToma'); btn.disabled=true; btn.textContent='Aplicando…';
   const {data,error}=await supa.rpc('aplicar_toma_inventario',{p_items:items,p_cero_resto:cero,p_usuario:SESSION.usuario,p_notas:null});
   btn.disabled=false; btn.textContent='Aplicar toma de inventario';
   if(error||!data){ toast('No se pudo aplicar: '+(error?.message||'sin respuesta'),true); return; }
   logAudit('Toma de inventario','productos',`#${data.id}: ${data.productos} contados, ${data.puestos_en_cero} en 0, valor ${money(data.valor_costo)}`);
-  TOMA.cant={}; TOMA.costo={}; tomaGuardarBorrador();
+  TOMA.cant={}; TOMA.costo={}; document.getElementById('tomaCero').checked=false; tomaGuardarBorrador();
   await loadAll();
   document.getElementById('modalContent').innerHTML=`
     <h3>Inventario actualizado</h3>
