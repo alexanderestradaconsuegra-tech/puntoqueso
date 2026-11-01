@@ -1,5 +1,5 @@
 -- ══════════════════════════════════════════════════════════════════
---  044 — Beneficio para empleados: compras con descuento y vales
+--  044 — Beneficio para el personal: compras con descuento y vales
 --
 --  empleados          ficha con descuento (15 %), límite mensual de compras
 --                     ($50.000) y límite mensual de vales ($50.000).
@@ -78,7 +78,7 @@ begin
     if found then return to_jsonb(v) || jsonb_build_object('repetida', true); end if;
   end if;
   select * into e from empleados where id = nullif(p->>'empleado_id', '')::bigint for update;
-  if not found or not e.activo then raise exception 'El empleado no existe o está inactivo'; end if;
+  if not found or not e.activo then raise exception 'La persona del personal no existe o está inactiva'; end if;
   if p->'items' is null or jsonb_typeof(p->'items') <> 'array' or jsonb_array_length(p->'items') = 0 then
     raise exception 'La compra no tiene productos';
   end if;
@@ -86,7 +86,7 @@ begin
 
   for it in select * from jsonb_array_elements(p->'items') loop
     if coalesce((it->>'es_mayor')::boolean, false) then
-      raise exception 'Las compras de empleados son solo al detal: quita el precio por mayor o por pieza';
+      raise exception 'Las compras del personal son solo al detal: quita el precio por mayor o por pieza';
     end if;
     select id, nombre, precio into prod from productos
      where id = nullif(it->>'producto_id', '')::bigint and activo = true;
@@ -115,7 +115,7 @@ begin
   end if;
 
   v_res := public.registrar_venta(jsonb_build_object(
-    'cliente_nombre', 'Empleado: ' || e.nombre, 'total', v_total,
+    'cliente_nombre', 'Personal: ' || e.nombre, 'total', v_total,
     'metodo_pago', 'empleado', 'metodo_pago_detalle', 'Descuento de sueldo',
     'monto_efectivo', 0, 'monto_otro', 0, 'monto_transferencia', 0, 'monto_tarjeta', 0, 'monto_mercadopago', 0,
     'delivery_monto', 0, 'descuento', round(v_desc),
@@ -137,7 +137,7 @@ declare
 begin
   if not private.es_dueno() then raise exception 'Solo el administrador registra vales'; end if;
   select * into e from empleados where id = nullif(p->>'empleado_id', '')::bigint for update;
-  if not found or not e.activo then raise exception 'El empleado no existe o está inactivo'; end if;
+  if not found or not e.activo then raise exception 'La persona del personal no existe o está inactiva'; end if;
   if v_monto is null or v_monto <= 0 then raise exception 'Escribe el monto del vale'; end if;
   if v_cuenta is null or v_cuenta not in ('efectivo','bancoestado','mercadopago') then raise exception 'Elige de qué cuenta sale la plata'; end if;
   select coalesce(sum(monto), 0) into v_usado from empleado_vales
@@ -147,7 +147,7 @@ begin
       replace(to_char(v_usado, 'FM999,999,999'), ',', '.'), replace(to_char(e.limite_vale, 'FM999,999,999'), ',', '.');
   end if;
   insert into cuenta_movimientos (fecha, tipo, cuenta_origen, monto, descripcion, registrado_por)
-  values (v_hoy, 'egreso', v_cuenta, v_monto, 'Vale empleado: ' || e.nombre, nullif(p->>'registrado_por', ''))
+  values (v_hoy, 'egreso', v_cuenta, v_monto, 'Vale personal: ' || e.nombre, nullif(p->>'registrado_por', ''))
   returning id into v_mov;
   insert into empleado_vales (empleado_id, fecha, monto, cuenta, nota, movimiento_id, registrado_por)
   values (e.id, v_hoy, v_monto, v_cuenta, nullif(p->>'nota', ''), v_mov, nullif(p->>'registrado_por', ''))
@@ -224,7 +224,7 @@ language plpgsql security definer set search_path = public, private as $$
 begin
   if old.empleado_id is not null then
     if new.metodo_pago is distinct from old.metodo_pago then
-      raise exception 'Una compra de empleado no cambia de medio de pago';
+      raise exception 'Una compra del personal no cambia de medio de pago';
     end if;
     if coalesce(new.anulada, false) and not coalesce(old.anulada, false) and old.descontado_at is not null then
       raise exception 'Esta compra ya se descontó del sueldo: reabre el descuento del mes antes de anularla';

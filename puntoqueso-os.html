@@ -529,7 +529,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
     </div>
     <div class="nav-item" data-view="empleados" id="navEmpleados" style="display:none;" onclick="nav('empleados')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-      Empleados
+      Personal
     </div>
     <div class="nav-item" data-view="usuarios" id="navUsuarios" style="display:none;" onclick="nav('usuarios')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -608,7 +608,8 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
           </div>
           <div class="cart-total"><span>Total</span><b class="num" id="posTotal">$0</b></div>
           <label style="display:block;font-size:12.5px;font-weight:600;margin:12px 0 5px;">Cliente (opcional)</label>
-          <select id="posCliente" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);"><option value="">Sin cliente</option></select>
+          <select id="posCliente" onchange="posClienteCambio()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--r-sm);"><option value="">Sin cliente</option></select>
+          <div id="posPersonalAviso" class="sub-xs" style="display:none;margin-top:6px;"></div>
           <label style="display:block;font-size:12.5px;font-weight:600;margin:12px 0 5px;">Método de pago</label>
           <div class="pay-methods" id="posPayMethods">
             <button type="button" class="active" data-m="efectivo" onclick="setMetodoPago('efectivo')">Efectivo</button>
@@ -635,7 +636,6 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
             <div id="posFechaAviso" class="sub-xs" style="margin-top:4px;"></div>
           </div>
           <button class="btn" id="btnCobrar" style="width:100%;justify-content:center;margin-top:14px;" onclick="cobrar()">Cobrar</button>
-          <button class="btn secondary" id="btnVentaEmpleado" style="width:100%;justify-content:center;margin-top:8px;" onclick="abrirVentaEmpleado()">Venta a empleado (con descuento)</button>
           <button class="btn secondary" id="btnGuardarTicket" style="width:100%;justify-content:center;margin-top:8px;" onclick="abrirGuardarTicket()">Guardar ticket en espera</button>
           <button class="btn secondary" style="width:100%;justify-content:center;margin-top:8px;" onclick="vaciarCarrito()">Vaciar carrito</button>
           <button class="btn secondary" id="btnImprimirUltimaBoleta" style="width:100%;justify-content:center;margin-top:8px;" onclick="reimprimirUltimo()">🖨️ Reimprimir último ticket</button>
@@ -851,19 +851,19 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       </div>
     </div>
 
-    <!-- EMPLEADOS -->
+    <!-- PERSONAL -->
     <div class="view" id="view-empleados">
-      <div class="topbar"><div><h2>Empleados</h2><div class="sub">Compras con descuento (solo al detal) y vales, que se descuentan del sueldo a fin de mes</div></div>
+      <div class="topbar"><div><h2>Personal</h2><div class="sub">Compras con descuento (solo al detal) y vales del personal, que se descuentan del sueldo a fin de mes</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn secondary" onclick="copiarResumenEmpleados()">Copiar resumen del mes</button>
-          <button class="btn" onclick="abrirEmpleado()">+ Empleado</button>
+          <button class="btn" onclick="abrirEmpleado()">+ Persona</button>
         </div></div>
       <div class="toolbar" style="gap:10px;align-items:center;">
         <label style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;">Mes
           <input type="month" id="empMes" onchange="EMP.mes=this.value||mesActual();renderEmpleados()" style="padding:8px;border:1.5px solid var(--border);border-radius:var(--r-sm);"></label>
         <div id="empResumen" class="sub" style="margin-left:auto;"></div>
       </div>
-      <div class="card table-scroll"><table><thead><tr><th>Empleado</th><th>Compras del mes</th><th>Vales del mes</th><th>A descontar</th><th>Estado</th><th></th></tr></thead>
+      <div class="card table-scroll"><table><thead><tr><th>Persona</th><th>Compras del mes</th><th>Vales del mes</th><th>A descontar</th><th>Estado</th><th></th></tr></thead>
         <tbody id="empBody"></tbody></table></div>
       <div class="sub-xs" style="margin-top:10px;">El descuento de sueldo necesita la autorización escrita de cada trabajador, y los descuentos que no son legales no pueden pasar del 15% de su remuneración.</div>
     </div>
@@ -1938,8 +1938,25 @@ function renderPosProductos(filter=''){
   // cliente select
   const sel=document.getElementById('posCliente');
   const prev=sel.value;
-  sel.innerHTML='<option value="">Sin cliente</option>'+DB.clientes.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  sel.innerHTML='<option value="">Sin cliente</option>'+DB.clientes.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('')
+    +(PERSONAL_POS.length?`<optgroup label="Personal (descuento, se descuenta del sueldo)">${PERSONAL_POS.map(e=>`<option value="emp:${e.id}">${escapeHtml(e.nombre)} · personal</option>`).join('')}</optgroup>`:'');
   sel.value=prev;
+  if(!PERSONAL_CARGADO){ PERSONAL_CARGADO=true; cargarPersonalPos(); }
+}
+// Personal con beneficio: aparece en el selector de Cliente de la caja
+let PERSONAL_POS=[], PERSONAL_CARGADO=false;
+async function cargarPersonalPos(){
+  const {data,error}=await supa.from('empleados').select('id,nombre,activo').eq('activo',true).order('nombre');
+  if(error){ PERSONAL_CARGADO=false; return; }
+  const antes=PERSONAL_POS.map(e=>e.id).join();
+  PERSONAL_POS=data||[];
+  if(PERSONAL_POS.map(e=>e.id).join()!==antes) renderPosProductos(document.getElementById('posBuscar')?.value||'');
+}
+function clientePosEsPersonal(){ const v=document.getElementById('posCliente')?.value||''; return v.startsWith('emp:')?Number(v.slice(4)):0; }
+function posClienteCambio(){
+  const id=clientePosEsPersonal(), av=document.getElementById('posPersonalAviso');
+  if(av){ av.style.display=id?'block':'none'; av.innerHTML=id?'Compra de personal: 15% de descuento sobre el precio normal, solo al detal, se descuenta del sueldo. No se cobra en caja.':''; }
+  pintarPosFecha();
 }
 // No se vende lo que no hay (migración 038). El servidor es quien garantiza; aquí se avisa antes.
 function posControlStock(){ return String(CONFIG_CACHE.pos_control_stock??'true')!=='false'; }
@@ -2369,7 +2386,7 @@ function abrirGuardarTicket(){
 }
 // Guarda el carrito actual (nuevo o actualizando el que se había retomado). Devuelve true si quedó guardado.
 async function guardarCarritoComoTicket(nombre){
-  const fila={nombre,items:CARRITO,cliente_id:document.getElementById('posCliente')?.value||null,descuento:DESCUENTO_VENTA||null,total:Math.round(carritoTotal()),updated_at:new Date().toISOString(),en_uso_por:null,en_uso_at:null};
+  const fila={nombre,items:CARRITO,cliente_id:(v=>v&&!String(v).startsWith('emp:')?v:null)(document.getElementById('posCliente')?.value),descuento:DESCUENTO_VENTA||null,total:Math.round(carritoTotal()),updated_at:new Date().toISOString(),en_uso_por:null,en_uso_at:null};
   let r;
   if(TICKET_ACTUAL) r=await supa.from('tickets_espera').update(fila).eq('id',TICKET_ACTUAL.id).select('id');
   else r=await supa.from('tickets_espera').insert({...fila,creado_por:SESSION.usuario}).select('id');
@@ -2703,6 +2720,8 @@ let _cobrando=false, VENTA_UID=null;
 function nuevoUid(){ return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2)); }
 async function cobrar(){
   if(_cobrando) return;
+  const idPersonal=clientePosEsPersonal();
+  if(idPersonal){ return abrirVentaEmpleado(idPersonal); }
   _cobrando=true;
   try{ await cobrarVenta(); } finally { _cobrando=false; pintarPosFecha(); const b=document.getElementById('btnCobrar'); if(b&&METODO_PAGO!=='mixto') efActualizar(); }   // pintarPosFecha vuelve a poner "Cobrar" en el botón (se quedaba en "Cobrando…")
 }
@@ -2715,7 +2734,7 @@ function pintarPosFecha(){
   inp.max=hoy; inp.value=POS_FECHA||hoy;
   const av=document.getElementById('posFechaAviso');
   av.innerHTML=POS_FECHA?`<span style="color:var(--danger);font-weight:700;">Venta del ${fechaCL(POS_FECHA)}: no entra a la caja de hoy.</span> <a href="#" onclick="setPosFecha('');return false;">Volver a hoy</a>`:'';
-  const b=document.getElementById('btnCobrar'); if(b&&!_cobrando) b.textContent=POS_FECHA?`Cobrar (venta del ${fechaCL(POS_FECHA)})`:'Cobrar';
+  const b=document.getElementById('btnCobrar'); if(b&&!_cobrando) b.textContent=clientePosEsPersonal()?'Registrar compra de personal':POS_FECHA?`Cobrar (venta del ${fechaCL(POS_FECHA)})`:'Cobrar';
 }
 function setPosFecha(v){
   const hoy=hoyChile();
@@ -4556,7 +4575,7 @@ function pintarVentas(esTodo){
   document.getElementById('ventasBody').innerHTML=rows.map(v=>`
     <tr class="${v.anulada?'venta-anulada':''}"><td><input type="checkbox" class="bulk-chk" data-id="${v.id}" ${v.anulada?'disabled title="Venta anulada"':(bulkChecked('ventas',v.id)?'checked':'')} onchange="bulkToggle('ventas',${v.id},this.checked)"></td>
     <td>${v.boleta_numero||v.id}${v.anulada?` ${badgeAnulada}`:''}</td><td>${escapeHtml(v.cliente_nombre||'-')}</td><td class="num"><span class="${v.anulada?'tachado':''}">${money(v.total)}</span></td>
-    <td style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` <span style="color:var(--muted);font-size:11px;">(${escapeHtml(v.metodo_pago_detalle)})</span>`:''}</td>
+    <td style="text-transform:capitalize;">${v.metodo_pago==='empleado'?'personal':v.metodo_pago}${v.metodo_pago_detalle?` <span style="color:var(--muted);font-size:11px;">(${escapeHtml(v.metodo_pago_detalle)})</span>`:''}</td>
     <td>${new Date(v.created_at).toLocaleString('es-CL')}</td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="reimprimirVenta(${v.id})">🖨️ Boleta</button>
@@ -4570,7 +4589,7 @@ function pintarVentas(esTodo){
         <div class="lc-main">
           <div class="lc-top"><div class="lc-title">Boleta ${v.boleta_numero||v.id}</div><div class="lc-fig"><span class="${v.anulada?'tachado':''}">${money(v.total)}</span></div></div>
           <div class="lc-meta">${escapeHtml(v.cliente_nombre||'-')}<br>${new Date(v.created_at).toLocaleString('es-CL')}</div>
-          <div class="lc-badges">${v.anulada?badgeAnulada:''}<span class="badge" style="text-transform:capitalize;">${v.metodo_pago}${v.metodo_pago_detalle?` (${escapeHtml(v.metodo_pago_detalle)})`:''}</span></div>
+          <div class="lc-badges">${v.anulada?badgeAnulada:''}<span class="badge" style="text-transform:capitalize;">${v.metodo_pago==='empleado'?'personal':v.metodo_pago}${v.metodo_pago_detalle?` (${escapeHtml(v.metodo_pago_detalle)})`:''}</span></div>
         </div>
         <div class="lc-actions">
           <button class="lc-more" onclick="sheetAccionesVenta(${v.id})" aria-label="Acciones"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>
@@ -7892,7 +7911,7 @@ async function traerTodo(armar,pagina=1000){
 }
 
 // ══════════════════════════════════════════════════════════
-//  EMPLEADOS — compras con descuento (solo detal) y vales (migración 044)
+//  PERSONAL — compras con descuento (solo detal) y vales (migración 044)
 //  El servidor calcula el precio y controla el límite mensual: aquí solo se
 //  muestra y se pide. La compra queda como venta con medio de pago "empleado"
 //  (no entra a ninguna cuenta: se cobra con el descuento de sueldo).
@@ -7944,13 +7963,13 @@ async function renderEmpleados(){
         <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirEmpleado(${e.id})">Editar</button>
       </td></tr>`;
   }).join('');
-  body.innerHTML=filas||'<tr><td colspan="6" class="empty">Aún no hay empleados. Crea el primero con "+ Empleado".</td></tr>';
+  body.innerHTML=filas||'<tr><td colspan="6" class="empty">Aún no hay personal registrado. Crea la primera persona con "+ Persona".</td></tr>';
   document.getElementById('empResumen').innerHTML=`${escapeHtml(nombreMes(EMP.mes))} · por descontar del sueldo: <b class="num">${money(porDescontar)}</b>`;
 }
 function abrirEmpleado(id){
   const e=id?EMP.lista.find(x=>x.id===id):null;
   document.getElementById('modalContent').innerHTML=`
-    <h3>${e?'Editar':'Nuevo'} empleado</h3>
+    <h3>${e?'Editar':'Nueva'} persona del personal</h3>
     <label>Nombre</label><input id="emNombre" value="${escapeHtml(e?.nombre||'')}">
     <label>RUT</label><input id="emRut" value="${escapeHtml(e?.rut||'')}" placeholder="12.345.678-9">
     <label>Descuento en sus compras (%)</label><input id="emPct" type="number" min="0" max="100" step="1" value="${e?Number(e.descuento_pct):15}">
@@ -7971,8 +7990,8 @@ async function guardarEmpleado(id){
   if(id) row.activo=document.getElementById('emActivo').checked;
   const {error}=id?await supa.from('empleados').update(row).eq('id',id):await supa.from('empleados').insert(row);
   if(error){ toast('Error: '+error.message,true); return; }
-  logAudit(id?'Empleado editado':'Empleado creado','empleados',`${nombre} · ${row.descuento_pct}% · compras ${money(row.limite_compras)} · vales ${money(row.limite_vale)}`);
-  toast('Empleado guardado'); closeModal(); renderEmpleados();
+  logAudit(id?'Personal editado':'Personal creado','empleados',`${nombre} · ${row.descuento_pct}% · compras ${money(row.limite_compras)} · vales ${money(row.limite_vale)}`);
+  toast('Guardado'); closeModal(); renderEmpleados(); cargarPersonalPos();
 }
 async function abrirVale(id){
   const e=EMP.lista.find(x=>x.id===id); if(!e) return;
@@ -7996,7 +8015,7 @@ async function guardarVale(id){
   const {error}=await supa.rpc('registrar_vale',{p:{empleado_id:id,monto,cuenta:document.getElementById('vlCuenta').value,nota:sanitize(document.getElementById('vlNota').value)||null,registrado_por:SESSION.usuario}});
   if(error){ btn.disabled=false; toast(error.message,true); return; }
   const e=EMP.lista.find(x=>x.id===id);
-  logAudit('Vale a empleado','empleados',`${e?.nombre||'#'+id} — ${money(monto)}`);
+  logAudit('Vale a personal','empleados',`${e?.nombre||'#'+id} — ${money(monto)}`);
   toast('Vale registrado'); closeModal(); renderEmpleados();
 }
 function detalleEmpleado(id){
@@ -8042,26 +8061,27 @@ function copiarResumenEmpleados(){
   const lineas=EMP.lista.map(e=>({e,r:resumenEmpleado(e)})).filter(x=>x.r.hay).map(({e,r})=>`• ${e.nombre}${e.rut?' ('+e.rut+')':''}: compras ${money(r.compras)} + vales ${money(r.vales)} = ${money(r.total)}${r.pend===0?' (ya descontado)':''}`);
   const tot=EMP.lista.reduce((s,e)=>s+resumenEmpleado(e).total,0);
   mostrarMensajeParaCopiar('Descuentos de sueldo · '+nombreMes(EMP.mes),
-    lineas.length?`Beneficio empleados Punto Queso — ${nombreMes(EMP.mes)}\n\n${lineas.join('\n')}\n\nTotal: ${money(tot)}`:'No hay compras ni vales este mes.',null);
+    lineas.length?`Beneficio personal Punto Queso — ${nombreMes(EMP.mes)}\n\n${lineas.join('\n')}\n\nTotal: ${money(tot)}`:'No hay compras ni vales este mes.',null);
 }
 
 // ── Venta a empleado en la caja ─────────────────────────────────────
-async function abrirVentaEmpleado(){
+async function abrirVentaEmpleado(preId){
   if(!CARRITO.length){ toast('El carrito está vacío',true); return; }
-  if(CARRITO.some(i=>i.es_delivery)){ toast('Las compras de empleados no llevan delivery',true); return; }
-  if(CARRITO.some(i=>i.es_mayor||i.precio_manual||!i.producto_id)||descuentoVentaMonto()>0){ toast('Las compras de empleados son solo al detal: quita el precio por mayor o por pieza, los precios editados y los descuentos',true); return; }
+  if(CARRITO.some(i=>i.es_delivery)){ toast('Las compras del personal no llevan delivery',true); return; }
+  if(CARRITO.some(i=>i.es_mayor||i.precio_manual||!i.producto_id)||descuentoVentaMonto()>0){ toast('Las compras del personal son solo al detal: quita el precio por mayor o por pieza, los precios editados y los descuentos',true); return; }
   let d; try{ d=await traerEmpleadosMes(mesActual()); }catch(e){ console.error(e); toast('Error: '+e.message,true); return; }
   const act=d.lista.filter(e=>e.activo);
-  if(!act.length){ toast('Aún no hay empleados. El administrador los crea en Empleados.',true); return; }
+  if(!act.length){ toast('Aún no hay personal registrado. El administrador lo crea en Personal.',true); return; }
   EMP_POS=act.map(e=>({...e,usado:sumaEmp(d.ventas.filter(v=>v.empleado_id===e.id),'total')}));
   document.getElementById('modalContent').innerHTML=`
-    <h3>Venta a empleado</h3>
-    <label>Empleado</label>
-    <select id="veEmp" onchange="pintarVentaEmpleado()"><option value="">Elige al empleado…</option>${EMP_POS.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)}</option>`).join('')}</select>
+    <h3>Compra de personal</h3>
+    <label>Persona</label>
+    <select id="veEmp" onchange="pintarVentaEmpleado()"><option value="">Elige a la persona…</option>${EMP_POS.map(e=>`<option value="${e.id}">${escapeHtml(e.nombre)}</option>`).join('')}</select>
     <div id="veDetalle" style="margin-top:10px;"></div>
     <div class="actions"><button class="btn secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn" id="btnVeConfirmar" onclick="confirmarVentaEmpleado()" disabled>Registrar compra</button></div>`;
   document.getElementById('modalBg').style.display='flex';
+  if(preId&&EMP_POS.some(e=>e.id===preId)){ document.getElementById('veEmp').value=String(preId); pintarVentaEmpleado(); }
 }
 function precioEmpleado(i,pct){ return Math.round(Number(i.precio_normal!=null?i.precio_normal:i.precio)*(1-pct/100)); }
 function pintarVentaEmpleado(){
@@ -8092,10 +8112,11 @@ async function confirmarVentaEmpleado(){
       items:CARRITO.map(i=>({producto_id:i.producto_id,producto_nombre:i.nombre+(i.qtyLabel?` (${i.qtyLabel})`:''),cantidad:i.cantidad}))}});
     if(error){ if(btn){ btn.disabled=false; btn.textContent='Registrar compra'; } toast(error.message,true); return; }
     CARRITO.forEach(i=>{ const p=i.producto_id&&DB.productos.find(x=>x.id===i.producto_id); if(p) p.stock=Number(p.stock)-Number(i.cantidad); });
-    logAudit('Venta a empleado','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${e.nombre} — ${money(venta.total)}`);
+    logAudit('Venta a personal','ventas',`Boleta ${venta.boleta_numero||venta.id} — ${e.nombre} — ${money(venta.total)}`);
     const {data:its}=await supa.from('venta_items').select('producto_nombre,cantidad,precio_unitario,subtotal').eq('venta_id',venta.id).order('id');
     LAST_VENTA=venta; LAST_VENTA_ITEMS=its||[];
     VENTA_UID=null; cerrarTicketCobrado(); vaciarCarrito();
+    { const sc=document.getElementById('posCliente'); if(sc) sc.value=''; posClienteCambio(); }
     renderPosProductos(document.getElementById('posBuscar')?.value||'');
     mostrarVentaLista(venta,LAST_VENTA_ITEMS,Number(venta.total),null,null);
     loadAll();
