@@ -152,6 +152,7 @@ tr:last-child td{border-bottom:none;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 #toast.err{background:var(--danger);}
 #bannerCarga{position:fixed;top:0;left:0;right:0;z-index:250;background:var(--danger);color:#fff;padding:10px 14px;font-size:13.5px;font-weight:600;display:none;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+#bannerError{position:fixed;left:8px;right:8px;bottom:8px;z-index:260;background:#1f1f1f;color:#fff;border:2px solid var(--danger);border-radius:12px;padding:10px 12px;font-size:12.5px;display:none;line-height:1.35;word-break:break-word;}
 #bannerCarga button{background:#fff;color:var(--danger);border:0;border-radius:99px;padding:6px 14px;font-weight:700;font-size:12.5px;cursor:pointer;}
 
 /* ── TERMINAL DE VENTAS (POS) ── */
@@ -472,6 +473,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
   <div class="mb-title" id="mobileBarTitle">Dashboard</div>
 </div>
 <div id="bannerCarga" role="alert"><span id="bannerCargaTxt"></span><button type="button" onclick="loadAll().then(()=>repintarVistaActual())">Reintentar</button><button type="button" onclick="actualizarApp()">Actualizar app</button></div>
+<div id="bannerError" onclick="this.style.display='none'"></div>
 <div id="app">
   <div class="sidebar">
     <div class="sb-brand" style="display:flex;align-items:center;gap:10px;">
@@ -1555,6 +1557,17 @@ function repintarVistaActual(){
 // La caja (productos) se carga y se pinta primero: puede vender aunque el resto tarde o falle.
 // Si algo no carga, queda un aviso fijo con "Reintentar" y "Actualizar app" (antes solo un aviso que desaparecía).
 function bannerCarga(msg){ const b=document.getElementById('bannerCarga'); if(!b) return; if(msg){ document.getElementById('bannerCargaTxt').textContent=msg; b.style.display='flex'; } else b.style.display='none'; }
+// Caja negra: si algo falla en pantalla, queda un cuadro oscuro abajo con el mensaje (toca para cerrarlo) para poder mostrarlo en una captura
+let _ultimoErrorJS='';
+function avisoErrorJS(msg){
+  msg=String(msg||'').slice(0,240);
+  if(!msg||/ResizeObserver|Script error\.?$/.test(msg)||msg===_ultimoErrorJS) return;
+  _ultimoErrorJS=msg;
+  const b=document.getElementById('bannerError'); if(!b) return;
+  b.textContent='Error en el panel (toca para cerrar): '+msg; b.style.display='block';
+}
+window.addEventListener('error',e=>avisoErrorJS((e.message||'')+(e.filename?' · línea '+e.lineno:'')));
+window.addEventListener('unhandledrejection',e=>avisoErrorJS('(promesa) '+(e.reason&&e.reason.message||e.reason)));
 async function actualizarApp(){
   try{ const regs=await navigator.serviceWorker?.getRegistrations?.(); for(const r of regs||[]) await r.unregister(); }catch(e){}
   try{ for(const k of await caches.keys()) await caches.delete(k); }catch(e){}
