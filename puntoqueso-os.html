@@ -1261,6 +1261,10 @@ function sesionVencida(){
 //  ESTADO GLOBAL
 // ══════════════════════════════════════════════════════════
 let SESSION=null;
+// Estado de Personal y de ventas con caja cerrada: declarado AQUÍ (arriba) porque una sesión guardada arranca el panel antes de llegar a las secciones de más abajo
+let PERSONAL_POS=[], PERSONAL_CARGADO=false;
+let EMP={mes:'',lista:[],ventas:[],vales:[]}, EMP_POS=null, _cobrandoEmp=false;
+let _okVentaCajaCerrada=false;
 let DB={productos:[],clientes:[],pedidos:[],ventas:[],gastos:[],usuarios:[],proveedores:[],facturasCompra:[],gastosRecurrentes:[],cargado:false};
 let PROD_CAT_FILTER='todos';
 // Filtro de la lista de Productos por marca: todos | web | oculto | fav
@@ -1969,7 +1973,6 @@ function renderPosProductos(filter=''){
   if(!PERSONAL_CARGADO){ PERSONAL_CARGADO=true; cargarPersonalPos(); }
 }
 // Personal con beneficio: aparece en el selector de Cliente de la caja
-let PERSONAL_POS=[], PERSONAL_CARGADO=false;
 async function cargarPersonalPos(){
   const {data,error}=await supa.from('empleados').select('id,nombre,activo').eq('activo',true).order('nombre');
   if(error){ PERSONAL_CARGADO=false; return; }
@@ -7017,7 +7020,6 @@ async function verificarCajaTerminal(){
 function cajaHoyCerrada(){ return !!(CAJA_HOY&&CAJA_HOY.estado==='cerrada'&&CAJA_HOY.fecha===hoyChile()); }
 function ventaFueraDeCaja(){ return esDueno()&&!POS_FECHA&&CAJA_HOY&&((CAJA_HOY.estado==='abierta'&&TURNO_ACTUAL&&TURNO_ACTUAL.cajero!==SESSION.usuario)||cajaHoyCerrada()); }
 // Con la caja de hoy ya cerrada, solo el administrador puede seguir vendiendo: la venta queda con la fecha de HOY pero fuera de la caja
-let _okVentaCajaCerrada=false;
 async function cajaAbiertaParaVender(rapido){
   if(esDueno()&&!POS_FECHA){
     if(!rapido) await cargarCajaHoy();
@@ -7941,7 +7943,6 @@ async function traerTodo(armar,pagina=1000){
 //  muestra y se pide. La compra queda como venta con medio de pago "empleado"
 //  (no entra a ninguna cuenta: se cobra con el descuento de sueldo).
 // ══════════════════════════════════════════════════════════
-let EMP={mes:'',lista:[],ventas:[],vales:[]}, EMP_POS=null, _cobrandoEmp=false;
 const mesActual=()=>hoyChile().slice(0,7);
 function mesSiguiente(m){ const [y,mm]=m.split('-').map(Number); return mm===12?`${y+1}-01`:`${y}-${String(mm+1).padStart(2,'0')}`; }
 function nombreMes(m){ const [y,mm]=m.split('-').map(Number); return new Date(y,mm-1,1).toLocaleDateString('es-CL',{month:'long',year:'numeric'}); }
