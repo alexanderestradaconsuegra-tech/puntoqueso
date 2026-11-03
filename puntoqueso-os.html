@@ -152,6 +152,12 @@ tr:last-child td{border-bottom:none;}
 #toast.show{transform:translateX(-50%) translateY(0);}
 #toast.err{background:var(--danger);}
 #bannerCarga{position:fixed;top:0;left:0;right:0;z-index:250;background:var(--danger);color:#fff;padding:10px 14px;font-size:13.5px;font-weight:600;display:none;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+#inicioPersonal .ip-accesos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+#inicioPersonal .ip-acceso{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:16px;border-radius:var(--r);border:1.5px solid var(--border);background:var(--card,#fff);cursor:pointer;text-align:left;font:inherit;color:inherit;min-height:84px;}
+#inicioPersonal .ip-acceso b{font-size:16px;} #inicioPersonal .ip-acceso span{font-size:12.5px;color:var(--text2);}
+#inicioPersonal .ip-acceso.principal{background:var(--brand);border-color:var(--brand);} #inicioPersonal .ip-acceso.principal span{color:inherit;opacity:.8;}
+#inicioPersonal .ip-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;}
+#inicioPersonal .ip-fila{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px;}
 #bannerError{position:fixed;left:8px;right:8px;bottom:8px;z-index:260;background:#1f1f1f;color:#fff;border:2px solid var(--danger);border-radius:12px;padding:10px 12px;font-size:12.5px;display:none;line-height:1.35;word-break:break-word;}
 #bannerCarga button{background:#fff;color:var(--danger);border:0;border-radius:99px;padding:6px 14px;font-weight:700;font-size:12.5px;cursor:pointer;}
 
@@ -559,6 +565,8 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
 
     <!-- DASHBOARD -->
     <div class="view active" id="view-dashboard">
+      <div id="inicioPersonal" style="display:none;"></div>
+      <div id="dashJefe">
       <div class="topbar"><div><h2>Dashboard</h2><div class="sub">Resumen del negocio</div></div></div>
       <div class="kpi-grid" id="kpiDashboard"></div>
       <div class="dash-grid">
@@ -582,6 +590,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
       <div class="card" style="padding:18px;">
         <h3 style="margin-bottom:12px;">Pedidos pendientes por facturar</h3>
         <div id="dashPedidos"></div>
+      </div>
       </div>
     </div>
 
@@ -1688,6 +1697,7 @@ async function iniciarApp(){
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
   document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
   document.getElementById('navEmpleados').style.display=esDueno()?'flex':'none';
+  aplicarNombreInicio();
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navClientesWeb').style.display=esJefe()?'flex':'none';
   document.getElementById('navDelivery').style.display=esJefe()?'flex':'none';
@@ -1740,6 +1750,10 @@ async function iniciarApp(){
 //  DASHBOARD
 // ══════════════════════════════════════════════════════════
 async function renderDashboard(){
+  // Sin permiso de reportes (personal): pantalla de Inicio, sin ventas, ganancias, costos ni gastos
+  const jefe=document.getElementById('dashJefe'), ini=document.getElementById('inicioPersonal');
+  if(dashboardEsPersonal()){ return renderInicioPersonal(); }
+  if(jefe) jefe.style.display=''; if(ini) ini.style.display='none';
   // Mismas definiciones de siempre (hoy / semana desde el lunes / mes desde el
   // día 1), pero en fecha LOCAL y consultando al servidor por rango: DB.ventas
   // y DB.gastos traen solo las últimas 200 filas y con más de 200 ventas en el
@@ -1808,6 +1822,68 @@ async function renderDashboard(){
   renderChartPedidosEstado();
   renderChartGastosCategoria(gastosMes);
   await renderChartTopProductos(mesD,gastosOperacion);
+}
+
+
+// ══════════════════════════════════════════════════════════
+//  INICIO DEL PERSONAL — lo que necesita quien atiende el local:
+//  estado de la caja y de su turno, accesos rápidos, pedidos por atender y stock.
+//  No muestra ventas, ganancias, costos ni gastos (eso queda para quien tiene permiso de reportes).
+// ══════════════════════════════════════════════════════════
+function dashboardEsPersonal(){ return !canDo('verReportes'); }
+function aplicarNombreInicio(){
+  const nombre=dashboardEsPersonal()?'Inicio':'Dashboard';
+  document.querySelectorAll('.nav-item[data-view="dashboard"]').forEach(n=>n.childNodes.forEach(c=>{ if(c.nodeType===3&&/Dashboard|Inicio/.test(c.textContent)) c.textContent='\n      '+nombre+'\n    '; }));
+  document.querySelectorAll('#bottomNav .tab[data-tab="dashboard"] span').forEach(sp=>sp.textContent=nombre);
+  syncMobileNav(currentPage);   // el título de arriba en el celular
+}
+async function renderInicioPersonal(){
+  const jefe=document.getElementById('dashJefe'), box=document.getElementById('inicioPersonal');
+  if(!box) return;
+  if(jefe) jefe.style.display='none'; box.style.display='block';
+  try{ await cargarCajaHoy(); }catch(e){}
+  try{ await cargarTicketsEspera(); }catch(e){}
+  const primer=(SESSION.nombre||SESSION.usuario||'').trim().split(/\s+/)[0];
+  const h=Number(new Intl.DateTimeFormat('es-CL',{timeZone:'America/Santiago',hour:'numeric',hour12:false}).format(new Date()))%24;
+  const saludo=h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches';
+  // caja y turno
+  let estado, tono='var(--text2)', accion='';
+  if(!CAJA_HOY){ estado='La caja de hoy aún no está abierta.'; accion='<button class="btn" onclick="nav(\'terminal\')">Abrir la caja</button>'; tono='var(--warn)'; }
+  else if(CAJA_HOY.estado==='cerrada'){ estado='La caja de hoy ya está cerrada.'; }
+  else if(!TURNO_ACTUAL){ estado='La caja está abierta. Falta abrir tu turno para vender.'; accion='<button class="btn" onclick="nav(\'terminal\')">Abrir mi turno</button>'; tono='var(--warn)'; }
+  else if(TURNO_ACTUAL.cajero===SESSION.usuario){ estado=`Tu turno ${TURNO_ACTUAL.numero} está abierto desde las ${horaCL(TURNO_ACTUAL.inicio_at)}.`; tono='var(--ok)'; }
+  else { estado=`${TURNO_ACTUAL.cajero_nombre||nombreUsuario(TURNO_ACTUAL.cajero)} tiene el turno abierto ahora.`; }
+  // pedidos por atender (sin montos)
+  const orden={pendiente:0,preparando:1,listo:2};
+  const enCurso=DB.pedidos.filter(p=>orden[p.estado]!==undefined).sort((a,b)=>a.created_at<b.created_at?-1:1);
+  const nTickets=(TICKETS_ESPERA||[]).length;
+  const sinStock=DB.productos.filter(p=>Number(p.stock)<=0);
+  const bajo=DB.productos.filter(p=>Number(p.stock)>0&&Number(p.stock)<=Number(p.stock_minimo||0));
+  const u=p=>p.unidad||'kg';
+  const lista=(arr,vacio,max)=>arr.length?arr.slice(0,max).map(p=>`<div class="ip-fila"><span>${escapeHtml(p.nombre)}</span><b class="num">${Number(p.stock).toLocaleString('es-CL',{maximumFractionDigits:2})} ${escapeHtml(u(p))}</b></div>`).join('')+(arr.length>max?`<div class="sub-xs" style="padding-top:6px;">y ${arr.length-max} más en Productos</div>`:''):`<div class="sub-xs">${vacio}</div>`;
+  box.innerHTML=`
+    <div class="topbar"><div><h2>${saludo}${primer?', '+escapeHtml(primer):''}</h2><div class="sub">${escapeHtml((f=>f.charAt(0).toUpperCase()+f.slice(1))(fechaLarga(hoyChile(),true)))}</div></div></div>
+    <div class="card" style="padding:16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;">
+      <div style="font-weight:700;color:${tono};">${escapeHtml(estado)}</div>${accion}
+    </div>
+    <div class="ip-accesos">
+      <button type="button" class="ip-acceso principal" onclick="nav('terminal')"><b>Vender</b><span>Ir a la caja</span></button>
+      <button type="button" class="ip-acceso" onclick="nav('pedidos')"><b>Pedidos</b><span>${enCurso.length?enCurso.length+' por atender':'Sin pedidos por atender'}</span></button>
+      <button type="button" class="ip-acceso" onclick="abrirBuscador()"><b>Buscar producto</b><span>Precio y stock</span></button>
+      ${nTickets?`<button type="button" class="ip-acceso" onclick="nav('terminal')"><b>En espera</b><span>${nTickets} ticket${nTickets===1?'':'s'} guardado${nTickets===1?'':'s'}</span></button>`:''}
+    </div>
+    <div class="ip-cols">
+      <div class="card" style="padding:16px;">
+        <h3 style="margin-bottom:10px;">Pedidos por atender</h3>
+        ${enCurso.length?enCurso.slice(0,10).map(p=>`<div class="ip-fila" style="cursor:pointer;" onclick="nav('pedidos')">
+          <span><b>${escapeHtml(p.cliente_nombre||'Sin nombre')}</b><div class="sub-xs">${esRetiro(p)?'Retiro en tienda':p.tipo_entrega==='delivery'?'Delivery':'Pedido'} · ${horaCL(p.created_at)}</div></span>
+          <span class="badge ${p.estado==='listo'?'pagado':'por-cobrar'}">${PEDIDO_ETAPA_LABEL[p.estado]}</span></div>`).join('')+(enCurso.length>10?`<div class="sub-xs" style="padding-top:6px;">y ${enCurso.length-10} más en Pedidos</div>`:''):'<div class="sub-xs">No hay pedidos por atender ahora.</div>'}
+      </div>
+      <div class="card" style="padding:16px;">
+        <h3 style="margin-bottom:10px;">Se acabó</h3>${lista(sinStock,'Todo tiene stock.',10)}
+        <h3 style="margin:16px 0 10px;">Por acabarse</h3>${lista(bajo,'Nada por acabarse.',10)}
+      </div>
+    </div>`;
 }
 
 // ── Gráfico de barras (inline SVG) — ventas de los últimos 14 días ──
@@ -8428,6 +8504,7 @@ async function confirmarCajeroPin(){
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
   document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
   document.getElementById('navEmpleados').style.display=esDueno()?'flex':'none';
+  aplicarNombreInicio();
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
   document.getElementById('navClientesWeb').style.display=esJefe()?'flex':'none';
   document.getElementById('navDelivery').style.display=esJefe()?'flex':'none';
