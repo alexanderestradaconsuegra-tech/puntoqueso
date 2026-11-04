@@ -1657,6 +1657,12 @@ function direccionCambio(){
 }
 function comunaCambio(){
   if(DELIV.punto&&DELIV.punto.fuente==='google-texto'){ DELIV={punto:null,cot:null,estado:'idle',msg:''}; pintarQuote(); }
+  // si cambia la comuna, se vuelve a calcular el delivery solo (antes quedaba sin precio hasta tocar Enviar)
+  if(!DELIV.punto&&DELIV.estado!=='sin-mapa'){
+    clearTimeout(_geoTimer);
+    const calle=sanitize(document.getElementById('pedidoCalle').value);
+    if(/\d/.test(calle)&&calle.length>=5) _geoTimer=setTimeout(()=>geocodificarDireccion(),900);
+  }
 }
 let _gmapsP=null, _gmapsFalla=false;
 // Google nunca debe dejar el pedido esperando: cada consulta tiene tiempo máximo.
