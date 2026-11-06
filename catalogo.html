@@ -58,6 +58,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Punto Queso">
+<link rel="preconnect" href="https://api-puntoqueso.autix.pro" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
@@ -78,7 +79,7 @@
   --bg:#FFFDF5;
   --text:#1B1815;
   --text2:#5B5446;
-  --muted:#8F8672;
+  --muted:#6E6554;
   --line:#EFE6C8;
   --line-2:#E2D5A8;
   --danger:#C62F22;
@@ -463,6 +464,23 @@ form input:focus,form textarea:focus{outline:none;border-color:var(--ink);}
 #toast.show{transform:translateX(-50%) translateY(0);}
 #toast.err{background:var(--danger);}
 
+/* ── CELULAR: menos alto fijo arriba, y el hero deja ver los productos antes ── */
+@media(max-width:719px){
+  :root{--hdr-h:58px;--cat-h:46px;}
+  .brand img{width:40px;height:40px;}
+  .slide{min-height:300px;padding:24px 22px 42px;}
+  .slide-art{width:150px;height:150px;margin:-12px -22px -46px auto;}
+  .slide p{margin-bottom:16px;}
+}
+/* ── Error de carga con reintento ── */
+.err-box{grid-column:1/-1;text-align:center;padding:34px 20px;background:var(--paper);border:1.5px dashed var(--line-2);border-radius:var(--r-lg);}
+.err-box b{display:block;font-family:var(--disp);font-size:22px;font-weight:400;margin-bottom:6px;}
+.err-box p{color:var(--text2);font-size:14.5px;max-width:46ch;margin:0 auto 16px;}
+.err-box .err-act{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.err-box .err-act a,.err-box .err-act button{min-height:46px;padding:0 20px;border-radius:99px;border:0;font-weight:800;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;text-decoration:none;}
+.err-box .err-act button{background:var(--yellow);color:var(--ink);}
+.err-box .err-act a{background:var(--ink);color:#fff;}
+
 /* ── ESCRITORIO ── */
 @media(min-width:720px){
   .hdr-nav{display:flex;}
@@ -780,12 +798,16 @@ class PGQuery{
   order(col,{ascending=true}={}){ this.params.push(`order=${encodeURIComponent(col)}.${ascending?'asc':'desc'}`); return this; }
   limit(n){ this.params.push('limit='+n); return this; }
   or(expr){ this.params.push('or='+encodeURIComponent(expr)); return this; }
+  in(col,arr){ this.params.push(`${encodeURIComponent(col)}=in.(${arr.map(encodeURIComponent).join(',')})`); return this; }
   single(){ this._single=true; this.headers['Accept']='application/vnd.pgrst.object+json'; return this; }
   insert(rows){ this._method='POST'; this._body=rows; this.headers['Prefer']='return=representation'; return this; }
   async _exec(){
     const qs=this.params.length?('?'+this.params.join('&')):'';
     try{
-      const res=await fetch(`${this.url}/${this.table}${qs}`,{method:this._method,headers:this.headers,body:this._body?JSON.stringify(this._body):undefined});
+      // lecturas con tiempo máximo: con mala señal una consulta colgada dejaba el menú cargando para siempre
+      const opts={method:this._method,headers:this.headers,body:this._body?JSON.stringify(this._body):undefined};
+      if(this._method==='GET'&&typeof AbortController!=='undefined'){ const ac=new AbortController(); opts.signal=ac.signal; setTimeout(()=>ac.abort(),window.PG_TIMEOUT_MS||25000); }
+      const res=await fetch(`${this.url}/${this.table}${qs}`,opts);
       if(!res.ok){
         let msg=res.statusText;
         try{ const j=await res.json(); msg=j.message||j.hint||msg; }catch(e){}
@@ -794,7 +816,7 @@ class PGQuery{
       if(res.status===204) return {data:this._single?null:[],error:null};
       const data=await res.json();
       return {data,error:null};
-    }catch(e){ return {data:null,error:{message:e.message||'Error de red'}}; }
+    }catch(e){ return {data:null,error:{message:e&&e.name==='AbortError'?'el servidor tardó demasiado en responder':(e.message||'Error de red')}}; }
   }
   then(resolve,reject){ return this._exec().then(resolve,reject); }
 }
@@ -921,12 +943,18 @@ if(DOMINIO_VE){
 async function cargarProductos(){
   // Primero los datos (liviano) para mostrar el menú al tiro; las fotos llegan después.
   const COLS='id,nombre,categoria,unidad,precio,vender_por_peso,descripcion,activo,orden,destacado_web';
-  let {data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio,corte_opcion').eq('activo','true').order('nombre',{ascending:true});
-  // servidor sin la venta por pieza (migración 029): la tienda carga igual
-  if(error) ({data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio').eq('activo','true').order('nombre',{ascending:true}));
-  if(error) ({data,error}=await supa.from('productos').select(COLS).eq('activo','true').order('nombre',{ascending:true}));
+  const pedir=async()=>{
+    let {data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio,corte_opcion').eq('activo','true').order('nombre',{ascending:true});
+    // servidor sin la venta por pieza (migración 029): la tienda carga igual
+    if(error&&error.status) ({data,error}=await supa.from('productos').select(COLS+',pieza_nombre,pieza_contenido,pieza_precio').eq('activo','true').order('nombre',{ascending:true}));
+    if(error&&error.status) ({data,error}=await supa.from('productos').select(COLS).eq('activo','true').order('nombre',{ascending:true}));
+    return {data,error};
+  };
+  let {data,error}=await pedir();
+  if(error){ await new Promise(r=>setTimeout(r,2500)); ({data,error}=await pedir()); }   // un reintento en silencio antes de avisar
   if(error){
-    document.getElementById('grid').innerHTML='<p class="empty">No se pudo cargar el catálogo. Intenta de nuevo en un momento.</p>';
+    const wa=waLink('Hola! No me carga el menú de la tienda, ¿me ayudan con mi pedido?');
+    document.getElementById('grid').innerHTML=`<div class="err-box" role="alert"><b>No pudimos cargar el menú</b><p>Revisa tu conexión e inténtalo de nuevo. Si sigue igual, te atendemos por WhatsApp.</p><div class="err-act"><button type="button" onclick="reintentarCatalogo(this)">Reintentar</button>${wa?`<a href="${wa}" target="_blank" rel="noopener">Escribir por WhatsApp</a>`:''}</div></div>`;
     document.getElementById('promoRow').innerHTML='';
     return;
   }
@@ -936,12 +964,25 @@ async function cargarProductos(){
   renderTodo();
   cargarFotosProductos();
 }
+function reintentarCatalogo(btn){
+  if(btn){ btn.disabled=true; btn.textContent='Cargando…'; }
+  document.getElementById('grid').innerHTML='<div class="grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>';
+  document.getElementById('promoRow').innerHTML='<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  cargarProductos();
+}
 async function cargarFotosProductos(){
-  const {data,error}=await supa.from('productos').select('id,imagen_b64').eq('activo','true').or('(imagen_b64.not.is.null)');
-  if(error||!data||!data.length) return;
-  const m=new Map(data.map(r=>[r.id,r.imagen_b64]));
-  PRODUCTOS.forEach(p=>{ if(m.has(p.id)) p.imagen_b64=m.get(p.id); });
-  renderPromos(); renderPiezas(); renderTiles(); renderGrid();
+  // Las fotos pesan (varios MB en total): primero las de lo que se ve arriba (en el orden del menú), después el resto.
+  // Así las primeras fotos aparecen en segundos aunque la conexión sea lenta, en vez de esperar a que lleguen todas.
+  const ids=PRODUCTOS.map(p=>p.id);
+  const lotes=[ids.slice(0,10)]; for(let i=10;i<ids.length;i+=25) lotes.push(ids.slice(i,i+25));
+  for(let i=0;i<lotes.length;i++){
+    if(!lotes[i].length) continue;
+    const {data,error}=await supa.from('productos').select('id,imagen_b64').in('id',lotes[i]).or('(imagen_b64.not.is.null)');
+    if(error||!data||!data.length) continue;
+    const m=new Map(data.map(r=>[r.id,r.imagen_b64]));
+    PRODUCTOS.forEach(p=>{ if(m.has(p.id)) p.imagen_b64=m.get(p.id); });
+    renderPromos(); renderPiezas(); renderTiles(); renderGrid();
+  }
   // foto propia de la pieza completa (si el dueño la subió)
   const {data:pz}=await supa.from('productos').select('id,pieza_imagen_b64').eq('activo','true').or('(pieza_imagen_b64.not.is.null)');
   if(pz&&pz.length){ const mp=new Map(pz.map(r=>[r.id,r.pieza_imagen_b64])); PRODUCTOS.forEach(p=>{ if(mp.has(p.id)) p.pieza_img=mp.get(p.id); }); renderPiezas(); }
