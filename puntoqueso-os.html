@@ -3399,7 +3399,7 @@ async function marcarListoPedido(id){
 // ── Registrar el pago del pedido = la venta ──────────────────
 // Un solo paso: elige cómo pagó el cliente y se crea la venta (descuenta
 // stock, entra a la cuenta que corresponde y, si es efectivo, a la caja).
-const MEDIOS_PEDIDO={efectivo:'Efectivo (caja)',transferencia:'Transferencia',tarjeta:'Tarjeta',mercadopago:'Link de pago Mercado Pago'};
+const MEDIOS_PEDIDO={efectivo:'Efectivo (caja)',transferencia:'Transferencia',tarjeta:'Tarjeta',mercadopago:'Link de pago Mercado Pago',mixto:'Mixto (varios medios)'};
 let COBRO_PED={id:null,entregar:false,metodo:'efectivo',total:0,sinEfectivo:false};
 async function abrirCobroPedido(id,entregar){
   const {data:pf}=await supa.from('pedidos').select('*').eq('id',id).limit(1);
@@ -3432,6 +3432,11 @@ async function abrirCobroPedido(id,entregar){
       <input type="number" id="cpRecibido" min="0" step="10" inputmode="numeric" placeholder="${Math.round(total+redondeoEfectivo(total))}" oninput="calcVueltoPedido()">
       <div id="cpVuelto" style="font-size:15px;font-weight:700;margin-top:6px;color:var(--ok);"></div>
     </div>
+    <div id="cpMixto" style="margin-top:10px;display:none;">
+      <div class="sub-xs" style="margin-bottom:6px;">Reparte el total entre los medios que usó el cliente.</div>
+      ${[['Efectivo','cpMxEf',sinEfectivo],['Transferencia','cpMxTr',false],['Tarjeta','cpMxTj',false],['Link Mercado Pago','cpMxMp',false]].map(([l,i,dis])=>`<label>${l}${dis?' (no disponible en delivery)':''}</label><input type="number" id="${i}" min="0" step="1" inputmode="numeric" ${dis?'disabled':''} oninput="calcMixtoPedido()">`).join('')}
+      <div id="cpMxEstado" style="font-size:15px;font-weight:700;margin-top:6px;"></div>
+    </div>
     <div class="sub-xs" style="margin-top:10px;">Se registra como venta: descuenta el stock y la plata queda en ${'<b id="cpCuenta"></b>'}.</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
@@ -3445,9 +3450,22 @@ function setMedioCobroPedido(m){
   COBRO_PED.metodo=m;
   document.querySelectorAll('#cpMedios button').forEach(b=>b.className='btn '+(b.dataset.m===m?'':'secondary'));
   const ef=document.getElementById('cpEfectivo'); if(ef) ef.style.display=m==='efectivo'?'block':'none';
+  const mx=document.getElementById('cpMixto'); if(mx) mx.style.display=m==='mixto'?'block':'none';
   const c=document.getElementById('cpCuenta');
-  if(c) c.textContent=m==='efectivo'?'la caja de hoy':m==='tarjeta'?'la cuenta de la tarjeta':'Mercado Pago';
-  calcVueltoPedido();
+  if(c) c.textContent=m==='efectivo'?'la caja de hoy':m==='tarjeta'?'la cuenta de la tarjeta':m==='mixto'?'cada medio según lo repartido':'Mercado Pago';
+  calcVueltoPedido(); calcMixtoPedido();
+}
+function montosMixtoPedido(){
+  const g=i=>Math.max(0,Math.round(Number(document.getElementById(i)?.value)||0));
+  return {efectivo:COBRO_PED.sinEfectivo?0:g('cpMxEf'),transferencia:g('cpMxTr'),tarjeta:g('cpMxTj'),mercadopago:g('cpMxMp')};
+}
+function calcMixtoPedido(){
+  const el=document.getElementById('cpMxEstado'); if(!el) return;
+  const m=montosMixtoPedido(), suma=m.efectivo+m.transferencia+m.tarjeta+m.mercadopago, dif=Math.round(COBRO_PED.total)-suma;
+  const medios=Object.values(m).filter(v=>v>0).length;
+  if(dif===0&&medios>=2){ el.textContent='Cuadra ✓'; el.style.color='var(--ok)'; }
+  else if(dif===0){ el.textContent='Usa al menos 2 medios'; el.style.color='var(--danger)'; }
+  else { el.textContent=dif>0?`Faltan ${money(dif)}`:`Sobran ${money(-dif)}`; el.style.color='var(--danger)'; }
 }
 function calcVueltoPedido(){
   const el=document.getElementById('cpVuelto'); if(!el) return;
@@ -3469,8 +3487,18 @@ async function confirmarCobroPedido(){
   const c=COBRO_PED, p=pedidoPorId(c.id);
   if(!p) return;
   if(c.metodo==='efectivo'&&(c.sinEfectivo||pedidoEsDelivery(p))){ toast('Los pedidos con delivery no se pagan en efectivo',true); return; }
-  let recibido=null;
-  if(c.metodo==='efectivo'){
+  let recibido=null, mixto=null;
+  if(c.metodo==='mixto'){
+    mixto=montosMixtoPedido();
+    const suma=mixto.efectivo+mixto.transferencia+mixto.tarjeta+mixto.mercadopago;
+    if(Object.values(mixto).filter(v=>v>0).length<2){ toast('El pago mixto necesita al menos 2 medios',true); return; }
+    if(suma!==Math.round(c.total)){ toast(`Los montos suman ${money(suma)} y el total es ${money(c.total)}`,true); return; }
+    await cargarCajaHoy(); renderCajaBar();
+    if(mixto.efectivo>0&&!esDueno()){
+      if(!CAJA_HOY||CAJA_HOY.estado!=='abierta'||!TURNO_ACTUAL){ toast('Para cobrar efectivo abre la caja y tu turno (Terminal de ventas)',true); return; }
+      if(TURNO_ACTUAL.cajero!==SESSION.usuario){ avisoTurnoAjeno(); return; }
+    }
+  } else if(c.metodo==='efectivo'){
     const r=Number(document.getElementById('cpRecibido')?.value)||0;
     if(r>0&&r<c.total+redondeoEfectivo(c.total)){ toast('El monto recibido es menor que el total',true); return; }
     if(r>0) recibido=r;
@@ -3484,7 +3512,8 @@ async function confirmarCobroPedido(){
   _cobrandoPedido=true;
   const btn=document.getElementById('btnCobroPedido'); if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
   const {data,error}=await supa.rpc('cobrar_pedido',{p_id:c.id,p:{metodo_pago:c.metodo,turno_id:TURNO_ACTUAL&&TURNO_ACTUAL.cajero===SESSION.usuario?TURNO_ACTUAL.id:null,
-    registrado_por:SESSION.usuario,entregar:c.entregar,efectivo_recibido:recibido}});
+    registrado_por:SESSION.usuario,entregar:c.entregar,efectivo_recibido:recibido,
+    ...(mixto?{monto_efectivo:mixto.efectivo,monto_transferencia:mixto.transferencia,monto_tarjeta:mixto.tarjeta,monto_mercadopago:mixto.mercadopago}:{})}});
   _cobrandoPedido=false;
   if(error){ if(btn){ btn.disabled=false; btn.textContent=c.entregar?'Cobrar y entregar':'Registrar pago'; } toast('No se pudo registrar el pago: '+error.message,true); return; }
   const venta=data.venta;
