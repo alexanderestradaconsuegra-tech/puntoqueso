@@ -820,6 +820,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
           <button class="btn" onclick="openFacturaCompraModal()">+ Nueva factura de compra</button>
         </div>
       </div>
+      <div id="deudaProveedores" style="margin-bottom:18px;"></div>
       <h3 style="margin:6px 0 10px;font-size:14px;">Proveedores</h3>
       <div class="table-scroll"><table><thead><tr><th>Nombre</th><th>Contacto</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead>
       <tbody id="proveedoresBody"></tbody></table></div>
@@ -6485,7 +6486,51 @@ async function setPinUsuario(uid){
 //  PROVEEDORES + FACTURAS DE COMPRA
 //  (ingreso de stock por factura, con estado de pago)
 // ══════════════════════════════════════════════════════════
+// Resumen de lo que se debe: total por proveedor (solo los que tienen saldo) a partir de las facturas pendientes/abonadas.
+function deudaPorProveedor(){
+  const m={};
+  for(const f of DB.facturasCompra){
+    if(f.estado_pago==='pagada') continue;
+    const saldo=Number(f.total)-(Number(f.pagado)||0);
+    if(!(saldo>0.5)) continue;
+    const k=f.proveedor_id?('id'+f.proveedor_id):('n'+(f.proveedor_nombre||'?'));
+    const g=m[k]||(m[k]={nombre:f.proveedor_nombre||'(sin nombre)',total:0,facturas:[]});
+    g.total+=saldo; g.facturas.push({id:f.id,numero:f.numero_factura,fecha:f.fecha,saldo,total:Number(f.total),abonado:Number(f.pagado)||0});
+  }
+  const arr=Object.values(m);
+  arr.forEach(g=>g.facturas.sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))));
+  return arr.sort((a,b)=>b.total-a.total);
+}
+function renderDeudaProveedores(){
+  const el=document.getElementById('deudaProveedores'); if(!el) return;
+  const lista=deudaPorProveedor(), total=lista.reduce((a,g)=>a+g.total,0), hoy=hoyChile();
+  const dias=fch=>Math.max(0,Math.round((new Date(hoy+'T12:00:00')-new Date(fch+'T12:00:00'))/86400000));
+  if(!lista.length){ el.innerHTML='<div class="card" style="padding:14px;"><b>Lo que debo a proveedores</b><div class="sub" style="margin-top:4px;">No debes nada: todas las facturas están pagadas.</div></div>'; return; }
+  el.innerHTML=`<div class="card" style="padding:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div><div style="font-weight:800;">Lo que debo a proveedores</div><div class="sub-xs">${lista.length} proveedor${lista.length>1?'es':''} · solo se muestran los que tienen saldo pendiente</div></div>
+      <div style="text-align:right;"><div class="sub-xs">Total que debo</div><div class="num" style="font-size:26px;font-weight:900;color:var(--danger);">${money(total)}</div></div>
+    </div>
+    <div style="margin-top:10px;">${lista.map(g=>`
+      <div style="border-top:1px solid var(--border2);padding:10px 0;">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+          <b>${escapeHtml(g.nombre)}</b><b class="num" style="color:var(--danger);font-size:17px;">${money(g.total)}</b>
+        </div>
+        ${g.facturas.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--text2);margin-top:4px;">
+          <span>Factura ${escapeHtml(x.numero?'N° '+x.numero:'#'+x.id)} · ${new Date(x.fecha+'T12:00:00').toLocaleDateString('es-CL')} · hace ${dias(x.fecha)} día${dias(x.fecha)===1?'':'s'}${x.abonado>0?` · abonado ${money(x.abonado)} de ${money(x.total)}`:''}</span>
+          <span style="display:flex;align-items:center;gap:8px;"><b class="num">${money(x.saldo)}</b><button class="btn" style="padding:4px 10px;font-size:12px;" onclick="abrirAbonoFactura(${x.id})">Pagar</button></span>
+        </div>`).join('')}
+      </div>`).join('')}</div>
+    <div class="actions" style="margin-top:6px;"><button class="btn secondary" onclick="copiarDeudaProveedores()">Copiar lista</button></div>
+  </div>`;
+}
+function copiarDeudaProveedores(){
+  const l=deudaPorProveedor(); if(!l.length){ toast('No hay deudas'); return; }
+  const txt='Deudas a proveedores ('+new Date().toLocaleDateString('es-CL')+')\n'+l.map(g=>`- ${g.nombre}: ${money(g.total)}`).join('\n')+`\nTOTAL: ${money(l.reduce((a,g)=>a+g.total,0))}`;
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast('Lista copiada')).catch(()=>prompt('Copia la lista:',txt));
+}
 function renderProveedores(){
+  renderDeudaProveedores();
   document.getElementById('proveedoresBody').innerHTML=DB.proveedores.map(p=>`
     <tr><td>${p.nombre}</td><td>${p.contacto||'-'}</td><td>${p.telefono||'-'}</td>
     <td><span class="badge ${p.activo?'pagado':'anulado'}">${p.activo?'Activo':'Inactivo'}</span></td>
