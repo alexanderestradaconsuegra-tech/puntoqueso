@@ -8393,7 +8393,7 @@ async function renderCuentas(){
       <div class="cuenta-nombre">${escapeHtml(c.nombre)}</div>
       ${c.fecha_inicio?`<div class="cuenta-saldo num">${money(r.saldo[c.codigo])}</div>
         <div class="sub-xs">Según el sistema · desde ${new Date(c.fecha_inicio+'T12:00:00').toLocaleDateString('es-CL')}</div>
-        <div class="cuenta-conc">${k?`Última conciliación ${new Date(k.fecha+'T12:00:00').toLocaleDateString('es-CL')}: <b style="color:${d===0?'var(--ok)':'var(--danger)'}">${d===0?'cuadró':(d<0?'faltaban ':'sobraban ')+money(Math.abs(d))}</b>${k.ajustado&&d!==0?' (ajustado)':''}`:'Sin conciliar todavía'}</div>
+        <div class="cuenta-conc">${k?`Última conciliación ${new Date(k.fecha+'T12:00:00').toLocaleDateString('es-CL')}`:'Sin conciliar todavía'}</div>
         <button class="btn" style="margin-top:10px;padding:8px 12px;font-size:12.5px;" onclick="event.stopPropagation();abrirModalConciliar('${c.codigo}')">Conciliar</button>`
       :`<div class="sub-xs" style="margin-top:8px;">Sin saldo inicial</div>`}
     </div>`;
