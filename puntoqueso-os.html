@@ -6681,10 +6681,10 @@ async function openFacturaCompraModal(editId){
     <div id="fcCuentaWrap" style="display:none;"><label>Pagada desde</label>${selectCuentaPago('fcCuenta','bancoestado')}</div>
     <div class="actions">
       <button class="btn secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn" onclick="guardarFacturaCompra()">${f?'Guardar cambios':'Guardar factura'}</button>
+      <button class="btn" id="btnGuardarFactura" onclick="guardarFacturaCompra()">${f?'Guardar cambios':'Guardar factura'}</button>
     </div>`;
   document.getElementById('modalBg').style.display='flex';
-  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente'; FC_SEL=null; FC_TOTAL_MODE='suma';
+  FC_ITEMS=[]; FC_ESTADO_PAGO='pendiente'; FC_SEL=null; FC_TOTAL_MODE='suma'; FC_UID=null;
   if(f){
     // estado de pago y cuenta actuales
     let cuentaActual='bancoestado';
@@ -6918,6 +6918,18 @@ function fcAplicarExtraccion(ext){
   }
   fcRenderItems();
 }
+let FC_UID=null, _guardandoFactura=false;
+// Reintenta solo si falló la conexión (no si el servidor rechazó los datos). Es seguro por el uid de la factura.
+async function rpcConReintento(fn,args,intentos=3){
+  let r;
+  for(let i=0;i<intentos;i++){
+    r=await supa.rpc(fn,args);
+    if(!r.error) return r;
+    if(!/failed to fetch|network|load failed|abort|timeout|bad gateway|service unavailable|gateway time/i.test(r.error.message||'')) return r;
+    await new Promise(ok=>setTimeout(ok,1200*(i+1)));
+  }
+  return r;
+}
 async function guardarFacturaCompra(){
   if(!canDo('editarInventario')){ toast('No tienes permiso para ingresar facturas de compra',true); return; }
   const provSel=document.getElementById('fcProveedor');
@@ -6941,22 +6953,41 @@ async function guardarFacturaCompra(){
     if(typeof renderGastos==='function') renderGastos();
     return;
   }
-  const {data:fac,error}=await supa.from('facturas_compra').insert({
-    proveedor_id:proveedor.id,proveedor_nombre:proveedor.nombre,numero_factura:numero,fecha,total,estado_pago:FC_ESTADO_PAGO
-  }).select();
-  if(error){ toast('Error: '+error.message,true); return; }
-  const factura=fac[0];
-  for(const item of FC_ITEMS){
-    await supa.from('factura_compra_items').insert({...item,factura_id:factura.id});
-    if(item.producto_id){
-      const r=await moverStock(item.producto_id,Number(item.cantidad),'entrada',`Factura de compra ${numero?'N° '+numero:'#'+factura.id} · ${proveedor.nombre}`,'compra',factura.id,Number(item.costo_unitario)||null);
-      if(!r.ok) toast(`Factura guardada, pero no se pudo sumar el stock de un producto. Revísalo.`,true);
+  // Guardado TODO-O-NADA en el servidor (factura + líneas + stock + pago): si algo falla no queda nada a medias,
+  // los datos siguen en pantalla y se avisa. Cada envío lleva un identificador único (FC_UID): si la conexión se
+  // corta y se reintenta, el servidor NO duplica la factura ni suma el stock dos veces.
+  if(_guardandoFactura) return;
+  _guardandoFactura=true;
+  const btn=document.getElementById('btnGuardarFactura'); if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  const fin=()=>{ _guardandoFactura=false; if(btn){ btn.disabled=false; btn.textContent='Guardar factura'; } };
+  try{
+    if(!FC_UID) FC_UID=nuevoUid();
+    const payload={uid:FC_UID,proveedor_id:proveedor.id,numero,fecha,estado_pago:FC_ESTADO_PAGO,cuenta:document.getElementById('fcCuenta')?.value,
+      items:FC_ITEMS.map(i=>({producto_id:i.producto_id,cantidad:i.cantidad,costo_unitario:i.costo_unitario}))};
+    let r=await rpcConReintento('crear_factura_compra',{p:payload,p_usuario:SESSION.usuario});
+    if(r.error&&/^DUPLICADA/.test(r.error.message||'')){
+      if(!confirm(`Ya existe una factura N° ${numero} de ${proveedor.nombre}.\n\n¿Guardar esta de todas formas (si es otra distinta)?`)){ fin(); return; }
+      r=await rpcConReintento('crear_factura_compra',{p:{...payload,permitir_duplicada:true},p_usuario:SESSION.usuario});
     }
+    if(r.error){
+      fin();
+      alert('LA FACTURA NO SE GUARDÓ.\n\n'+r.error.message+'\n\nNo se sumó stock ni se registró nada. Tus datos siguen en pantalla: revisa y vuelve a tocar Guardar factura.');
+      return;
+    }
+    const res=r.data||{};
+    // verificación: se vuelve a leer del servidor lo que quedó guardado
+    const [vf,vi]=await Promise.all([supa.from('facturas_compra').select('id,total').eq('id',res.factura_id).limit(1),supa.from('factura_compra_items').select('id').eq('factura_id',res.factura_id)]);
+    const ok=(vf.data||[]).length===1&&(vi.data||[]).length===FC_ITEMS.length;
+    logAudit('Factura de compra registrada','proveedores',`${proveedor.nombre} — Factura ${numero||'#'+res.factura_id} — ${money(res.total)}`);
+    FC_UID=null; fin(); closeModal(); await loadAll(); renderProveedores(); renderProductos();
+    if(res.repetida) alert('Esta factura ya estaba guardada (se había enviado antes). No se duplicó ni se sumó el stock otra vez.');
+    else if(!ok) alert('La factura se guardó, pero no pude verificar todas sus líneas. Revísala en Proveedores.');
+    else toast(`Factura guardada y verificada · ${res.lineas} producto(s) · stock actualizado`);
+    if(confirm('Factura guardada.\n\n¿Ver e imprimir el comprobante para entregárselo al proveedor?')) verFacturaCompra(res.factura_id);
+  }catch(e){
+    console.error('guardarFacturaCompra',e); fin();
+    alert('LA FACTURA NO SE GUARDÓ (error inesperado: '+(e.message||e)+').\n\nTus datos siguen en pantalla. Vuelve a tocar Guardar factura.');
   }
-  if(FC_ESTADO_PAGO==='pagada') await generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,document.getElementById('fcCuenta')?.value);
-  logAudit('Factura de compra registrada','proveedores',`${proveedor.nombre} — Factura ${numero||'-'} — ${money(total)}`);
-  toast('Factura de compra guardada'); closeModal(); await loadAll(); renderProveedores(); renderProductos();
-  if(confirm('Factura guardada.\n\n¿Ver e imprimir el comprobante para entregárselo al proveedor?')) verFacturaCompra(factura.id);
 }
 // Al pagar una factura de proveedor se registra sola como gasto (categoría
 // "mercadería") — así no hace falta cargarla dos veces. facturas_compra.gasto_id
