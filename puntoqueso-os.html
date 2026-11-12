@@ -591,6 +591,7 @@ tr.toma-cont td:first-child{border-left:3px solid var(--ok);}
         <h3 style="margin-bottom:12px;">Pedidos pendientes por facturar</h3>
         <div id="dashPedidos"></div>
       </div>
+      <div class="card" style="padding:18px;margin-top:14px;display:none;" id="dashAjustesStock"></div>
       </div>
     </div>
 
@@ -1755,6 +1756,7 @@ async function renderDashboard(){
   const jefe=document.getElementById('dashJefe'), ini=document.getElementById('inicioPersonal');
   if(dashboardEsPersonal()){ return renderInicioPersonal(); }
   if(jefe) jefe.style.display=''; if(ini) ini.style.display='none';
+  renderAjustesStockSemana();
   // Mismas definiciones de siempre (hoy / semana desde el lunes / mes desde el
   // día 1), pero en fecha LOCAL y consultando al servidor por rango: DB.ventas
   // y DB.gastos traen solo las últimas 200 filas y con más de 200 ventas en el
@@ -1837,6 +1839,33 @@ function aplicarNombreInicio(){
   document.querySelectorAll('.nav-item[data-view="dashboard"]').forEach(n=>n.childNodes.forEach(c=>{ if(c.nodeType===3&&/Dashboard|Inicio/.test(c.textContent)) c.textContent='\n      '+nombre+'\n    '; }));
   document.querySelectorAll('#bottomNav .tab[data-tab="dashboard"] span').forEach(sp=>sp.textContent=nombre);
   syncMobileNav(currentPage);   // el título de arriba en el celular
+}
+// Cambios manuales de stock de los últimos 7 días (lo único que mueve el stock sin una venta ni una compra)
+async function renderAjustesStockSemana(){
+  const box=document.getElementById('dashAjustesStock'); if(!box) return;
+  if(!esDueno()){ box.style.display='none'; return; }
+  try{
+    const desde=new Date(Date.now()-7*86400000).toISOString();
+    const {data,error}=await supa.from('stock_movimientos').select('created_at,producto_id,cantidad,motivo,origen,registrado_por,stock_resultante')
+      .in('origen',['manual','ajuste']).gte('created_at',desde).order('created_at',{ascending:false}).limit(300);
+    if(error) throw error;
+    const filas=(data||[]).filter(m=>!/^Stock inicial/.test(m.motivo||'')&&!/toma de inventario/i.test(m.motivo||''));
+    const tomas=(data||[]).filter(m=>/toma de inventario/i.test(m.motivo||'')&&!/^Reversión/i.test(m.motivo||'')).length;
+    if(!filas.length&&!tomas){ box.style.display='none'; return; }
+    const fm=n=>String(Math.round(Number(n)*1000)/1000).replace('.',',');
+    const nom=id=>DB.productos.find(p=>p.id===id)?.nombre||('#'+id);
+    const grande=m=>Math.abs(Number(m.cantidad))>=10;
+    const sinMotivo=m=>/^Cambio manual de stock/.test(m.motivo||'');
+    box.style.display='block';
+    box.innerHTML=`<h3 style="margin-bottom:4px;">Cambios manuales de stock (últimos 7 días)</h3>
+      <div class="sub-xs" style="margin-bottom:10px;">${filas.length} cambio${filas.length===1?'':'s'} hecho${filas.length===1?'':'s'} a mano${tomas?` · ${tomas} producto${tomas===1?'':'s'} ajustado${tomas===1?'':'s'} por toma de inventario`:''}. Son lo único que mueve el stock sin una venta ni una compra: revísalos.</div>
+      <div class="table-scroll"><table><thead><tr><th>Cuándo</th><th>Producto</th><th>Cambio</th><th>Queda</th><th>Quién</th><th>Motivo</th></tr></thead><tbody>
+      ${filas.slice(0,15).map(m=>`<tr><td>${new Date(m.created_at).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td><td>${escapeHtml(nom(m.producto_id))}</td>
+        <td class="num" style="font-weight:700;color:${Number(m.cantidad)<0?'var(--danger)':'var(--ok)'};">${Number(m.cantidad)>0?'+':''}${fm(m.cantidad)}${grande(m)?' <span class="badge anulado">grande</span>':''}</td>
+        <td class="num">${m.stock_resultante==null?'-':fm(m.stock_resultante)}</td><td>${escapeHtml(m.registrado_por||'-')}</td>
+        <td>${sinMotivo(m)?'<span style="color:var(--warn);">sin motivo</span>':escapeHtml(String(m.motivo||'').replace(/^Ajuste manual: /,''))}</td></tr>`).join('')}
+      </tbody></table></div>${filas.length>15?`<div class="sub-xs" style="margin-top:6px;">Se muestran los 15 más recientes de ${filas.length}.</div>`:''}`;
+  }catch(e){ console.error('renderAjustesStockSemana',e); box.style.display='none'; }
 }
 async function renderInicioPersonal(){
   const jefe=document.getElementById('dashJefe'), box=document.getElementById('inicioPersonal');
@@ -5711,11 +5740,30 @@ async function guardarProducto(id){
   // no pisa el stock real con el valor que la pantalla tenía guardado.
   const stEl=document.getElementById('prStock');
   if(!id||stEl.value!==stEl.dataset.inicial) row.stock=Number(stEl.value)||0;
+  // Cambio de stock de un producto existente: se aplica como AJUSTE (suma o resta lo que cambiaste, así no pisa ventas
+  // que entraron mientras tenías la ventana abierta), con diferencia a la vista y motivo obligatorio.
+  let ajusteStock=null;
+  if(id&&row.stock!==undefined){
+    const ini=Number(stEl.dataset.inicial)||0, nuevo=row.stock, delta=Math.round((nuevo-ini)*1000)/1000;
+    delete row.stock;
+    if(delta!==0){
+      const fm=n=>String(Math.round(n*1000)/1000).replace('.',',');
+      const grande=Math.abs(delta)>=5&&Math.abs(delta)>=Math.max(Math.abs(ini),Math.abs(nuevo))*0.5;
+      if(!confirm(`Cambiar el stock de "${nombre}"\n\nDe ${fm(ini)} a ${fm(nuevo)}  (${delta>0?'+':''}${fm(delta)})\n${grande?'\nES UN CAMBIO GRANDE: revisa que no sea un error al digitar (kg o unidades).\n':''}\n¿Continuar?`)) return;
+      const motivo=sanitize(prompt('Motivo del cambio de stock (obligatorio).\nEj: conteo en bodega, merma, error de carga, regalo','')||'');
+      if(!motivo||motivo.length<3){ toast('Escribe el motivo del cambio de stock para poder guardar',true); return; }
+      ajusteStock={delta,motivo};
+    }
+  }
   const {data:guardado,error}=id?await supa.from('productos').update(row).eq('id',id).select('id'):await supa.from('productos').insert(row).select('id');
   if(error){ toast('Error: '+error.message,true); return; }
   const gid=id||guardado?.[0]?.id;
+  if(ajusteStock){
+    const r=await moverStock(id,ajusteStock.delta,'ajuste','Ajuste manual: '+ajusteStock.motivo,'manual',null,null);
+    if(!r.ok) toast('El producto se guardó pero NO se pudo cambiar el stock. Inténtalo de nuevo.',true);
+  }
   if(gid&&fotoCambio){ if(_prodImagenB64) IMG_PROD.set(gid,_prodImagenB64); else IMG_PROD.delete(gid); }
-  logAudit(id?'Producto editado':'Producto creado','productos',nombre+(row.stock!==undefined&&id?` (stock → ${row.stock})`:''));
+  logAudit(id?'Producto editado':'Producto creado','productos',nombre+(ajusteStock?` (stock ${ajusteStock.delta>0?'+':''}${ajusteStock.delta}: ${ajusteStock.motivo})`:''));
   toast('Producto guardado'); closeModal(); await loadAll(); renderProductos();
 }
 async function eliminarProducto(id){
@@ -7083,12 +7131,17 @@ async function confirmarFacturaPagada(id){
 // Solo se borran los registros de la factura; cualquier ajuste de stock real
 // se hace manualmente editando el producto.
 async function eliminarFacturaCompra(id){
-  if(!confirm('¿Eliminar esta factura de compra? Esto NO revierte el stock que ya ingresó.')) return;
   const f=DB.facturasCompra.find(x=>x.id===id);
-  await supa.from('factura_compra_items').delete().eq('factura_id',id);
-  await supa.from('facturas_compra').delete().eq('id',id);
-  logAudit('Factura de compra eliminada','proveedores',`${f?.proveedor_nombre||''} — Factura ${f?.numero_factura||'#'+id}`);
-  toast('Factura eliminada'); await loadAll(); renderProveedores();
+  const nombre=`${f?.proveedor_nombre||''} · ${f?.numero_factura?'N° '+f.numero_factura:'#'+id}`;
+  if(!confirm(`¿Eliminar la factura ${nombre}?\n\nEl stock que esta factura sumó se DESCUENTA de nuevo (queda anotado en el historial de movimientos).`)) return;
+  let borrarPagos=false;
+  if(f&&(Number(f.pagado)>0||f.gasto_id)){
+    borrarPagos=confirm(`Esta factura tiene pagos registrados (${money(Math.max(Number(f.pagado)||0,f.estado_pago==='pagada'?Number(f.total):0))}).\n\nAceptar = borrar también esos pagos (la plata vuelve a la cuenta; úsalo si la factura estaba mal cargada).\nCancelar = conservar los pagos como gasto.`);
+  }
+  const {data,error}=await supa.rpc('eliminar_factura_compra',{p_id:id,p_usuario:SESSION?.usuario||null,p_borrar_pagos:borrarPagos});
+  if(error){ toast('No se pudo eliminar: '+error.message,true); return; }
+  logAudit('Factura de compra eliminada','proveedores',`${nombre} — stock revertido en ${data?.productos_revertidos??0} producto(s)${borrarPagos?`, ${data?.pagos_borrados??0} pago(s) borrado(s)`:''}`);
+  toast(`Factura eliminada · stock descontado en ${data?.productos_revertidos??0} producto(s)`); await loadAll(); renderProveedores(); renderProductos();
 }
 
 // ══════════════════════════════════════════════════════════
