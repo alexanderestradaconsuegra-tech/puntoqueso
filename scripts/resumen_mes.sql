@@ -60,9 +60,9 @@ union all
 \echo '=== 7. POR VENDEDOR ==='
 select coalesce(registrado_por,'(sin dato)') vendedor, count(*) ventas, sum(total)::bigint total from vm group by 1 order by 3 desc;
 
-\echo '=== 8. TOP 20 PRODUCTOS (ingreso, cantidad y margen) ==='
-select i.producto_nombre producto, round(sum(i.cantidad),2) cantidad, sum(i.subtotal)::bigint ingreso,
-       sum(coalesce(i.costo_unitario,0)*i.cantidad)::bigint costo,
+\echo '=== 8. TOP 20 PRODUCTOS, agrupando las piezas (kg, ingreso, precio y costo por kg, margen) ==='
+select regexp_replace(i.producto_nombre,'\s*\(.*\)\s*$','') producto, round(sum(i.cantidad),1) cantidad, sum(i.subtotal)::bigint ingreso,
+       round(sum(i.subtotal)/nullif(sum(i.cantidad),0)) precio_prom, round(sum(coalesce(i.costo_unitario,0)*i.cantidad)/nullif(sum(i.cantidad),0)) costo_prom,
        (sum(i.subtotal)-sum(coalesce(i.costo_unitario,0)*i.cantidad))::bigint margen,
        round(100*(sum(i.subtotal)-sum(coalesce(i.costo_unitario,0)*i.cantidad))/nullif(sum(i.subtotal),0),1) margen_pct
 from venta_items i join vm on vm.id=i.venta_id group by 1 order by 3 desc limit 20;
@@ -89,6 +89,22 @@ select dia_pago fecha, categoria, left(descripcion,60) descripcion, cuenta, mont
 
 \echo '=== 14. GASTOS POR PAGAR (pendientes hoy) ==='
 select coalesce(sum(monto),0)::bigint por_pagar, count(*) n from gastos where estado_pago='pendiente';
+
+\echo '=== 14b. COMPRAS DE MERCADERIA POR PROVEEDOR (pagado en el mes) ==='
+select coalesce(nullif(split_part(descripcion,' — ',2),''),'(sin proveedor: '||left(descripcion,30)||')') proveedor, count(*) pagos, sum(monto)::bigint total,
+       round(100*sum(monto)/nullif(sum(sum(monto)) over(),0),1) pct from gm where categoria='mercaderia' group by 1 order by 3 desc;
+
+\echo '=== 14c. DESCUENTOS: quien los da y en que tipo de venta ==='
+select coalesce(registrado_por,'(sin dato)') vendedor, count(*) filter (where coalesce(descuento,0)>0) ventas_con_descuento, sum(coalesce(descuento,0))::bigint descuento_total,
+       round(100*sum(coalesce(descuento,0))/nullif(sum(total+coalesce(descuento,0)),0),1) pct_sobre_precio_lista from vm group by 1 order by 3 desc;
+
+\echo '=== 14d. TICKET PROMEDIO POR DIA DE LA SEMANA Y POR ORIGEN ==='
+select (array['Lunes','Martes','Miercoles','Jueves','Viernes','Sabado','Domingo'])[extract(isodow from dia)::int] dia, round(avg(total)) ticket from vm group by extract(isodow from dia) order by extract(isodow from dia);
+select coalesce(origen,'(sin origen)') origen, round(avg(total)) ticket from vm group by 1 order by 2 desc;
+
+\echo '=== 14e. IVA REFERENCIAL (si precios y facturas llevan IVA 19%) ==='
+select round(ventas*0.19/1.19) iva_debito_estimado, round(compras*0.19/1.19) iva_credito_estimado_si_todas_con_iva, round((ventas-compras)*0.19/1.19) iva_a_pagar_estimado, (select coalesce(sum(monto),0)::bigint from gm where categoria='iva') iva_impuestos_pagado_en_el_mes
+from (select (select sum(total) from vm) ventas, (select sum(monto) from gm where categoria='mercaderia') compras) x;
 
 \echo '=== 15. RESULTADO DEL MES ==='
 with v as (select coalesce(sum(total),0) ventas from vm),
