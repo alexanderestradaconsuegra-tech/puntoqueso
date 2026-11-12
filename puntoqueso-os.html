@@ -7044,7 +7044,7 @@ function htmlComprobanteCompra(f,items,prov){
       <div><small>Proveedor</small><b>${escapeHtml(f.proveedor_nombre||prov?.nombre||'-')}</b>${prov?.contacto?'<br>'+escapeHtml(prov.contacto):''}${prov?.telefono?'<br>'+escapeHtml(prov.telefono):''}</div>
       <div><small>Documento</small>Comprobante N° ${f.id}<br>Fecha: ${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}${f.numero_factura?`<br>Factura del proveedor: ${escapeHtml(f.numero_factura)}`:''}</div>
     </div>
-    <table><thead><tr><th>Producto</th><th class="n">Cantidad recibida</th>${hayDev?'<th class="n">Devuelto</th>':''}<th class="n">Precio unitario</th><th class="n">Subtotal</th></tr></thead>
+    <table><thead><tr><th>Producto</th><th class="n">Cantidad</th>${hayDev?'<th class="n">Devuelto</th>':''}<th class="n">Precio</th><th class="n">Subtotal</th></tr></thead>
     <tbody>${filas||'<tr><td colspan="5">Sin productos</td></tr>'}
     <tr class="tot"><td colspan="${hayDev?4:3}" class="n">TOTAL</td><td class="n">${money(total)}</td></tr></tbody></table>
     <div style="margin-top:8px;"><b>Estado de pago:</b> ${pago}</div>
