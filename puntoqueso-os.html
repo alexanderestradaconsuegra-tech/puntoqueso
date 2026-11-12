@@ -6543,6 +6543,7 @@ function renderProveedores(){
     <td>${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}</td><td class="num">${money(f.total)}${f.estado_pago!=='pagada'&&Number(f.pagado)>0?`<div class="sub-xs">Abonado ${money(f.pagado)}<br><b style="color:var(--danger);">Debe ${money(Number(f.total)-Number(f.pagado))}</b></div>`:''}</td>
     <td><span class="badge ${f.estado_pago==='pagada'?'pagado':'pendiente'}">${f.estado_pago==='pagada'?'Pagada':Number(f.pagado)>0?'Abonada':'Pendiente'}</span></td>
     <td style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="verFacturaCompra(${f.id})">Ver / imprimir</button>
       <button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="openFacturaCompraModal(${f.id})">Editar</button>
       ${f.estado_pago!=='pagada'?`<button class="btn" style="padding:6px 10px;font-size:12px;" onclick="abrirAbonoFactura(${f.id})">Pagar / abonar</button>`:Number(f.pagado)>0&&!f.gasto_id?`<button class="btn secondary" style="padding:6px 10px;font-size:12px;" onclick="abrirAbonoFactura(${f.id})">Ver pagos</button>`:''}
       <button class="btn danger" style="padding:6px 10px;font-size:12px;" onclick="eliminarFacturaCompra(${f.id})">Eliminar</button>
@@ -6907,6 +6908,7 @@ async function guardarFacturaCompra(){
   if(FC_ESTADO_PAGO==='pagada') await generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,document.getElementById('fcCuenta')?.value);
   logAudit('Factura de compra registrada','proveedores',`${proveedor.nombre} — Factura ${numero||'-'} — ${money(total)}`);
   toast('Factura de compra guardada'); closeModal(); await loadAll(); renderProveedores(); renderProductos();
+  if(confirm('Factura guardada.\n\n¿Ver e imprimir el comprobante para entregárselo al proveedor?')) verFacturaCompra(factura.id);
 }
 // Al pagar una factura de proveedor se registra sola como gasto (categoría
 // "mercadería") — así no hace falta cargarla dos veces. facturas_compra.gasto_id
@@ -6920,6 +6922,77 @@ async function generarGastoDesdeFactura(factura,proveedor,numero,fecha,total,cue
   }).select();
   if(error){ console.error('generarGastoDesdeFactura',error); toast('La factura se guardó, pero no se pudo crear el gasto automático: '+error.message,true); return; }
   await supa.from('facturas_compra').update({gasto_id:gs[0].id}).eq('id',factura.id);
+}
+// ── Comprobante de recepción de mercadería (se ve, se imprime o se guarda como PDF) ──
+// Sirve para entregárselo al proveedor en el momento (con lo que se pesó en el local). No es un
+// documento tributario: el proveedor igual debe emitir su factura.
+const CC_CSS=`.cc{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12.5px;line-height:1.4;}
+.cc h1{font-size:19px;margin:0;color:#1f2a44;} .cc .neg{font-size:11.5px;color:#444;}
+.cc .tit{margin:12px 0 8px;padding:6px 0;border-top:2px solid #1f2a44;border-bottom:2px solid #1f2a44;font-weight:800;font-size:14px;letter-spacing:.03em;text-align:center;}
+.cc .dos{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px;} .cc .dos>div{flex:1;min-width:170px;border:1px solid #cfcfcf;border-radius:6px;padding:7px 9px;}
+.cc .dos small{display:block;color:#666;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;}
+.cc table{width:100%;border-collapse:collapse;margin-top:6px;} .cc th{background:#1f2a44;color:#fff;font-size:11px;text-align:left;padding:5px 6px;}
+.cc td{border-bottom:1px solid #ddd;padding:5px 6px;vertical-align:top;} .cc .n{text-align:right;white-space:nowrap;}
+.cc th.n{text-align:right;} .cc tr.tot td{font-weight:800;font-size:13.5px;border-top:2px solid #1f2a44;border-bottom:0;}
+.cc .firmas{display:flex;gap:40px;margin-top:46px;} .cc .firmas div{flex:1;border-top:1px solid #111;text-align:center;padding-top:4px;font-size:11.5px;}
+.cc .nota{margin-top:16px;font-size:10.5px;color:#555;border-top:1px dashed #aaa;padding-top:6px;}`;
+function htmlComprobanteCompra(f,items,prov){
+  const neg=CONFIG_CACHE||{};
+  const hayDev=items.some(i=>Number(i.devuelto)>0);
+  const cant=n=>String(reciboFormatCantidad(Math.round(Number(n)*1000)/1000)).replace('.',',');
+  const unidad=i=>{ const p=i.producto_id?DB.productos.find(x=>x.id===i.producto_id):null; return p&&p.vender_por_peso?'kg':'u'; };
+  const total=Number(f.total)||0, pagado=Number(f.pagado)||0;
+  const pago=f.estado_pago==='pagada'?'PAGADA':(pagado>0?`ABONADO ${money(pagado)} · DEBE ${money(Math.max(0,total-pagado))}`:'PENDIENTE DE PAGO');
+  const filas=items.map(i=>`<tr><td>${escapeHtml(i.producto_nombre||'-')}</td><td class="n">${cant(i.cantidad)} ${unidad(i)}</td>${hayDev?`<td class="n">${Number(i.devuelto)>0?cant(i.devuelto)+' '+unidad(i):'-'}</td>`:''}<td class="n">${money(i.costo_unitario)}</td><td class="n">${money(i.subtotal)}</td></tr>`).join('');
+  return `<div class="cc">
+    <h1>${escapeHtml(nombreNegocio())}</h1>
+    <div class="neg">${[neg.negocio_razon_social,neg.negocio_rut?'RUT '+neg.negocio_rut:'',neg.negocio_direccion].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+    <div class="tit">COMPROBANTE DE RECEPCIÓN DE MERCADERÍA</div>
+    <div class="dos">
+      <div><small>Proveedor</small><b>${escapeHtml(f.proveedor_nombre||prov?.nombre||'-')}</b>${prov?.contacto?'<br>'+escapeHtml(prov.contacto):''}${prov?.telefono?'<br>'+escapeHtml(prov.telefono):''}</div>
+      <div><small>Documento</small>Comprobante N° ${f.id}<br>Fecha: ${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}${f.numero_factura?`<br>Factura del proveedor: ${escapeHtml(f.numero_factura)}`:''}</div>
+    </div>
+    <table><thead><tr><th>Producto</th><th class="n">Cantidad recibida</th>${hayDev?'<th class="n">Devuelto</th>':''}<th class="n">Precio unitario</th><th class="n">Subtotal</th></tr></thead>
+    <tbody>${filas||'<tr><td colspan="5">Sin productos</td></tr>'}
+    <tr class="tot"><td colspan="${hayDev?4:3}" class="n">TOTAL</td><td class="n">${money(total)}</td></tr></tbody></table>
+    <div style="margin-top:8px;"><b>Estado de pago:</b> ${pago}</div>
+    ${f.notas?`<div style="margin-top:4px;"><b>Notas:</b> ${escapeHtml(f.notas)}</div>`:''}
+    <div class="firmas"><div>Recibido por (${escapeHtml(nombreNegocio())})</div><div>Conforme proveedor</div></div>
+    <div class="nota">Comprobante interno de recepción: detalla lo entregado y pesado en el local. No reemplaza a la factura o guía de despacho del proveedor.</div>
+  </div>`;
+}
+let CC_ACTUAL=null;
+async function verFacturaCompra(id){
+  const [fR,iR]=await Promise.all([supa.from('facturas_compra').select('*').eq('id',id).limit(1),supa.from('factura_compra_items').select('*').eq('factura_id',id).order('id')]);
+  const f=(fR.data||[])[0]; if(!f||fR.error||iR.error){ toast('No se pudo cargar la factura',true); return; }
+  const prov=DB.proveedores.find(p=>p.id===f.proveedor_id)||null;
+  CC_ACTUAL={f,items:iR.data||[],prov};
+  document.getElementById('modalContent').innerHTML=`<style>${CC_CSS}</style>
+    <h3>Comprobante · ${escapeHtml(f.proveedor_nombre||'')}</h3>
+    <div style="border:1px solid var(--border2);border-radius:var(--r-sm);padding:12px;background:#fff;max-height:55vh;overflow:auto;">${htmlComprobanteCompra(f,CC_ACTUAL.items,prov)}</div>
+    <div class="actions">
+      <button class="btn secondary" onclick="closeModal()">Cerrar</button>
+      ${prov?.telefono?`<button class="btn secondary" onclick="enviarComprobanteWA()">Enviar por WhatsApp</button>`:''}
+      <button class="btn" onclick="imprimirComprobanteCompra()">Imprimir / Guardar PDF</button>
+    </div>
+    <div class="sub-xs" style="margin-top:6px;">En "Imprimir" elige "Guardar como PDF" como destino para descargarlo.</div>`;
+  document.getElementById('modalBg').style.display='flex';
+}
+function imprimirComprobanteCompra(){
+  if(!CC_ACTUAL) return;
+  const {f,items,prov}=CC_ACTUAL;
+  imprimirHTML(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Comprobante ${f.id} - ${escapeHtml(f.proveedor_nombre||'')}</title>
+<style>@page{size:A4;margin:14mm;} *{box-sizing:border-box;} body{margin:0;} ${CC_CSS} .cc th{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body>${htmlComprobanteCompra(f,items,prov)}</body></html>`);
+}
+async function enviarComprobanteWA(){
+  if(!CC_ACTUAL) return;
+  const {f,items,prov}=CC_ACTUAL;
+  const u=i=>{ const p=i.producto_id?DB.productos.find(x=>x.id===i.producto_id):null; return p&&p.vender_por_peso?'kg':'u'; };
+  const msg=`*${nombreNegocio()} - Comprobante de recepción N° ${f.id}*\nFecha: ${new Date(f.fecha+'T12:00:00').toLocaleDateString('es-CL')}\nProveedor: ${f.proveedor_nombre||''}\n\n`+
+    items.map(i=>`- ${i.producto_nombre}: ${reciboFormatCantidad(Math.round(Number(i.cantidad)*1000)/1000)} ${u(i)} x ${money(i.costo_unitario)} = ${money(i.subtotal)}`).join('\n')+
+    `\n\n*Total: ${money(f.total)}*\n(Comprobante interno de recepción; no reemplaza tu factura.)`;
+  const ok=await enviarWhatsApp(prov.telefono,msg);
+  toast(ok===false?'No se pudo enviar el WhatsApp':'Comprobante enviado por WhatsApp',ok===false);
 }
 // ── Abonos (pagos parciales) a facturas de proveedor ──
 // Cada abono es un gasto de mercadería desde la cuenta elegida; la factura queda
