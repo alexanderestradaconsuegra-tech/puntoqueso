@@ -1476,7 +1476,10 @@ function esEncargado(){ return SESSION?.rol==='encargado'; }
 // Dueño o encargado: secciones de trabajo (Clientes web, Delivery). Cuentas: el encargado
 // solo ve los saldos que el dueño concilió; Configuración es solo del dueño.
 function esJefe(){ return esDueno()||esEncargado(); }
+// Módulo Cuentas oculto por ahora (los datos y los cálculos siguen guardados). Para volver a mostrarlo: CUENTAS_VISIBLES=true
+const CUENTAS_VISIBLES=false;
 function nav(view){
+  if(view==='cuentas'&&!CUENTAS_VISIBLES) view='dashboard';
   if(view==='auditoria') view='dashboard';   // oculta: se consulta con scripts/ver_auditoria.sh
   if((view==='config'&&!esDueno())||((view==='cuentas'||view==='clientesweb'||view==='delivery')&&!esJefe())){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
   if(view==='empleados'&&!esDueno()){ toast('Esta sección es solo para el administrador',true); view='terminal'; }
@@ -1697,7 +1700,7 @@ async function iniciarApp(){
   document.getElementById('navAuditoria').style.display='none'; // la auditoría se consulta por servidor: scripts/ver_auditoria.sh
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
-  document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
+  document.getElementById('navCuentas').style.display=(CUENTAS_VISIBLES&&esJefe())?'flex':'none';
   document.getElementById('navEmpleados').style.display=esDueno()?'flex':'none';
   aplicarNombreInicio();
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
@@ -8733,7 +8736,7 @@ async function confirmarCajeroPin(){
   document.getElementById('navAuditoria').style.display='none'; // la auditoría se consulta por servidor: scripts/ver_auditoria.sh
   document.getElementById('navProveedores').style.display=canDo('editarInventario')?'flex':'none';
   document.getElementById('navContabilidad').style.display=canDo('verReportes')?'flex':'none';
-  document.getElementById('navCuentas').style.display=esJefe()?'flex':'none';
+  document.getElementById('navCuentas').style.display=(CUENTAS_VISIBLES&&esJefe())?'flex':'none';
   document.getElementById('navEmpleados').style.display=esDueno()?'flex':'none';
   aplicarNombreInicio();
   document.getElementById('navConfig').style.display=esDueno()?'flex':'none';
