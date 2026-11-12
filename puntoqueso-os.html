@@ -1848,7 +1848,11 @@ async function renderAjustesStockSemana(){
   const box=document.getElementById('dashAjustesStock'); if(!box) return;
   if(!esDueno()){ box.style.display='none'; return; }
   try{
-    const desde=new Date(Date.now()-7*86400000).toISOString();
+    // Solo se muestran los cambios NUEVOS: desde el último "Marcar como revisados" (y nunca antes del 13-11-2026).
+    // El historial completo sigue guardado en los movimientos de stock; esto solo limpia el aviso.
+    const rv=await supa.from('config').select('valor').eq('clave','ajustes_stock_revisado').limit(1);
+    const revisado=(rv.data&&rv.data[0]&&rv.data[0].valor)||'';
+    const desde=new Date(Math.max(Date.now()-7*86400000,new Date('2026-11-13T00:00:00-03:00').getTime(),revisado?new Date(revisado).getTime():0)).toISOString();
     const {data,error}=await supa.from('stock_movimientos').select('created_at,producto_id,cantidad,motivo,origen,registrado_por,stock_resultante')
       .in('origen',['manual','ajuste']).gte('created_at',desde).order('created_at',{ascending:false}).limit(300);
     if(error) throw error;
@@ -1860,7 +1864,8 @@ async function renderAjustesStockSemana(){
     const grande=m=>Math.abs(Number(m.cantidad))>=10;
     const sinMotivo=m=>/^Cambio manual de stock/.test(m.motivo||'');
     box.style.display='block';
-    box.innerHTML=`<h3 style="margin-bottom:4px;">Cambios manuales de stock (últimos 7 días)</h3>
+    box.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;"><h3 style="margin-bottom:4px;">Cambios manuales de stock (nuevos)</h3>
+      <button class="btn secondary" style="padding:6px 12px;font-size:12px;" onclick="marcarAjustesRevisados()">Marcar como revisados</button></div>
       <div class="sub-xs" style="margin-bottom:10px;">${filas.length} cambio${filas.length===1?'':'s'} hecho${filas.length===1?'':'s'} a mano${tomas?` · ${tomas} producto${tomas===1?'':'s'} ajustado${tomas===1?'':'s'} por toma de inventario`:''}. Son lo único que mueve el stock sin una venta ni una compra: revísalos.</div>
       <div class="table-scroll"><table><thead><tr><th>Cuándo</th><th>Producto</th><th>Cambio</th><th>Queda</th><th>Quién</th><th>Motivo</th></tr></thead><tbody>
       ${filas.slice(0,15).map(m=>`<tr><td>${new Date(m.created_at).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td><td>${escapeHtml(nom(m.producto_id))}</td>
@@ -1869,6 +1874,11 @@ async function renderAjustesStockSemana(){
         <td>${sinMotivo(m)?'<span style="color:var(--warn);">sin motivo</span>':escapeHtml(String(m.motivo||'').replace(/^Ajuste manual: /,''))}</td></tr>`).join('')}
       </tbody></table></div>${filas.length>15?`<div class="sub-xs" style="margin-top:6px;">Se muestran los 15 más recientes de ${filas.length}.</div>`:''}`;
   }catch(e){ console.error('renderAjustesStockSemana',e); box.style.display='none'; }
+}
+async function marcarAjustesRevisados(){
+  const {error}=await supa.from('config').upsert({clave:'ajustes_stock_revisado',valor:new Date().toISOString()},{onConflict:'clave'});
+  if(error){ toast('No se pudo marcar: '+error.message,true); return; }
+  toast('Listo: el aviso queda limpio hasta el próximo cambio manual'); renderAjustesStockSemana();
 }
 async function renderInicioPersonal(){
   const jefe=document.getElementById('dashJefe'), box=document.getElementById('inicioPersonal');
